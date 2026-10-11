@@ -10,8 +10,9 @@ import { simctl } from './simctl.js';
 // iPhone or iPad has this panel. The limit lifts when a runtime source of the scale arrives (3.3).
 const MINI = { width: 1080, height: 2340, scale: 1080 / 375 };
 
-// Xcode 27's simctl writes "-" to a file named "-" in the working directory, not to stdout (measured); a path works
-// on every Xcode. The directory is private, so a failed capture's 0-byte file never reaches --out (K33).
+// Xcode 27's simctl writes "-" to a file named "-" in the working directory, not to stdout (measured); a path works on
+// 27 and is the form simctl's help shows on 26, not yet run there. The private directory keeps a failed capture's 0-byte
+// file away from --out (K33).
 async function shoot(udid: string): Promise<Buffer> {
   const dir = await mkdtemp(join(tmpdir(), 'karagoz-'));
   const file = join(dir, 'shot.png');
