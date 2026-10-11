@@ -10,7 +10,8 @@ const run = promisify(execFile);
 // projects (K32).
 const TIMEOUT_MS = 30_000;
 
-// A home-screen PNG is 2.9 MB (measured); Node's 1 MB default fails above that, as it did for adb (K22).
+// Sized when the screenshot PNG (2.9 MB, measured) came on stdout; it now comes through a file. Kept: lowering it
+// gains nothing. Node's 1 MB default failed adb's PNG (K22).
 const MAX_BUFFER = 64 * 1024 * 1024;
 
 // ponytail: Apple's private path, the binary Xcode's simctl shim execs. Calling it directly skips xcrun's install
@@ -31,9 +32,10 @@ function binary(): { bin: string; missing: string } {
   };
 }
 
-// The bytes form exists for the screenshot PNG; simctl() decodes the same result, as adb() does (K32, K33).
-// simctl's stderr on success ("Wrote screenshot to: -") is dropped: it is noise on every capture.
-export async function simctlBytes(args: string[]): Promise<Buffer> {
+// The bytes form keeps err.stderr a Buffer, so SIMCTL_FAILED carries simctl's own text; simctl() decodes the same
+// result, as adb() does (K32, K33). simctl's stderr on success ("Wrote screenshot to: <path>") is dropped: it is noise
+// on every capture.
+async function simctlBytes(args: string[]): Promise<Buffer> {
   const { bin, missing } = binary();
   const signal = cancellation.getStore();
   // An aborted signal still spawns simctl and kills it a tick later.
