@@ -45,7 +45,7 @@ cat > "$tmp/dev/usr/bin/simctl" <<FAKE
 #!/bin/sh
 case "\$*" in
   "list devices --json") [ -e "$fake/list-fails" ] && { echo "list broke" >&2; exit 1; }; /bin/cat "$fake/list.json" ;;
-  *" screenshot --mask=ignored -") exec /bin/sh "$fake/shot" ;;
+  *" screenshot --mask=ignored "*) exec /bin/sh "$fake/shot" > "\$5" ;;
   *" SIMULATOR_MAINSCREEN_SCALE") /bin/cat "$fake/scale" ;;
   *) exit 1 ;;
 esac
@@ -180,6 +180,7 @@ shot "/bin/cat '$fake/1206.png'"; echo nope > "$fake/scale"
 out=$(k screenshot --device A1) && st=0 || st=$?
 refuses CAPTURE_FAILED "unreadable scale" "$out" "$st"
 echo 3.000000 > "$fake/scale"
+[ -z "$(ls -d "$tmp"/karagoz-* 2>/dev/null)" ] || fail "a capture left its temp directory"
 
 # 7. Listing failures. A missing tool hides only its platform; a broken one stops the call unless the value is an id
 # the other platform listed; nothing listed and no adb is adb's error, as before 3.2.
@@ -194,7 +195,7 @@ out=$(env -i HOME="$tmp/home" PATH=/usr/bin:/bin TMPDIR="$tmp" ANDROID_HOME="$tm
 no_android
 out=$(env -i HOME="$tmp/home" PATH=/usr/bin:/bin TMPDIR="$tmp" ANDROID_HOME="$tmp/sdk" DEVELOPER_DIR="$tmp/empty" "$node_bin" dist/cli.js screenshot 2>/dev/null) && st=0 || st=$?
 refuses NO_DEVICE "no simctl, no emulator" "$out" "$st"
-case "$(printf '%s' "$out" | message_of)" in *"emulator -avd"*"USB debugging"*"open -a Simulator"*) ;; *) fail "NO_DEVICE text: $out" ;; esac
+case "$(printf '%s' "$out" | message_of)" in *"emulator -avd"*"USB debugging"*"open -a Simulator"*"xcrun simctl boot <name>"*) ;; *) fail "NO_DEVICE text: $out" ;; esac
 emulator; sims "$a1"; touch "$fake/list-fails"
 out=$(k key HOME) && st=0 || st=$?
 refuses SIMCTL_FAILED "broken simctl, bare key" "$out" "$st"
@@ -211,5 +212,6 @@ refuses SIMCTL_TIMEOUT "hung capture" "$out" "$st"
 [ "$took" -ge 29 ] && [ "$took" -le 40 ] || fail "hung capture took ${took}s"
 sleep 1
 ! pgrep -f 'sleep 97\.43' >/dev/null || fail "the hung simctl outlived karagoz"
+[ -z "$(ls -d "$tmp"/karagoz-* 2>/dev/null)" ] || fail "a hung capture left its temp directory"
 
 echo "ok: $ok, capture, mini, select, not supported, failures, listing, hung (${took}s)"

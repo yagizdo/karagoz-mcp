@@ -1,20 +1,35 @@
+import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { KaragozError } from '../../errors.js';
 import { pngSize } from '../../png.js';
-import { simctlBytes, simctl } from './simctl.js';
+import { simctl } from './simctl.js';
 
 // ponytail: the 12 mini and 13 mini render 375 pt wide and downsample to a 1080x2340 panel; UIKit gives apps
 // nativeScale 2.88, simctl's SIMULATOR_MAINSCREEN_SCALE says 3 (Apple forum reply, not measured here, K33). No other
 // iPhone or iPad has this panel. The limit lifts when a runtime source of the scale arrives (3.3).
 const MINI = { width: 1080, height: 2340, scale: 1080 / 375 };
 
+// Xcode 27's simctl writes "-" to a file named "-" in the working directory, not to stdout (measured); a path works on
+// 27 and is the form simctl's help shows on 26, not yet run there. The private directory keeps a failed capture's 0-byte
+// file away from --out (K33).
+async function shoot(udid: string): Promise<Buffer> {
+  const dir = await mkdtemp(join(tmpdir(), 'karagoz-'));
+  const file = join(dir, 'shot.png');
+  try {
+    // --mask=ignored keeps the square framebuffer; simctl's help states no default (K33).
+    await simctl(['io', udid, 'screenshot', '--mask=ignored', file]);
+    // An unreadable file is no image, which capture()'s CAPTURE_FAILED check reports.
+    return await readFile(file).catch(() => Buffer.alloc(0));
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+}
+
 // The image is always the panel in portrait, and neither the interface orientation nor the safe area can be read
 // from outside the simulator (measured on Xcode 26.2), so both are null rather than a guess (K6 3.2 note, K33).
 export async function capture(udid: string) {
-  const [png, scaleText] = await Promise.all([
-    // --mask=ignored keeps the square framebuffer; simctl's help states no default (K33).
-    simctlBytes(['io', udid, 'screenshot', '--mask=ignored', '-']),
-    simctl(['getenv', udid, 'SIMULATOR_MAINSCREEN_SCALE']),
-  ]);
+  const [png, scaleText] = await Promise.all([shoot(udid), simctl(['getenv', udid, 'SIMULATOR_MAINSCREEN_SCALE'])]);
   const pixels = pngSize(png);
   if (!pixels) {
     throw new KaragozError(
