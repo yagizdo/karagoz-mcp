@@ -2,6 +2,7 @@
   "name": "karagoz",
   "version": "0.0.0",
   "license": "MIT",
+  "homepage": "https://karagozmcp.com",
   "type": "module",
   "bin": {
     "karagoz": "dist/cli.js"
