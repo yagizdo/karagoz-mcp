@@ -2,6 +2,8 @@
 
 Device automation for mobile apps. One tool for four targets: Android emulator, Android physical device, iOS simulator, iOS physical device. It is a CLI, and `karagoz mcp` serves the same commands to an AI agent as an [MCP server](#mcp-server).
 
+Website: [karagozmcp.com](https://karagozmcp.com/?utm_source=github&utm_medium=readme)
+
 > **Status: early development.** Twelve commands work on the Android emulator, `devices`, `screenshot`, `ui-tree`, `tap`, `swipe`, `text`, `key`, `install`, `launch`, `terminate`, `uninstall` and `logs` also work on a physical Android device, `doctor` reports the `adb` they use, and the MCP server offers all thirteen to an AI agent. On an iOS simulator, `devices` and `screenshot` work; nothing else is written for iOS yet. Nothing is published to npm. See [Status](#status).
 
 ## Contents
