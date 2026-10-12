@@ -4,7 +4,7 @@ Device automation for mobile apps. One tool for four targets: Android emulator, 
 
 Website: [karagozmcp.com](https://karagozmcp.com/?utm_source=github&utm_medium=readme)
 
-> **Status: early development.** Twelve commands work on the Android emulator, `devices`, `screenshot`, `ui-tree`, `tap`, `swipe`, `text`, `key`, `install`, `launch`, `terminate`, `uninstall` and `logs` also work on a physical Android device, `doctor` reports the `adb` they use, and the MCP server offers all thirteen to an AI agent. On an iOS simulator, `devices` and `screenshot` work; nothing else is written for iOS yet. Nothing is published to npm. See [Status](#status).
+> **Status: early development.** Twelve commands work on the Android emulator, `devices`, `screenshot`, `ui-tree`, `tap`, `swipe`, `text`, `key`, `install`, `launch`, `terminate`, `uninstall` and `logs` also work on a physical Android device, `doctor` reports the `adb` they use, and the MCP server offers all thirteen to an AI agent. On an iOS simulator, `devices`, `screenshot` and `ui-tree` work; nothing else is written for iOS yet. Nothing is published to npm. See [Status](#status).
 
 ## Contents
 
@@ -45,7 +45,7 @@ Website: [karagozmcp.com](https://karagozmcp.com/?utm_source=github&utm_medium=r
 | --- | --- | --- | --- | --- |
 | [`devices`](#devices) | done | done | done | planned |
 | [`screenshot`](#screenshot) | done | done | done | planned |
-| [`ui-tree`](#ui-tree) | done | done | planned | planned |
+| [`ui-tree`](#ui-tree) | done | done | done | planned |
 | [`tap`](#tap) | done | done | planned | planned |
 | [`swipe`](#swipe) | done | done | planned | planned |
 | [`text`](#text) | done | done | planned | planned |
@@ -58,7 +58,7 @@ Website: [karagozmcp.com](https://karagozmcp.com/?utm_source=github&utm_medium=r
 | [`doctor`](#doctor) | done | done | planned | planned |
 | [MCP server](#mcp-server) | done | done | | |
 
-"Done" means tested against a live emulator: macOS, an API 36 image (Android 16), 1080x2400 at 420 dpi. In the iOS simulator column it means the step's smoke passes on macOS: `smoke/3.1-devices-ios.sh` for `devices`, `smoke/3.2-screenshot-ios.sh` for `screenshot`. `devices`, `screenshot` and `ui-tree` were tested on a physical Samsung phone (Android 14) over USB, and `tap`, `swipe`, `text`, `key`, `install`, `launch`, `terminate`, `uninstall` and `logs` on an Infinix phone (Android 12) over USB. No other command has been run on one yet. `doctor` touches no device; its row means tested on the same Mac with fake and real `adb` binaries. For the MCP server, done means `smoke/M-mcp.sh` passes against the live emulator and Claude Code and Codex called its tools; in the Android device column it means its tools returned results from a phone over USB. Windows and Linux have not been run.
+"Done" means tested against a live emulator: macOS, an API 36 image (Android 16), 1080x2400 at 420 dpi. In the iOS simulator column it means the step's smoke passes on macOS: `smoke/3.1-devices-ios.sh` for `devices`, `smoke/3.2-screenshot-ios.sh` for `screenshot`, `smoke/3.3-ui-tree-ios.sh` for `ui-tree`. `devices`, `screenshot` and `ui-tree` were tested on a physical Samsung phone (Android 14) over USB, and `tap`, `swipe`, `text`, `key`, `install`, `launch`, `terminate`, `uninstall` and `logs` on an Infinix phone (Android 12) over USB. No other command has been run on one yet. `doctor` touches no device; its row means tested on the same Mac with fake and real `adb` binaries. For the MCP server, done means `smoke/M-mcp.sh` passes against the live emulator and Claude Code and Codex called its tools; in the Android device column it means its tools returned results from a phone over USB. Windows and Linux have not been run.
 
 ## Requirements
 
@@ -75,10 +75,11 @@ Website: [karagozmcp.com](https://karagozmcp.com/?utm_source=github&utm_medium=r
   {"error":{"code":"ADB_NOT_FOUND","message":"adb not found (tried ..., PATH). Install platform-tools (brew install --cask android-platform-tools, or download https://developer.android.com/tools/releases/platform-tools and add it to PATH) or set ANDROID_HOME to your Android SDK."}}
   ```
 
-- **A running emulator** (`emulator -avd <name>`), or for `devices`, `screenshot`, `ui-tree`, `tap`, `swipe`, `text`, `key`, `install`, `launch`, `terminate`, `uninstall` and `logs`, a phone with USB debugging on, in state `device`, or for `devices` and `screenshot` on macOS, a booted iOS simulator (`open -a Simulator`; on Xcode 27, `xcrun simctl boot <name>`). karagoz installs nothing on a device by itself; `install` installs only the APK you pass it. A phone that adb cannot see is missing from the list: on Windows without the phone maker's USB driver, on a Mac laptop where "Allow accessory to connect" was refused, or in fastboot mode.
+- **A running emulator** (`emulator -avd <name>`), or for `devices`, `screenshot`, `ui-tree`, `tap`, `swipe`, `text`, `key`, `install`, `launch`, `terminate`, `uninstall` and `logs`, a phone with USB debugging on, in state `device`, or for `devices`, `screenshot` and `ui-tree` on macOS, a booted iOS simulator (`open -a Simulator`; on Xcode 27, `xcrun simctl boot <name>`). karagoz installs nothing on a device by itself; `install` installs only the APK you pass it. A phone that adb cannot see is missing from the list: on Windows without the phone maker's USB driver, on a Mac laptop where "Allow accessory to connect" was refused, or in fastboot mode.
 - For `smoke/1.5-app-lifecycle.sh`, and for `smoke/2.5-app-lifecycle-physical.sh` when a phone is attached: a JDK and Android SDK build-tools with one platform. Both smokes build their own test APK, `dev.karagoz.smoke`, and remove it at the end. See [Development](#development).
 - For `ui-tree` and `tap --text` / `--id`: the screen is on, and no other UiAutomation client is connected (Appium, Maestro, `uiautomator events`). For input to reach apps, the screen is also unlocked: on a lock screen `text` and `key` type into the PIN field, and a wrong PIN counts as a failed unlock attempt; with the screen off, taps are dropped and keys still arrive. Both exit `0`.
-- **Xcode, opened once**, for iOS simulators in `devices` and `screenshot` (macOS only). karagoz runs CoreSimulator's own `simctl` (`/Library/Developer/PrivateFrameworks/CoreSimulator.framework/Versions/A/Resources/bin/simctl`), or `$DEVELOPER_DIR/usr/bin/simctl` when `DEVELOPER_DIR` is set. The Command Line Tools alone have no `simctl`. On macOS every command that targets a device runs it too, to list simulators ([Device selection](#device-selection)).
+- **Xcode, opened once**, for iOS simulators in `devices`, `screenshot` and `ui-tree` (macOS only). karagoz runs CoreSimulator's own `simctl` (`/Library/Developer/PrivateFrameworks/CoreSimulator.framework/Versions/A/Resources/bin/simctl`), or `$DEVELOPER_DIR/usr/bin/simctl` when `DEVELOPER_DIR` is set. The Command Line Tools alone have no `simctl`, and no `swiftc` for `ui-tree`. On macOS every command that targets a device runs it too, to list simulators ([Device selection](#device-selection)).
+- The first `ui-tree` on a simulator compiles a small helper with the selected Xcode's `swiftc` (`DEVELOPER_DIR`, else the `xcode-select` one) into `~/Library/Caches/karagoz/`. That takes a few seconds, happens again after an Xcode update, and the directory is safe to delete.
 
 ## Install
 
@@ -133,7 +134,7 @@ The value is matched against every listed id first, exactly: adb serials (`emula
 | No value, nothing connected | `NO_DEVICE` |
 | No value and two or more devices listed (in any state), or a name that matches two entries: the same AVD listed as `emulator-5554` and `127.0.0.1:5555`, or two phones of the same model | `DEVICE_AMBIGUOUS` |
 | The picked device is not in state `device` (`offline`, `unauthorized`, ...), or a simulator not `Booted` (`Booting`, `Shutting Down`) | `DEVICE_NOT_READY` |
-| The picked device is an iOS simulator and the command does not run there yet: every command but `devices`, `screenshot` and `doctor` | `NOT_SUPPORTED` |
+| The picked device is an iOS simulator and the command does not run there yet: every command but `devices`, `screenshot`, `ui-tree` and `doctor` | `NOT_SUPPORTED` |
 
 karagoz never guesses between devices. There is no config file.
 
@@ -143,7 +144,7 @@ A phone connected over Wi-Fi as well as USB is listed twice, once per serial, an
 
 ### Coordinates
 
-`screenshot` pixels, `ui-tree` bounds and the `tap` / `swipe` coordinates share one space: physical pixels of the current screen orientation, origin top left. A node's `bounds` of `[581,1905,754,2100]` can be tapped at its center, `(667.5, 2002.5)`, and that point is the same pixel in the screenshot. Decimals are allowed. On an iOS simulator the screenshot is always the panel in portrait, whatever the interface orientation.
+`screenshot` pixels, `ui-tree` bounds and the `tap` / `swipe` coordinates share one space: physical pixels of the current screen orientation, origin top left. A node's `bounds` of `[581,1905,754,2100]` can be tapped at its center, `(667.5, 2002.5)`, and that point is the same pixel in the screenshot. Decimals are allowed. On an iOS simulator with Xcode 27 the screenshot and the tree follow the interface orientation; with Xcode 26 the screenshot is the panel in portrait, whatever the interface orientation. On iOS, `ui-tree` bounds are the element's frame in points times `scale`.
 
 `screenshot` reports `scale` (physical pixels per density-independent pixel on Android, per point on iOS) and `logical` size so a caller can convert to dp or points.
 
@@ -206,8 +207,9 @@ The set is closed. Any failure without a code of its own is reported as `INTERNA
 | `DEVICE_NOT_FOUND` | The named device is not connected. | all but `devices` and `doctor` |
 | `DEVICE_AMBIGUOUS` | More than one device and none named, or a name that matches more than one. | all but `devices` and `doctor` |
 | `DEVICE_NOT_READY` | The device is `offline`, `unauthorized` or similar, or the simulator is `Booting` or `Shutting Down`. | all but `devices` and `doctor` |
-| `NOT_SUPPORTED` | The device is an iOS simulator and the command does not run there yet: `'ui-tree' does not run on iOS simulators yet`. Argument checks come first. | all but `devices`, `screenshot` and `doctor` |
-| `CAPTURE_FAILED` | The screen could not be read: bad screenshot data, missing display info, or a uiautomator failure. The message says which. | `screenshot`, `ui-tree`, `tap --text/--id` |
+| `HELPER_FAILED` | The iOS tree helper cannot run on this Mac: no Xcode selected, no `swiftc` (the Command Line Tools are not enough), a failed compile, a crash, or an Xcode that changed a private interface karagoz uses. The message says which and what to do. | `ui-tree` on a simulator |
+| `NOT_SUPPORTED` | The device is an iOS simulator and the command does not run there yet: `'key' does not run on iOS simulators yet`. Argument checks come first. | all but `devices`, `screenshot`, `ui-tree` and `doctor` |
+| `CAPTURE_FAILED` | The screen could not be read: bad screenshot data, missing display info, a uiautomator failure, or on iOS a read the helper could not finish. The message says which. | `screenshot`, `ui-tree`, `tap --text/--id` |
 | `AUTOMATION_BUSY` | Another UiAutomation client holds the device. | `ui-tree`, `tap --text/--id` |
 | `WRITE_FAILED` | The screenshot file could not be written. | `screenshot` |
 | `TEXT_UNSUPPORTED` | The text has a character Android's `input text` cannot type. | `text` |
@@ -308,10 +310,10 @@ Saves the screen as a PNG at full device resolution, never scaled, and prints wh
 {"path":"/Users/me/home.png","device":"emulator-5554","pixels":{"width":1080,"height":2400},"logical":{"width":411.42857142857144,"height":914.2857142857143},"scale":2.625,"safeArea":{"top":63,"right":0,"bottom":63,"left":0},"rotation":0}
 ```
 
-An iPhone 17 Pro simulator (macOS), without `--out`:
+An iPhone 17 simulator (macOS, Xcode 27), without `--out`:
 
 ```json
-{"path":"/var/folders/.../T/karagoz/4E70BFCA-5FC6-49B5-92EC-48E265B2D50F-20261006T182312310Z.png","device":"4E70BFCA-5FC6-49B5-92EC-48E265B2D50F","pixels":{"width":1206,"height":2622},"logical":{"width":402,"height":874},"scale":3,"safeArea":null,"rotation":null}
+{"path":"/var/folders/.../T/karagoz/27024DC1-EDB0-4BF2-8010-08FE3936BAB6-20261012T182033769Z.png","device":"27024DC1-EDB0-4BF2-8010-08FE3936BAB6","pixels":{"width":1206,"height":2622},"logical":{"width":402,"height":874},"scale":3,"safeArea":null,"rotation":0}
 ```
 
 | Field | Type | Meaning |
@@ -320,11 +322,11 @@ An iPhone 17 Pro simulator (macOS), without `--out`:
 | `device` | string | The adb serial or the simulator's UDID. |
 | `pixels` | `{width, height}` | Size of the PNG, read from the file itself. |
 | `logical` | `{width, height}` | `pixels / scale`, not rounded. |
-| `scale` | number | Android: density / 160, using the override density if one is set (`adb shell wm density`). iOS: the simulator's `SIMULATOR_MAINSCREEN_SCALE`, except `2.88` (1080 / 375) for a 1080x2340 PNG (iPhone 12 mini, 13 mini): the simulator reports 3 there, but apps lay out 375 points wide. |
+| `scale` | number | Android: density / 160, using the override density if one is set (`adb shell wm density`). iOS: the simulator's `SIMULATOR_MAINSCREEN_SCALE`, except `2.88` (1080 / 375) for a 1080x2340 or 2340x1080 PNG (iPhone 12 mini, 13 mini): the simulator reports 3 there, but apps lay out 375 points wide. |
 | `safeArea` | `{top, right, bottom, left}` or `null` | Pixels of this PNG covered by the status bar, navigation bar, caption bar or display cutout. A hidden bar counts as 0. The keyboard and gesture areas are not included. `null` on iOS: only the app itself can read its safe area, and the simulator exposes no other source. |
-| `rotation` | `0`, `90`, `180`, `270` or `null` | Screen rotation in degrees. `null` on iOS: the interface orientation cannot be read from outside the simulator. |
+| `rotation` | `0`, `90`, `180`, `270` or `null` | Screen rotation in degrees. On iOS with Xcode 27, the interface orientation from `devicectl`, in Android's meaning: turned counter-clockwise (landscape left) is `90`. `null` on Xcode 26 and earlier, or when `devicectl` fails. |
 
-On iOS the PNG is the simulator's panel in portrait, exactly as simctl encoded it; karagoz does not rotate or re-encode it. A landscape app's UI is drawn sideways in it. The corners are square, not rounded, and the Dynamic Island area is black pixels.
+On iOS the PNG is exactly what simctl encoded; karagoz does not rotate or re-encode it. With Xcode 27 it follows the interface orientation. With Xcode 26 it is the panel in portrait, and a landscape app's UI is drawn sideways in it. The corners are square, not rounded, and the Dynamic Island area is black pixels.
 
 **File location**
 
@@ -352,9 +354,9 @@ On iOS the PNG is the simulator's panel in portrait, exactly as simctl encoded i
 karagoz ui-tree [--device <id>]
 ```
 
-Returns the accessibility tree of the focused window, read with `uiautomator dump`.
+Returns the accessibility tree of the screen: on Android the focused window's, read with `uiautomator dump`; on an iOS simulator the frontmost app's, read by a helper karagoz compiles ([On an iOS simulator](#on-an-ios-simulator)).
 
-**Output** (children cut short here; the real tree nests the Chrome icon several levels deep)
+**Output** on Android (children cut short here; the real tree nests the Chrome icon several levels deep)
 
 ```json
 {"device":"emulator-5554","rotation":0,"root":{"class":"android.widget.FrameLayout","package":"com.google.android.apps.nexuslauncher","bounds":[0,0,1080,2400],"children":[...]}}
@@ -368,11 +370,11 @@ A node from the same tree:
 
 | Field | Present | Meaning |
 | --- | --- | --- |
-| `device` | always | Serial. |
-| `rotation` | always | `0`, `90`, `180` or `270`. |
+| `device` | always | Serial, or the simulator's UDID. |
+| `rotation` | always | `0`, `90`, `180` or `270`. On iOS also `null`, as in [`screenshot`](#screenshot). |
 | `root` | always | The top node. |
 
-Node fields, in this order:
+Node fields on Android, in this order:
 
 | Field | Present | Meaning |
 | --- | --- | --- |
@@ -403,9 +405,48 @@ What the tree covers is what uiautomator covers: the focused window, and nodes v
 
 **Notes**
 
-- One read takes 2.4 to 3.3 s; a screen with a fresh WebView about 5.3 s. The idle failure arrives after about 12 s.
+- On Android one read takes 2.4 to 3.3 s; a screen with a fresh WebView about 5.3 s. The idle failure arrives after about 12 s.
 - Output size on the screens measured was about 900 to 6,200 tokens.
 - While a read runs, accessibility services such as TalkBack are unbound, and apps see accessibility as enabled. A service that requests the accessibility button is taken off the button and shortcut and stays off; add it back in the accessibility settings.
+
+#### On an iOS simulator
+
+An iPhone 17 home screen (macOS, Xcode 27; children cut short):
+
+```json
+{"device":"27024DC1-EDB0-4BF2-8010-08FE3936BAB6","rotation":0,"root":{"role":"Application","label":" ","bounds":[0,0,1206,2622],"children":[...]}}
+```
+
+Two nodes from the same tree:
+
+```json
+{"role":"Button","label":"Settings","identifier":"Settings","bounds":[917,1167,1122,1439]}
+{"role":"Slider","label":"Search","identifier":"spotlight-pill","value":"Page 1 of 2","bounds":[486,2111,720,2201]}
+```
+
+Node fields, in this order:
+
+| Field | Present | Meaning |
+| --- | --- | --- |
+| `role` | always | The accessibility subrole when there is one, else the role, without the `AX` prefix: `Application`, `Button`, `StaticText`, `Heading`, `TextField`, `SecureTextField`, `SearchField`, `Switch`, `Image`, `Group`, `Slider`, ... Can be empty. |
+| `label` | when not empty | What VoiceOver reads. The home screen's root label is a single space. |
+| `identifier` | when not empty | The app's `accessibilityIdentifier`. |
+| `value` | when not empty | A text field's content, or its placeholder when empty; a switch's `0` or `1`; a slider's text. |
+| `focused`, `selected` | only when `true` | |
+| `enabled` | only when `false` | |
+| `bounds` | always | `[left, top, right, bottom]` in [screen pixels](#coordinates): the frame in points times `screenshot`'s `scale`, rounded to 0.01. Not clipped to the screen: an element below the fold has a bottom past the screen's height. |
+| `children` | when the node has any | Nodes, same shape. |
+
+The root is the frontmost app, or SpringBoard on the home screen. An alert, a system alert included, is in the tree in place of what it covers. Only elements on screen are listed. Keyboard keys and WebView content have not been measured.
+
+The first call compiles the helper ([Requirements](#requirements)) and takes a few seconds; later calls take about 0.25 s. The helper only reads: it installs nothing in the simulator, needs no macOS permission and leaves no process running.
+
+**Errors on iOS**
+
+- `HELPER_FAILED`: this Mac cannot read iOS trees. No Xcode selected, no `swiftc` at the selected Xcode's toolchain path, a failed compile (swiftc's first error lines), a crashed helper, or an Xcode that changed a private interface karagoz uses (`update karagoz`).
+- `CAPTURE_FAILED`: this screen could not be read: no frontmost application, an accessibility request that took over 5 s, no answer within 30 s, or helper output that could not be parsed.
+- `DEVICE_NOT_READY` for a simulator that is still booting, before anything is compiled.
+- Plus the [device selection](#device-selection) errors and the simctl errors from listing simulators.
 
 ### tap
 
@@ -967,7 +1008,7 @@ npm run typecheck
 npm run lint        # oxlint and the Prettier check; npm run format fixes formatting
 ```
 
-Each step has one smoke script in `smoke/`. Each builds first and needs a running emulator, `smoke/M-mcp.sh` included, except `smoke/0b-version.sh`, `smoke/1.7-doctor.sh`, `smoke/2.2-screenshot-physical.sh`, `smoke/2.3-ui-tree-physical.sh`, `smoke/2.4-input-physical.sh`, `smoke/2.5-app-lifecycle-physical.sh`, `smoke/2.6-logs-physical.sh`, `smoke/3.1-devices-ios.sh` and `smoke/3.2-screenshot-ios.sh`: 1.7 uses fake `adb` scripts only and never runs the real adb, 3.1 uses fake `adb` and `simctl` scripts and reads the real simulator list, 3.2 uses fake `adb` and `simctl` scripts and captures a booted simulator when one runs (else its real step prints `SKIP`), both macOS only (they print `SKIP` elsewhere), and 2.2, 2.3, 2.4, 2.5 and 2.6 need a phone only for their phone step, which they skip when none is listed. The header of each script lists its preconditions:
+Each step has one smoke script in `smoke/`. Each builds first and needs a running emulator, `smoke/M-mcp.sh` included, except `smoke/0b-version.sh`, `smoke/1.7-doctor.sh`, `smoke/2.2-screenshot-physical.sh`, `smoke/2.3-ui-tree-physical.sh`, `smoke/2.4-input-physical.sh`, `smoke/2.5-app-lifecycle-physical.sh`, `smoke/2.6-logs-physical.sh`, `smoke/3.1-devices-ios.sh`, `smoke/3.2-screenshot-ios.sh` and `smoke/3.3-ui-tree-ios.sh`: 1.7 uses fake `adb` scripts only and never runs the real adb, 3.1 uses fake `adb` and `simctl` scripts and reads the real simulator list, 3.2 uses fake `adb`, `simctl` and `devicectl` scripts and captures a booted simulator when one runs (else its real step prints `SKIP`), 3.3 adds a fake `swiftc` and reads a booted simulator's tree the same way, all three macOS only (they print `SKIP` elsewhere), and 2.2, 2.3, 2.4, 2.5 and 2.6 need a phone only for their phone step, which they skip when none is listed. The header of each script lists its preconditions:
 
 ```sh
 sh smoke/1.4-input.sh
