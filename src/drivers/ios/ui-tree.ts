@@ -23,6 +23,7 @@ const MAX_BUFFER = 32 * 1024 * 1024;
 // Pinned so a toolchain that changes its default language mode cannot break the build.
 const FLAGS = ['-O', '-suppress-warnings', '-swift-version', '5'];
 const XCODE_SELECT = '/var/db/xcode_select_link';
+const DEFAULT_XCODE = '/Applications/Xcode.app/Contents/Developer';
 // The build copies the source next to the bundle's chunks, all flat in dist/.
 const SOURCE = fileURLToPath(new URL('ax-helper.swift', import.meta.url));
 const CACHE_HINT = 'delete ~/Library/Caches/karagoz';
@@ -47,10 +48,16 @@ async function xcode(): Promise<string> {
   try {
     return await readlink(XCODE_SELECT);
   } catch {
-    // Any readlink failure means no Xcode is selected; the message says how to pick one.
+    // No link (never selected, or xcode-select -r): xcode-select's default search, which xcrun follows, takes over.
+  }
+  try {
+    await access(DEFAULT_XCODE);
+    return DEFAULT_XCODE;
+  } catch {
+    // Neither is there: no Xcode is selected; the message says how to pick one.
     throw new KaragozError(
       'HELPER_FAILED',
-      `no Xcode selected: set DEVELOPER_DIR or run xcode-select -s <Xcode.app> (${XCODE_SELECT} is missing)`,
+      `no Xcode selected: set DEVELOPER_DIR or run xcode-select -s <Xcode.app> (${XCODE_SELECT} and ${DEFAULT_XCODE} are missing)`,
     );
   }
 }
