@@ -5,7 +5,7 @@ import { simctl } from './simctl.js';
 // them (K18 3.1 note).
 const IOS_RUNTIME = 'com.apple.CoreSimulator.SimRuntime.iOS-';
 
-const isRecord = (value: unknown): value is Record<string, unknown> =>
+export const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value);
 
 // `list devices --json` is {devices: {<runtime id>: [device, ...]}} since Xcode 10.2 (K32). Only running, available

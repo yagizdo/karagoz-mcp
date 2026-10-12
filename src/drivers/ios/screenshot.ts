@@ -3,12 +3,19 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { KaragozError } from '../../errors.js';
 import { pngSize } from '../../png.js';
+import { rotation } from './devicectl.js';
 import { simctl } from './simctl.js';
 
 // ponytail: the 12 mini and 13 mini render 375 pt wide and downsample to a 1080x2340 panel; UIKit gives apps
 // nativeScale 2.88, simctl's SIMULATOR_MAINSCREEN_SCALE says 3 (Apple forum reply, not measured here, K33). No other
-// iPhone or iPad has this panel. The limit lifts when a runtime source of the scale arrives (3.3).
+// iPhone or iPad has this panel. The limit lifts when a runtime source of the scale is found.
 const MINI = { width: 1080, height: 2340, scale: 1080 / 375 };
+
+// Either orientation: Xcode 27's image follows the interface, so a landscape mini is 2340x1080 (K34).
+export function panelScale(width: number, height: number, reported: number): number {
+  const mini = (width === MINI.width && height === MINI.height) || (width === MINI.height && height === MINI.width);
+  return mini ? MINI.scale : reported;
+}
 
 // Xcode 27's simctl writes "-" to a file named "-" in the working directory, not to stdout (measured); a path works on
 // 27 and is the form simctl's help shows on 26, not yet run there. The private directory keeps a failed capture's 0-byte
@@ -26,10 +33,15 @@ async function shoot(udid: string): Promise<Buffer> {
   }
 }
 
-// The image is always the panel in portrait, and neither the interface orientation nor the safe area can be read
-// from outside the simulator (measured on Xcode 26.2), so both are null rather than a guess (K6 3.2 note, K33).
+// On Xcode 27 the image follows the interface orientation, which devicectl reports; on Xcode 26.2 it was the panel in
+// portrait and nothing reported the orientation. The safe area cannot be read from outside the simulator on either, so
+// it is null rather than a guess (K6 3.2 note, K33, K34).
 export async function capture(udid: string) {
-  const [png, scaleText] = await Promise.all([shoot(udid), simctl(['getenv', udid, 'SIMULATOR_MAINSCREEN_SCALE'])]);
+  const [png, scaleText, rotated] = await Promise.all([
+    shoot(udid),
+    simctl(['getenv', udid, 'SIMULATOR_MAINSCREEN_SCALE']),
+    rotation(udid),
+  ]);
   const pixels = pngSize(png);
   if (!pixels) {
     throw new KaragozError(
@@ -44,6 +56,5 @@ export async function capture(udid: string) {
       `cannot read scale from 'simctl getenv' (got '${scaleText.trim().slice(0, 100)}')`,
     );
   }
-  const mini = pixels.width === MINI.width && pixels.height === MINI.height;
-  return { png, pixels, scale: mini ? MINI.scale : reported, safeArea: null, rotation: null };
+  return { png, pixels, scale: panelScale(pixels.width, pixels.height, reported), safeArea: null, rotation: rotated };
 }

@@ -1,11 +1,12 @@
 #!/bin/sh
-# Step 3.2: on macOS `screenshot` captures a booted iOS simulator in the K22 shape (scale from the simulator, null
-# safeArea and rotation, 2.88 on a 1080x2340 panel), and target resolution sees both platforms: UDID, name and
-# KARAGOZ_DEVICE select a simulator, an emulator next to a booted simulator makes a bare call DEVICE_AMBIGUOUS, an
-# Android-only command on a simulator is NOT_SUPPORTED, a missing tool hides only its own platform (K33, K21 3.2 note).
+# Step 3.2: on macOS `screenshot` captures a booted iOS simulator in the K22 shape (scale from the simulator, rotation
+# from devicectl on Xcode 27 and null otherwise, null safeArea, 2.88 on a 1080x2340 panel in either orientation), and
+# target resolution sees both platforms: UDID, name and KARAGOZ_DEVICE select a simulator, an emulator next to a booted
+# simulator makes a bare call DEVICE_AMBIGUOUS, an Android-only command on a simulator is NOT_SUPPORTED, a missing tool
+# hides only its own platform (K33, K21 3.2 note).
 # Precondition: macOS with Xcode. A booted simulator is used when one is running, else that step prints SKIP; nothing
-# here boots, stops or creates one, and no emulator is needed. Fake simctl comes through DEVELOPER_DIR, fake adb
-# through ANDROID_HOME, both under env -i; the adb server on the default port is never touched.
+# here boots, stops or creates one, and no emulator is needed. Fake simctl and devicectl come through DEVELOPER_DIR,
+# fake adb through ANDROID_HOME, all under env -i; the adb server on the default port is never touched.
 set -e
 cd "$(dirname "$0")/.."
 [ "$(uname -s)" = Darwin ] || { echo "SKIP: iOS simulators need macOS"; echo "ok: skipped"; exit 0; }
@@ -13,7 +14,7 @@ npm run --silent build
 
 node_bin=$(command -v node)
 tmp=$(mktemp -d)
-trap 'set +e; pkill -f "sleep 97\.43"; rm -rf "$tmp"' EXIT
+trap 'set +e; pkill -f "sleep 97\.4[35]"; rm -rf "$tmp"' EXIT
 fail() { echo "FAIL: $*"; exit 1; }
 code_of() { node -e '
   const out = require("fs").readFileSync(0, "utf8").trimEnd();
@@ -28,6 +29,14 @@ png() { node -e '
   const ihdr = Buffer.alloc(13); ihdr.writeUInt32BE(Number(process.argv[1])); ihdr.writeUInt32BE(Number(process.argv[2]), 4); ihdr[8] = 8; ihdr[9] = 6;
   process.stdout.write(Buffer.concat([Buffer.from("89504e470d0a1a0a", "hex"), chunk("IHDR", ihdr), chunk("IEND", Buffer.alloc(0))]));
 ' "$1" "$2"; }
+# devicectl's displays JSON on stdin to karagoz's rotation, by the same table; anything unreadable is null.
+rotation_of() { node -e '
+  try {
+    const d = JSON.parse(require("fs").readFileSync(0, "utf8")).result.displays;
+    const o = (d.find((x) => x.primary === true) ?? d[0]).currentOrientation;
+    console.log(JSON.stringify({ rot0: 0, rot90: 270, rot180: 180, rot270: 90 }[o] ?? null));
+  } catch { console.log("null") }
+'; }
 
 # Fakes. Scripts call /bin tools by absolute path: env -i leaves no PATH for them. Files under $fake steer them.
 fake="$tmp/fake"
@@ -50,15 +59,24 @@ case "\$*" in
   *) exit 1 ;;
 esac
 FAKE
-chmod +x "$tmp/sdk/platform-tools/adb" "$tmp/dev/usr/bin/simctl"
+cat > "$tmp/dev/usr/bin/devicectl" <<FAKE
+#!/bin/sh
+case "\$*" in
+  "device info displays --device "*" --json-output - -q") exec /bin/sh "$fake/devicectl" ;;
+  *) exit 1 ;;
+esac
+FAKE
+chmod +x "$tmp/sdk/platform-tools/adb" "$tmp/dev/usr/bin/simctl" "$tmp/dev/usr/bin/devicectl"
 emulator() { printf 'List of devices attached\nemulator-5554\tdevice\n\n' > "$fake/adb-devices"; }
 no_android() { printf 'List of devices attached\n\n' > "$fake/adb-devices"; }
 sims() { echo "{\"devices\":{\"com.apple.CoreSimulator.SimRuntime.iOS-26-2\":[$1]}}" > "$fake/list.json"; }
 a1='{"udid":"A1","name":"iPhone 17 Pro","state":"Booted","isAvailable":true}'
 a2='{"udid":"A2","name":"iPhone 17","state":"Booting","isAvailable":true}'
 shot() { printf '%s\n' "$1" > "$fake/shot"; }
+rot() { echo "echo '{\"result\":{\"displays\":[{\"primary\":true,\"currentOrientation\":\"$1\"}]}}'" > "$fake/devicectl"; }
 png 1206 2622 > "$fake/1206.png"
 png 1080 2340 > "$fake/1080.png"
+png 2340 1080 > "$fake/2340.png"
 printf 'Medium_Phone\r\nOK\r\n' > "$fake/avd"
 echo 3.000000 > "$fake/scale"
 # karagoz with only the fakes. A variable for one call goes inside the substitution: an assignment before a shell
@@ -72,7 +90,8 @@ refuses() { # <code> <label> <karagoz output> <exit>
 ok=""
 
 # 1. Real Mac: the first booted simulator, captured by UDID with a fake adb that lists nothing. Pixels and scale are
-# what the simulator itself reports; safeArea and rotation are null; the default file is private.
+# what the simulator itself reports, rotation is what devicectl reports (null where it cannot read a simulator, Xcode
+# 26), safeArea is null; the default file is private.
 framework=/Library/Developer/PrivateFrameworks/CoreSimulator.framework/Versions/A/Resources/bin/simctl
 booted=$("$framework" list devices --json | node -e '
   const { devices } = JSON.parse(require("fs").readFileSync(0, "utf8"));
@@ -87,8 +106,10 @@ if [ -n "$booted" ]; then
   width=$("$framework" getenv "$booted" SIMULATOR_MAINSCREEN_WIDTH)
   height=$("$framework" getenv "$booted" SIMULATOR_MAINSCREEN_HEIGHT)
   scale=$("$framework" getenv "$booted" SIMULATOR_MAINSCREEN_SCALE)
+  rotation=$(/Library/Developer/PrivateFrameworks/CoreDevice.framework/Versions/A/Resources/bin/devicectl device info \
+    displays --device "$booted" --json-output - -q 2>/dev/null | rotation_of)
   echo "$out" | node -e '
-    const [udid, w, h, s] = process.argv.slice(1);
+    const [udid, w, h, s, rot] = process.argv.slice(1);
     const r = JSON.parse(require("fs").readFileSync(0, "utf8"));
     const png = require("fs").readFileSync(r.path);
     const fail = (m) => { console.log("FAIL: real simulator: " + m + ": " + JSON.stringify(r)); process.exit(1); };
@@ -100,9 +121,10 @@ if [ -n "$booted" ]; then
     const want = w === "1080" && h === "2340" ? 1080 / 375 : Number(s);
     if (r.scale !== want) fail("scale");
     if (r.logical.width !== r.pixels.width / r.scale || r.logical.height !== r.pixels.height / r.scale) fail("logical");
-    if (r.safeArea !== null || r.rotation !== null) fail("safeArea and rotation must be null");
+    if (r.safeArea !== null) fail("safeArea must be null");
+    if (r.rotation !== JSON.parse(rot)) fail("rotation differs from devicectl: " + rot);
     if ((require("fs").statSync(r.path).mode & 0o777) !== 0o600) fail("file mode");
-  ' "$booted" "$width" "$height" "$scale" || exit 1
+  ' "$booted" "$width" "$height" "$scale" "$rotation" || exit 1
   # Fake adb next to the real simulator: an emulator makes a bare call ambiguous, ui-tree on the simulator is refused.
   emulator
   out=$(real screenshot) && st=0 || st=$?
@@ -125,10 +147,38 @@ path=$(echo "$out" | node -e 'console.log(JSON.parse(require("fs").readFileSync(
 case "$path" in "$tmp/karagoz/A1-"*.png) ;; *) fail "default path $path" ;; esac
 cmp -s "$path" "$fake/1206.png" || fail "written file differs from simctl's bytes"
 
-# 3. The 1080x2340 panel (12 mini, 13 mini) gets 1080/375.
+# 3. The 1080x2340 panel (12 mini, 13 mini) gets 1080/375, in portrait and in landscape (Xcode 27's image follows
+# the interface).
 shot "/bin/cat '$fake/1080.png'"
 line=$(k screenshot --device A1 | node -e 'const r = JSON.parse(require("fs").readFileSync(0, "utf8")); console.log(JSON.stringify([r.scale, r.logical]))')
 [ "$line" = '[2.88,{"width":375,"height":812.5}]' ] || fail "mini gave $line"
+shot "/bin/cat '$fake/2340.png'"
+line=$(k screenshot --device A1 | node -e 'const r = JSON.parse(require("fs").readFileSync(0, "utf8")); console.log(JSON.stringify([r.scale, r.logical]))')
+[ "$line" = '[2.88,{"width":812.5,"height":375}]' ] || fail "landscape mini gave $line"
+
+# 3b. rotation from devicectl's primary display. Anything else is null, and a hung devicectl ends at its 10 s timeout
+# without failing the capture.
+shot "/bin/cat '$fake/1206.png'"
+rotation_is() { # <expected> <label>
+  got=$(k screenshot --device A1 | node -e 'console.log(JSON.stringify(JSON.parse(require("fs").readFileSync(0, "utf8")).rotation))')
+  [ "$got" = "$1" ] || fail "$2: rotation $got, expected $1"
+}
+rot rot270; rotation_is 90 rot270
+rot rot90; rotation_is 270 rot90
+rot rot0; rotation_is 0 rot0
+rot rot180; rotation_is 180 rot180
+echo "echo '{\"result\":{\"displays\":[{\"currentOrientation\":\"rot0\"},{\"primary\":true,\"currentOrientation\":\"rot90\"}]}}'" > "$fake/devicectl"
+rotation_is 270 "primary display second"
+rot bogus; rotation_is null "unknown orientation"
+echo 'exit 1' > "$fake/devicectl"; rotation_is null "failing devicectl"
+echo 'exec /bin/sleep 97.45' > "$fake/devicectl"
+start=$(date +%s)
+rotation_is null "hung devicectl"
+rot_took=$(( $(date +%s) - start ))
+[ "$rot_took" -ge 9 ] && [ "$rot_took" -le 15 ] || fail "hung devicectl took ${rot_took}s"
+sleep 1
+! pgrep -f 'sleep 97\.45' >/dev/null || fail "the hung devicectl outlived karagoz"
+rm "$fake/devicectl"
 
 # 4. Selection: by name, bare with one simulator, KARAGOZ_DEVICE over ANDROID_SERIAL, ambiguity across platforms.
 shot "/bin/cat '$fake/1206.png'"
@@ -214,4 +264,4 @@ sleep 1
 ! pgrep -f 'sleep 97\.43' >/dev/null || fail "the hung simctl outlived karagoz"
 [ -z "$(ls -d "$tmp"/karagoz-* 2>/dev/null)" ] || fail "a hung capture left its temp directory"
 
-echo "ok: $ok, capture, mini, select, not supported, failures, listing, hung (${took}s)"
+echo "ok: $ok, capture, mini, rotation (hung ${rot_took}s), select, not supported, failures, listing, hung (${took}s)"
