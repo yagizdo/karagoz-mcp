@@ -25,6 +25,7 @@ export type ErrorCode =
   | 'UNINSTALL_FAILED'
   | 'APP_NOT_FOUND'
   | 'APP_NOT_LAUNCHABLE'
+  | 'HELPER_FAILED'
   | 'NOT_SUPPORTED'
   | 'INTERNAL';
 

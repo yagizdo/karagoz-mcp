@@ -2,8 +2,8 @@
 # Step 3.2: on macOS `screenshot` captures a booted iOS simulator in the K22 shape (scale from the simulator, rotation
 # from devicectl on Xcode 27 and null otherwise, null safeArea, 2.88 on a 1080x2340 panel in either orientation), and
 # target resolution sees both platforms: UDID, name and KARAGOZ_DEVICE select a simulator, an emulator next to a booted
-# simulator makes a bare call DEVICE_AMBIGUOUS, an Android-only command on a simulator is NOT_SUPPORTED, a missing tool
-# hides only its own platform (K33, K21 3.2 note).
+# simulator makes a bare call DEVICE_AMBIGUOUS, an Android-only command (key) on a simulator is NOT_SUPPORTED, a
+# missing tool hides only its own platform (K33, K21 3.2 note).
 # Precondition: macOS with Xcode. A booted simulator is used when one is running, else that step prints SKIP; nothing
 # here boots, stops or creates one, and no emulator is needed. Fake simctl and devicectl come through DEVELOPER_DIR,
 # fake adb through ANDROID_HOME, all under env -i; the adb server on the default port is never touched.
@@ -125,12 +125,12 @@ if [ -n "$booted" ]; then
     if (r.rotation !== JSON.parse(rot)) fail("rotation differs from devicectl: " + rot);
     if ((require("fs").statSync(r.path).mode & 0o777) !== 0o600) fail("file mode");
   ' "$booted" "$width" "$height" "$scale" "$rotation" || exit 1
-  # Fake adb next to the real simulator: an emulator makes a bare call ambiguous, ui-tree on the simulator is refused.
+  # Fake adb next to the real simulator: an emulator makes a bare call ambiguous, key on the simulator is refused.
   emulator
   out=$(real screenshot) && st=0 || st=$?
   refuses DEVICE_AMBIGUOUS "real simulator + emulator, bare screenshot" "$out" "$st"
-  out=$(real ui-tree --device "$booted") && st=0 || st=$?
-  refuses NOT_SUPPORTED "ui-tree on the real simulator" "$out" "$st"
+  out=$(real key HOME --device "$booted") && st=0 || st=$?
+  refuses NOT_SUPPORTED "key on the real simulator" "$out" "$st"
   ok="real ${width}x${height}"
 else
   echo "SKIP: no booted simulator"
@@ -205,9 +205,9 @@ case "$(printf '%s' "$out" | message_of)" in *"emulator-5554 (Medium_Phone), A1 
 
 # 5. Android-only commands refuse a simulator, before readiness; a booting simulator is not ready for screenshot.
 sims "$a1,$a2"
-out=$(k ui-tree --device A1) && st=0 || st=$?
-refuses NOT_SUPPORTED "ui-tree on a simulator" "$out" "$st"
-[ "$(printf '%s' "$out" | message_of)" = "'ui-tree' does not run on iOS simulators yet" ] || fail "NOT_SUPPORTED text: $out"
+out=$(k key HOME --device A1) && st=0 || st=$?
+refuses NOT_SUPPORTED "key on a simulator" "$out" "$st"
+[ "$(printf '%s' "$out" | message_of)" = "'key' does not run on iOS simulators yet" ] || fail "NOT_SUPPORTED text: $out"
 out=$(k key HOME --device A2) && st=0 || st=$?
 refuses NOT_SUPPORTED "key on a booting simulator" "$out" "$st"
 out=$(k screenshot --device A2) && st=0 || st=$?
