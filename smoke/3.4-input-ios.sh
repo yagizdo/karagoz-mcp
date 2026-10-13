@@ -1,12 +1,13 @@
 #!/bin/sh
 # Step 3.4: on macOS tap, swipe, key and the element tap (tap --text, --id) reach a booted iOS simulator through the
-# helper's DTUHID modes, in K25's and K26's shapes, with the tree's pixels turned into the unrotated portrait panel for
-# every rotation (K35). Fakes prove the helper's argv, each helper exit's K5 code, the timeout, DEVICE_NOT_READY and
-# the iOS-less key before any compile, and element matching on a fake tree; the real part drives a test app and reads
-# every effect back with ui-tree.
+# helper's DTUHID modes and text through its XCUIAutomation mode, in K25's and K26's shapes, with the tree's pixels
+# turned into the unrotated portrait panel for every rotation (K35). Fakes prove the helper's argv, each helper exit's
+# K5 code, the timeout, DEVICE_NOT_READY and the iOS-less key before any compile, text's character check and that it
+# puts app accessibility back, and element matching on a fake tree; the real part drives a test app and reads every
+# effect back with ui-tree.
 # Precondition: macOS with Xcode. A booted simulator on its home screen is used when one is running and no phone is
 # attached, else the real part prints SKIP. It builds smoke/fixtures/input-ios, installs, drives and uninstalls it,
-# presses HOME and checks that the home screen is the one it recorded. Fake swiftc, simctl and devicectl come through
+# presses HOME and checks that the home screen is on the page it recorded and the app is gone. Fake swiftc, simctl and devicectl come through
 # DEVELOPER_DIR, fake adb through ANDROID_HOME, all under env -i with a temporary HOME; the adb server on the default
 # port is never touched.
 set -e
@@ -29,7 +30,7 @@ message_of() { node -e 'console.log(JSON.parse(require("fs").readFileSync(0, "ut
 real() { env -i HOME="$tmp/home-real" PATH=/usr/bin:/bin TMPDIR="$tmp" ANDROID_HOME="$tmp/sdk" "$node_bin" dist/cli.js "$@" 2>/dev/null; }
 tree() { real ui-tree --device "$booted"; }
 # One fact from a ui-tree line on stdin: whether a node with an identifier is listed, its label or bounds center, the
-# top edge of the node labelled <id> (or "gone"), the root's label or size, or the home screen's page and icons.
+# top edge of the node labelled <id> (or "gone"), the root's label or size, or the home screen's page.
 q() { node -e '
   const [mode, id] = process.argv.slice(1);
   const root = JSON.parse(require("fs").readFileSync(0, "utf8")).root;
@@ -45,7 +46,7 @@ q() { node -e '
     top: () => String(all.find((n) => n.label === id)?.bounds[1] ?? "gone"),
     root: () => root.label ?? "",
     size: () => `${root.bounds[2]} ${root.bounds[3]}`,
-    home: () => JSON.stringify([all.find((n) => n.identifier === "spotlight-pill")?.value, (root.children ?? []).map((n) => n.identifier ?? null)]),
+    home: () => all.find((n) => n.identifier === "spotlight-pill")?.value ?? "",
   }[mode]());
 ' "$@"; }
 # Polls ui-tree for up to 5 s until `q <mode> <id>` prints <want>.
@@ -65,11 +66,13 @@ home_back() {
     sleep 0.5
   done
 }
-# Puts the simulator back: the app goes, HOME is pressed, the home screen must be the recorded one.
+# Puts the simulator back: the app goes, HOME is pressed, the home screen must be on the recorded page. Widgets list
+# more or fewer nodes as their processes load accessibility, so only the page is compared.
 restore() {
   [ -n "$installed" ] || return 0
   "$framework" terminate "$booted" dev.karagoz.probe >/dev/null 2>&1
   "$framework" uninstall "$booted" dev.karagoz.probe >/dev/null 2>&1
+  ! "$framework" get_app_container "$booted" dev.karagoz.probe >/dev/null 2>&1 || { echo "FAIL: the test app is still installed"; return 1; }
   out=$(real key HOME --device "$booted")
   if [ "$(printf '%s' "$out" | code_of)" = NOT_SUPPORTED ]; then
     echo "note: home screen not checked (no key HOME before Xcode 27)"
@@ -97,6 +100,8 @@ case "\$*" in
   "list devices --json") /bin/cat "$fake/list.json" ;;
   "getenv A1 SIMULATOR_MAINSCREEN_WIDTH") echo 1206 ;;
   "getenv A1 SIMULATOR_MAINSCREEN_HEIGHT") echo 2622 ;;
+  "spawn A1 defaults read com.apple.Accessibility ApplicationAccessibilityEnabled") /bin/cat "$fake/appax" ;;
+  "spawn A1 defaults write com.apple.Accessibility ApplicationAccessibilityEnabled -bool true") echo write >> "$fake/appax.log" ;;
   *) exit 1 ;;
 esac
 FAKE
@@ -127,7 +132,7 @@ compiles() { [ -e "$fake/swiftc.log" ] && /usr/bin/wc -l < "$fake/swiftc.log" | 
 run_in() {
   home_dir=$1
   shift
-  rm -f "$fake/argv" "$fake/reads"
+  rm -f "$fake/argv" "$fake/reads" "$fake/appax.log"
   out=$(env -i HOME="$home_dir" PATH=/usr/bin:/bin TMPDIR="$tmp" ANDROID_HOME="$tmp/sdk" DEVELOPER_DIR="$tmp/dev" \
     "$node_bin" dist/cli.js "$@" 2>/dev/null) && st=0 || st=$?
 }
@@ -229,7 +234,35 @@ out=$(env -i HOME="$tmp/home4" PATH=/usr/bin:/bin TMPDIR="$tmp" ANDROID_HOME="$t
 refuses HELPER_FAILED "no swiftc"
 says "no swiftc" "swiftc not found"
 
-# 9. Element tap: the matching node's bounds center, tapped through the same transform; --text is label or value with
+# 9. text: any Unicode, newline and tab; other control characters refused before anything runs. testmanagerd turns app
+# accessibility off when the session ends, so a 1 read before is written back, also after a failure.
+echo 1 > "$fake/appax"; logs 'exit 0'
+call text "çğş it's -- ok" --device A1
+succeeds text '{"device":"A1","text":"çğş it'"'"'s -- ok"}'
+argv_is text "type 120 çğş it's -- ok"
+[ "$(cat "$fake/appax.log" 2>/dev/null)" = write ] || fail "text did not put app accessibility back"
+call text "$(printf 'a\nb\tc')" --device A1
+[ "$st" = 0 ] && [ "$(cat "$fake/argv")" = "$(printf 'type 120 a\nb\tc')" ] || fail "newline and tab: exit $st, helper got $(cat "$fake/argv")"
+call text "$(printf 'a\001b\033')" --device A1
+refuses TEXT_UNSUPPORTED "control characters"
+[ "$(printf '%s' "$out" | message_of)" = "cannot type 'U+0001', 'U+001B' on an iOS simulator: control characters other than newline and tab; nothing was typed" ] \
+  || fail "TEXT_UNSUPPORTED text: $out"
+[ ! -e "$fake/argv" ] && [ ! -e "$fake/appax.log" ] || fail "control characters reached the simulator"
+echo 0 > "$fake/appax"
+call text ok --device A1
+[ "$st" = 0 ] && [ ! -e "$fake/appax.log" ] || fail "text wrote app accessibility that was off: exit $st"
+echo 1 > "$fake/appax"
+logs "echo 'ax: Ensure no other tests are running' >&2; exit 6"
+call text ok --device A1
+refuses AUTOMATION_BUSY "exit 6"
+says "exit 6" "Ensure no other tests are running"
+[ "$(cat "$fake/appax.log" 2>/dev/null)" = write ] || fail "a refused session did not put app accessibility back"
+logs "echo 'ax: synthesis failed' >&2; exit 7"
+call text ok --device A1
+refuses HELPER_FAILED "text exit 7"
+says "text exit 7" "synthesis failed"
+
+# 10. Element tap: the matching node's bounds center, tapped through the same transform; --text is label or value with
 # direction marks ignored, --id is the identifier; zero-area nodes never match (K26 on iOS).
 cat > "$fake/tree.json" <<'TREE'
 {"screen":{"width":1206,"height":2622,"scale":3},"root":{"role":"AXApplication","label":"Probe","frame":[0,0,402,874],"children":[
@@ -267,13 +300,13 @@ call tap --text Press --device A1
 refuses CAPTURE_FAILED "unreadable tree"
 [ ! -e "$fake/argv" ] || fail "an unreadable tree tapped"
 
-# 10. A command with no iOS implementation yet.
+# 11. A command with no iOS implementation yet.
 call launch x --device A1
 refuses NOT_SUPPORTED "launch"
 [ "$(printf '%s' "$out" | message_of)" = "'launch' does not run on iOS simulators yet" ] || fail "launch text: $out"
-fakes="fakes: ratios, rotations, swipe, keys, iOS-less key, exits, hung (${took}s), booting, no compiler, element tap, launch"
+fakes="fakes: ratios, rotations, swipe, keys, iOS-less key, exits, hung (${took}s), booting, no compiler, text, element tap, launch"
 
-# 11. Real simulator: the test app, each effect read back with ui-tree, then the home screen as recorded.
+# 12. Real simulator: the test app, each effect read back with ui-tree, then the home screen as recorded.
 phone=$({ command -v adb >/dev/null && adb devices | awk 'NR > 1 && $1 != "" && $1 !~ /^emulator-/'; ioreg -p IOUSB -w0 | grep -iE 'iPhone|iPad'; } || true)
 booted=$("$framework" list devices --json | node -e '
   const { devices } = JSON.parse(require("fs").readFileSync(0, "utf8"));
@@ -293,7 +326,7 @@ if [ -z "$booted" ]; then
   exit 0
 fi
 home=$(tree | q home)
-case $home in '["Page '*) ;; *) fail "put $booted on its home screen first (no spotlight-pill: $home)" ;; esac
+case $home in "Page "*) ;; *) fail "put $booted on its home screen first (no spotlight-pill)" ;; esac
 sh smoke/fixtures/input-ios/build.sh "$tmp"
 installed=1
 "$framework" install "$booted" "$tmp/Probe.app"
@@ -304,6 +337,8 @@ set -- $(tree | q center tap-button)
 out=$(real tap "$1" "$2" --device "$booted") && st=0 || st=$?
 if [ "$(printf '%s' "$out" | code_of)" = NOT_SUPPORTED ]; then
   echo "note: no dtuhidd (Xcode < 27), touch and key not checked"
+  out=$(real text "çğş it's -- ok" --device "$booted") && st=0 || st=$?
+  echo "note: text on Xcode < 27 exited $st, echo not checked (no focus without dtuhidd)"
   real_ok="real: no dtuhidd"
 else
   succeeds "real tap" "{\"device\":\"$booted\",\"x\":$1,\"y\":$2}"
@@ -332,10 +367,17 @@ else
   wait_for "real tap --id" "Tap me 2" label tap-button
   out=$(real tap --text Press --device "$booted") || fail "real tap --text: $out"
   wait_for "real tap --text" "pressed 1" label press-count
+  set -- $(tree | q center name-field)
+  real tap "$1" "$2" --device "$booted" >/dev/null || fail "real tap on the field"
+  out=$(real text "çğş it's -- ok" --device "$booted") && st=0 || st=$?
+  succeeds "real text" "{\"device\":\"$booted\",\"text\":\"çğş it's -- ok\"}"
+  wait_for "real text" "echo:çğş it's -- ok" label echo
+  real key DEL --device "$booted" >/dev/null || fail "real key DEL"
+  wait_for "real key DEL" "echo:çğş it's -- o" label echo
   out=$(real key HOME --device "$booted") && st=0 || st=$?
   succeeds "real key HOME" "{\"device\":\"$booted\",\"key\":\"KEYCODE_HOME\",\"code\":3}"
   wait_for "real key HOME" " " root
-  real_ok="real $booted: tap, long press, swipe, tap --id, tap --text, HOME"
+  real_ok="real $booted: tap, long press, swipe, tap --id, tap --text, text, DEL, HOME"
 fi
 
 echo "ok: $real_ok, $fakes"

@@ -11,6 +11,14 @@ const run = promisify(execFile);
 // Android's swipe default, so both platforms state the same duration (K25, K35).
 const SWIPE_MS = 300;
 
+// Characters per second for typeText: 300 characters came out exact 3 of 3 times at 60 (6.0 s a call) and at 120
+// (3.5 s) (K35).
+const TYPE_SPEED = 120;
+
+// The XCUI session turns app accessibility off when it ends, whatever it was, and apps opened after that give an empty
+// tree until the simulator restarts. text writes back a 1 it read before (user decision, K35 3.4 build).
+const APP_AX = ['com.apple.Accessibility', 'ApplicationAccessibilityEnabled'];
+
 // Invisible direction marks, Unicode's Bidi_Control set, ignored on both sides as on Android (K26). A copy of the
 // Android driver's, so this driver imports nothing from it.
 const BIDI = /\p{Bidi_Control}/gu;
@@ -121,6 +129,8 @@ async function send(command: string, udid: string, args: string[], extraMs = 0):
     }
     // dtuhidd arrived with CoreSimulator 1155.4 (Xcode 27); the Xcode 26 route waits for its own round (K35).
     if (code === 4) throw new KaragozError('NOT_SUPPORTED', `'${command}' on iOS simulators needs Xcode 27 or later`);
+    if (code === 6)
+      throw new KaragozError('AUTOMATION_BUSY', stderr || 'another test holds automation on this simulator');
     if (code === 5) {
       throw new KaragozError(
         'DEVICE_NOT_READY',
@@ -202,6 +212,46 @@ export async function tapElement(udid: string, selector: Selector, duration: num
       );
     }
   }
+}
+
+async function appAccessibility(udid: string): Promise<boolean> {
+  try {
+    return (await simctl(['spawn', udid, 'defaults', 'read', ...APP_AX])).trim() === '1';
+  } catch (err) {
+    // A missing key fails the read and means off: there is nothing to write back.
+    if (!(err instanceof KaragozError)) throw err;
+    return false;
+  }
+}
+
+// Outside the call's cancellation: a cancelled text must still leave app accessibility as it found it (K31).
+const restore = (udid: string) =>
+  cancellation.exit(() => simctl(['spawn', udid, 'defaults', 'write', ...APP_AX, '-bool', 'true']));
+
+// Typed into whatever has focus; with none, nothing is typed and the call still succeeds, as on Android (K35).
+export async function text(udid: string, value: string) {
+  const control = new Set(Array.from(value).filter((char) => /\p{Cc}/u.test(char) && char !== '\n' && char !== '\t'));
+  if (control.size) {
+    const named = Array.from(
+      control,
+      (char) => `'U+${(char.codePointAt(0) ?? 0).toString(16).toUpperCase().padStart(4, '0')}'`,
+    );
+    throw new KaragozError(
+      'TEXT_UNSUPPORTED',
+      `cannot type ${named.join(', ')} on an iOS simulator: control characters other than newline and tab; nothing was typed`,
+    );
+  }
+  const wasOn = await appAccessibility(udid);
+  const typing = Math.ceil(Array.from(value).length / TYPE_SPEED) * 1000;
+  try {
+    await send('text', udid, ['type', String(TYPE_SPEED), value], typing);
+  } catch (err) {
+    // The typing error says what went wrong; a failed write-back on top of it would only hide it.
+    if (wasOn) await restore(udid).catch(() => undefined);
+    throw err;
+  }
+  if (wasOn) await restore(udid);
+  return { device: udid, text: value };
 }
 
 // The name check runs before anything compiles: an iOS-less key is wrong for this target and stays wrong (K35).

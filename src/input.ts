@@ -8,12 +8,11 @@ import {
   typable,
   type Target,
 } from './drivers/android/input.js';
-import { key as iosKey, swipe as iosSwipe, tap as iosTap, tapElement } from './drivers/ios/input.js';
-import { KaragozError } from './errors.js';
+import { key as iosKey, swipe as iosSwipe, tap as iosTap, tapElement, text as iosText } from './drivers/ios/input.js';
 
 export type { Target };
 
-// Argument checks first, then the target: INVALID_ARGS and TEXT_UNSUPPORTED come before any device call (K5, K25).
+// Argument checks first, then the target: INVALID_ARGS comes before any device call (K5, K25).
 export async function key(device: string | undefined, value: string) {
   const parsed = keyCode(value);
   const { id, platform } = await resolveTarget(device);
@@ -38,9 +37,11 @@ export async function swipe(
   return platform === 'ios' ? iosSwipe(id, x1, y1, x2, y2, duration) : androidSwipe(id, x1, y1, x2, y2, duration);
 }
 
+// Which characters can be typed depends on the platform, so that check runs after the target resolves; nothing is sent
+// to the device before it (user decision, K35 3.4 plan).
 export async function text(device: string | undefined, value: string) {
-  typable(value);
   const { id, platform } = await resolveTarget(device);
-  if (platform === 'ios') throw new KaragozError('NOT_SUPPORTED', "'text' does not run on iOS simulators yet");
+  if (platform === 'ios') return iosText(id, value);
+  typable(value);
   return androidText(id, value);
 }

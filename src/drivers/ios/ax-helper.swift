@@ -1,14 +1,15 @@
 // karagoz's iOS simulator helper: prints the frontmost app's accessibility tree of one booted simulator, or sends it
 // one input. The tree flow is idb's FBSimulatorAX (MIT); touches, keys and buttons go to the simulator's own HID daemon
-// dtuhidd, as idb does on Xcode 27 (DTUHID, MIT) (K34, K35). Contract with src/drivers/ios/ui-tree.ts and input.ts:
+// dtuhidd, as idb does on Xcode 27 (DTUHID, MIT); text goes through an XCUIAutomation session to the simulator's
+// testmanagerd, as Xcode 27's own device tools do (K34, K35). Contract with src/drivers/ios/ui-tree.ts and input.ts:
 //   ax <developer dir> <udid>
 //     exit 0: one JSON object, {"screen":{"width","height","scale"},"root":<node>}, frames in points
 //   ax <developer dir> <udid> tap <rx> <ry> <holdMs> | swipe <rx1> <ry1> <rx2> <ry2> <durationMs> | key <usage>
-//     | button <page> <usage>
+//     | button <page> <usage> | type <characters per second> <text>
 //     ratios of the unrotated portrait panel; exit 0 and no output once the input is sent
 //   exit 2: unavailable on this Xcode (a private class, selector or symbol is missing); 3: this screen could not be
-//   read; 4: no input service in this simulator (Xcode 26 and older); 5: the input service did not answer; 7: the
-//   input failed. Every non-zero exit writes one line, "ax: <reason>", to stderr.
+//   read; 4: no input service in this simulator (Xcode 26 and older); 5: the input service did not answer; 6: another
+//   test holds automation; 7: the input failed. Every non-zero exit writes one line, "ax: <reason>", to stderr.
 import AppKit
 import Foundation
 import XPC
@@ -43,6 +44,7 @@ let unavailable: Int32 = 2
 let unreadable: Int32 = 3
 let noService: Int32 = 4
 let notAnswering: Int32 = 5
+let busy: Int32 = 6
 let failed: Int32 = 7
 
 func quit(_ code: Int32, _ message: String) -> Never {
@@ -213,6 +215,142 @@ func hid(_ device: SimDeviceP, _ input: [String]) -> Never {
   exit(0)
 }
 
+// Instance methods, checked on the class before a session exists: a missing one must not leave a session open.
+func needInstances(_ cls: AnyClass, _ selectors: String...) {
+  for name in selectors where !class_respondsToSelector(cls, NSSelectorFromString(name)) {
+    quit(unavailable, "no \(name) on \(cls)")
+  }
+}
+
+// Runs the current run loop until done() or the deadline: the session's completions may arrive on the main queue.
+func spin(_ seconds: Double, _ done: () -> Bool) -> Bool {
+  let end = Date(timeIntervalSinceNow: seconds)
+  while !done() && Date() < end { RunLoop.current.run(mode: .default, before: Date(timeIntervalSinceNow: 0.01)) }
+  return done()
+}
+
+// Typed text through XCUIAutomation's remote session: any Unicode, exactly, at the cursor (K35). Its frameworks load
+// only here, so an Xcode that breaks them leaves the other modes working.
+func xcui(_ dev: String, _ device: AnyObject, _ input: [String]) -> Never {
+  guard input.count == 3, let speed = UInt64(input[1]), speed > 0 else {
+    quit(unavailable, "unknown input: \(input.joined(separator: " "))")
+  }
+  let text = input[2]
+  let shared = (dev as NSString).deletingLastPathComponent + "/SharedFrameworks/"
+  for name in ["DTXConnectionServices", "XCTAutomationSupport", "XCTDaemonControl", "XCUIAutomation"]
+  where dlopen(shared + name + ".framework/" + name, RTLD_NOW) == nil {
+    quit(unavailable, String(cString: dlerror()))
+  }
+  guard let send = dlsym(dlopen(nil, RTLD_NOW), "objc_msgSend") else { quit(unavailable, "no objc_msgSend") }
+  func cls(_ name: String) -> AnyClass {
+    guard let found = NSClassFromString(name) else { quit(unavailable, "no \(name)") }
+    return found
+  }
+  let providerClass = cls("XCUIDeviceRemoteDaemonConnectionProvider")
+  let sessionClass = cls("XCUIDeviceRemoteAutomationSession")
+  let recordClass = cls("XCSynthesizedEventRecord")
+  let pathClass = cls("XCPointerEventPath")
+  need(providerClass, "connectionProviderForSimDevice:")
+  need(sessionClass, "requestSessionWithDaemonConnectionProvider:completion:")
+  needInstances(
+    sessionClass, "enableAutomationModeWithError:", "setImplicitEventConfirmationIntervalForCurrentContext:",
+    "synthesizeEvent:completion:", "invalidate")
+  needInstances(recordClass, "initWithName:interfaceOrientation:", "addPointerEventPath:")
+  needInstances(pathClass, "initForTextInput", "typeText:atOffset:typingSpeed:shouldRedact:")
+
+  // Another UI test on the simulator holds automation mode; Xcode says "Ensure no other tests are running".
+  // ponytail: matched on that wording, not seen here; any other refusal is exit 7.
+  func refused(_ error: NSError?, _ fallback: String) -> (Int32, String) {
+    let detail = error.map { "\($0)" } ?? ""
+    let code = detail.range(of: "other test", options: .caseInsensitive) != nil ? busy : failed
+    return (code, error?.localizedDescription ?? fallback)
+  }
+
+  typealias ProviderFn = @convention(c) (AnyClass, Selector, AnyObject) -> Unmanaged<AnyObject>?
+  typealias RequestFn = @convention(c) (
+    AnyClass, Selector, AnyObject, @escaping @convention(block) (AnyObject?, NSError?) -> Void
+  ) -> Void
+  guard
+    let provider = unsafeBitCast(send, to: ProviderFn.self)(
+      providerClass, NSSelectorFromString("connectionProviderForSimDevice:"), device)?.takeUnretainedValue()
+  else { quit(failed, "no connection provider for this simulator") }
+  var session: AnyObject?
+  var sessionError: NSError?
+  var answered = false
+  unsafeBitCast(send, to: RequestFn.self)(
+    sessionClass, NSSelectorFromString("requestSessionWithDaemonConnectionProvider:completion:"), provider
+  ) {
+    session = $0
+    sessionError = $1
+    answered = true
+  }
+  guard spin(15, { answered }) else { quit(failed, "no automation session within 15 s") }
+  guard let session else {
+    let (code, reason) = refused(sessionError, "no automation session")
+    quit(code, reason)
+  }
+
+  // testmanagerd keeps automation mode on until the session ends, so every exit, SIGTERM included, ends it.
+  func finish(_ code: Int32, _ reason: String) -> Never {
+    _ = session.perform(NSSelectorFromString("invalidate"))
+    if code == 0 { exit(0) }
+    quit(code, reason)
+  }
+  signal(SIGPIPE, SIG_IGN)
+  signal(SIGTERM, SIG_IGN)
+  let terminate = DispatchSource.makeSignalSource(signal: SIGTERM, queue: DispatchQueue(label: "ax.term"))
+  terminate.setEventHandler {
+    _ = session.perform(NSSelectorFromString("invalidate"))
+    _exit(143)
+  }
+  terminate.activate()
+
+  typealias EnableFn = @convention(c) (AnyObject, Selector, AutoreleasingUnsafeMutablePointer<NSError?>) -> Bool
+  typealias IntervalFn = @convention(c) (AnyObject, Selector, Double) -> Void
+  typealias AllocFn = @convention(c) (AnyClass, Selector) -> UnsafeRawPointer
+  typealias RecordInitFn = @convention(c) (UnsafeRawPointer, Selector, NSString, Int64) -> UnsafeRawPointer?
+  typealias PathInitFn = @convention(c) (UnsafeRawPointer, Selector) -> UnsafeRawPointer?
+  typealias TypeFn = @convention(c) (AnyObject, Selector, NSString, Double, UInt64, Bool) -> Void
+  typealias AddFn = @convention(c) (AnyObject, Selector, AnyObject) -> Void
+  typealias SynthFn = @convention(c) (
+    AnyObject, Selector, AnyObject, @escaping @convention(block) (Bool, NSError?) -> Void
+  ) -> Void
+  var enableError: NSError?
+  guard
+    unsafeBitCast(send, to: EnableFn.self)(session, NSSelectorFromString("enableAutomationModeWithError:"), &enableError)
+  else {
+    let (code, reason) = refused(enableError, "automation mode refused")
+    finish(code, reason)
+  }
+  // The session waits 5 s by default to confirm each event: 5.7 s per call; 0 brings it to 0.8-1.1 s (K35).
+  unsafeBitCast(send, to: IntervalFn.self)(
+    session, NSSelectorFromString("setImplicitEventConfirmationIntervalForCurrentContext:"), 0)
+  let alloc = unsafeBitCast(send, to: AllocFn.self)
+  guard
+    let recordPointer = unsafeBitCast(send, to: RecordInitFn.self)(
+      alloc(recordClass, NSSelectorFromString("alloc")), NSSelectorFromString("initWithName:interfaceOrientation:"),
+      "karagoz" as NSString, 1),
+    let pathPointer = unsafeBitCast(send, to: PathInitFn.self)(
+      alloc(pathClass, NSSelectorFromString("alloc")), NSSelectorFromString("initForTextInput"))
+  else { finish(failed, "cannot build the text event") }
+  let record = Unmanaged<AnyObject>.fromOpaque(recordPointer).takeRetainedValue()
+  let path = Unmanaged<AnyObject>.fromOpaque(pathPointer).takeRetainedValue()
+  unsafeBitCast(send, to: TypeFn.self)(
+    path, NSSelectorFromString("typeText:atOffset:typingSpeed:shouldRedact:"), text as NSString, 0, speed, false)
+  unsafeBitCast(send, to: AddFn.self)(record, NSSelectorFromString("addPointerEventPath:"), path)
+  var synthesized = false
+  var synthesisError: NSError?
+  var done = false
+  unsafeBitCast(send, to: SynthFn.self)(session, NSSelectorFromString("synthesizeEvent:completion:"), record) {
+    synthesized = $0
+    synthesisError = $1
+    done = true
+  }
+  guard spin(30 + Double(text.count) / Double(speed), { done }) else { finish(failed, "the text was not confirmed") }
+  guard synthesized else { finish(failed, synthesisError?.localizedDescription ?? "the text was not typed") }
+  finish(0, "")
+}
+
 let args = CommandLine.arguments
 guard args.count >= 3 else { quit(unavailable, "usage: ax <developer dir> <udid> [<input>]") }
 guard dlopen("/Library/Developer/PrivateFrameworks/CoreSimulator.framework/CoreSimulator", RTLD_NOW) != nil else {
@@ -237,6 +375,7 @@ guard
   let found = candidates.first(where: { unsafeBitCast($0, to: SimDeviceP.self).udid.uuidString == args[2] }),
   let object = found as? NSObject
 else { quit(unavailable, "no device \(args[2])") }
+if args.count > 3 && args[3] == "type" { xcui(args[1], object, Array(args[3...])) }
 if args.count > 3 {
   need(object, "lookup:error:")
   hid(unsafeBitCast(object, to: SimDeviceP.self), Array(args[3...]))
