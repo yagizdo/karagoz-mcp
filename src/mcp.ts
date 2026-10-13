@@ -7,7 +7,7 @@ import { cancellation } from './cancellation.js';
 import { KaragozError } from './errors.js';
 
 const INSTRUCTIONS =
-  'karagoz drives Android emulators and phones over adb. To see the screen, call ui_tree first: node bounds are the physical pixels tap and swipe take; take a screenshot only when you need the image. Pass device only when more than one device is connected. Each result is one JSON object; on failure, branch on error.code. If adb is missing or the wrong one runs, call doctor.';
+  'karagoz drives Android emulators and phones over adb, and iOS simulators on macOS. To see the screen, call ui_tree first: node bounds are the pixels tap and swipe take; take a screenshot only when you need the image. Pass device only when more than one device is connected. Each result is one JSON object; on failure, branch on error.code. If adb is missing or the wrong one runs, call doctor.';
 
 const device = { type: 'string', description: 'Serial or name.' };
 
@@ -49,14 +49,14 @@ const TOOLS: Tool[] = [
     name: 'tap',
     title: 'Tap',
     description:
-      'Tap x, y in physical pixels, or the center of the node whose text or contentDesc equals text, or whose resource id matches id. duration makes it a long press.',
+      'Tap x, y in physical pixels, or the center of the node whose text or contentDesc (iOS: label or value) equals text, or whose resource id (iOS: identifier) matches id. duration makes it a long press.',
     inputSchema: {
       type: 'object',
       properties: {
         x: { type: 'number' },
         y: { type: 'number' },
-        text: { type: 'string', description: 'Exact text or contentDesc of the node, case-sensitive.' },
-        id: { type: 'string', description: 'Resource id, full or the part after :id/.' },
+        text: { type: 'string', description: 'Exact text or contentDesc (iOS: label or value), case-sensitive.' },
+        id: { type: 'string', description: 'Resource id, full or the part after :id/ (iOS: identifier).' },
         duration: { type: 'integer', description: 'Hold time in ms.' },
         timeout: {
           type: 'integer',
@@ -89,20 +89,22 @@ const TOOLS: Tool[] = [
   {
     name: 'text',
     title: 'Type text',
-    description: 'Type into the focused field. Only printable ASCII, newline, tab, ç, Ç and ß.',
+    description:
+      'Type into the focused field. Android: only printable ASCII, newline, tab, ç, Ç and ß. iOS simulator: any text.',
     inputSchema: { type: 'object', properties: { text: { type: 'string' }, device }, required: ['text'] },
     annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
   },
   {
     name: 'key',
     title: 'Press a key',
-    description: 'Press one Android key.',
+    description: 'Press one key.',
     inputSchema: {
       type: 'object',
       properties: {
         key: {
           type: 'string',
-          description: 'KeyEvent name (HOME, BACK, KEYCODE_7) or code 1-340; "7" is code 7 (KEYCODE_0), not the digit.',
+          description:
+            'KeyEvent name (HOME, BACK, KEYCODE_7) or code 1-340; "7" is code 7 (KEYCODE_0), not the digit. iOS simulators take HOME, POWER, VOLUME_UP/DOWN and keyboard keys.',
         },
         device,
       },
