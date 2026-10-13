@@ -1,6 +1,6 @@
 import { install, launch, terminate, uninstall } from './drivers/android/app.js';
 import { doctor } from './drivers/android/doctor.js';
-import { key, swipe, tap, text, type Target } from './drivers/android/input.js';
+import { key, swipe, tap, text, type Target } from './input.js';
 import { logs } from './drivers/android/logs.js';
 import { screenshot } from './screenshot.js';
 import { uiTree } from './ui-tree.js';
