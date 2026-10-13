@@ -26,8 +26,8 @@ function decimal(label: string, value = ''): number {
   return Number(value);
 }
 
-// Nine digits at most: input.ts adds the value to adb's TIMEOUT_MS, and an execFile timeout above 2^31-1 ms overflows
-// Node's timer, which then fires after 1 ms.
+// Nine digits at most: the input drivers add the value to their timeout (adb's TIMEOUT_MS, the iOS helper's
+// RUN_TIMEOUT_MS), and an execFile timeout above 2^31-1 ms overflows Node's timer, which then fires after 1 ms.
 function integer(label: string, value = ''): number {
   if (!/^\d{1,9}$/.test(value)) {
     throw new KaragozError('INVALID_ARGS', `${label} must be a whole number of milliseconds (got '${value}')`);

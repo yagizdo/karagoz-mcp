@@ -1,4 +1,4 @@
-import { androidTarget } from './devices.js';
+import { resolveTarget } from './devices.js';
 import {
   key as androidKey,
   keyCode,
@@ -8,17 +8,25 @@ import {
   typable,
   type Target,
 } from './drivers/android/input.js';
+import { key as iosKey, swipe as iosSwipe, tap as iosTap } from './drivers/ios/input.js';
+import { KaragozError } from './errors.js';
 
 export type { Target };
 
 // Argument checks first, then the target: INVALID_ARGS and TEXT_UNSUPPORTED come before any device call (K5, K25).
 export async function key(device: string | undefined, value: string) {
   const parsed = keyCode(value);
-  return androidKey(await androidTarget(device, 'key'), parsed);
+  const { id, platform } = await resolveTarget(device);
+  return platform === 'ios' ? iosKey(id, parsed.name, parsed.code) : androidKey(id, parsed);
 }
 
 export async function tap(device: string | undefined, target: Target, duration: number | undefined, timeout: number) {
-  return androidTap(await androidTarget(device, 'tap'), target, duration, timeout);
+  const { id, platform } = await resolveTarget(device);
+  if (platform === 'android') return androidTap(id, target, duration, timeout);
+  if (target.kind !== 'point') {
+    throw new KaragozError('NOT_SUPPORTED', `'tap --${target.kind}' does not run on iOS simulators yet`);
+  }
+  return iosTap(id, target.x, target.y, duration);
 }
 
 export async function swipe(
@@ -29,10 +37,13 @@ export async function swipe(
   y2: number,
   duration: number | undefined,
 ) {
-  return androidSwipe(await androidTarget(device, 'swipe'), x1, y1, x2, y2, duration);
+  const { id, platform } = await resolveTarget(device);
+  return platform === 'ios' ? iosSwipe(id, x1, y1, x2, y2, duration) : androidSwipe(id, x1, y1, x2, y2, duration);
 }
 
 export async function text(device: string | undefined, value: string) {
   typable(value);
-  return androidText(await androidTarget(device, 'text'), value);
+  const { id, platform } = await resolveTarget(device);
+  if (platform === 'ios') throw new KaragozError('NOT_SUPPORTED', "'text' does not run on iOS simulators yet");
+  return androidText(id, value);
 }

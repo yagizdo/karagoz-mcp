@@ -17,7 +17,7 @@ const run = promisify(execFile);
 // 2.8 s measured warm; a cold module cache on a slow Mac can take far longer (K34).
 const COMPILE_TIMEOUT_MS = 120_000;
 // simctl's timeout: the first call after login starts CoreSimulatorService (K32). A read takes ~0.1 s.
-const RUN_TIMEOUT_MS = 30_000;
+export const RUN_TIMEOUT_MS = 30_000;
 // Node's 1 MiB default would cut a long list's tree.
 const MAX_BUFFER = 32 * 1024 * 1024;
 // Pinned so a toolchain that changes its default language mode cannot break the build.
@@ -26,7 +26,7 @@ const XCODE_SELECT = '/var/db/xcode_select_link';
 const DEFAULT_XCODE = '/Applications/Xcode.app/Contents/Developer';
 // The build copies the source next to the bundle's chunks, all flat in dist/.
 const SOURCE = fileURLToPath(new URL('ax-helper.swift', import.meta.url));
-const CACHE_HINT = 'delete ~/Library/Caches/karagoz';
+export const CACHE_HINT = 'delete ~/Library/Caches/karagoz';
 
 export type IosNode = {
   role: string;
@@ -42,7 +42,7 @@ export type IosNode = {
 
 let source: Promise<string> | undefined;
 
-async function xcode(): Promise<string> {
+export async function xcode(): Promise<string> {
   const dev = developerDir();
   if (dev) return dev;
   try {
@@ -68,7 +68,7 @@ const owned = (info: { uid: number }) => !process.getuid || info.uid === process
 
 // The binary for this source, Xcode and architecture, compiled on first use (K34). The key is computed on every call,
 // so an Xcode update or a new karagoz compiles again within the same MCP server.
-async function helper(dev: string): Promise<string> {
+export async function helper(dev: string): Promise<string> {
   source ??= readFile(SOURCE, 'utf8');
   const text = await source.catch(() => {
     throw new KaragozError('HELPER_FAILED', `cannot read ${SOURCE}; reinstall karagoz`);
