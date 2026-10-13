@@ -46,10 +46,10 @@ Website: [karagozmcp.com](https://karagozmcp.com/?utm_source=github&utm_medium=r
 | [`devices`](#devices) | done | done | done | planned |
 | [`screenshot`](#screenshot) | done | done | done | planned |
 | [`ui-tree`](#ui-tree) | done | done | done | planned |
-| [`tap`](#tap) | done | done | planned | planned |
-| [`swipe`](#swipe) | done | done | planned | planned |
-| [`text`](#text) | done | done | planned | planned |
-| [`key`](#key) | done | done | planned | planned |
+| [`tap`](#tap) | done | done | done | planned |
+| [`swipe`](#swipe) | done | done | done | planned |
+| [`text`](#text) | done | done | done | planned |
+| [`key`](#key) | done | done | done | planned |
 | [`install`](#install-1) | done | done | planned | planned |
 | [`launch`](#launch) | done | done | planned | planned |
 | [`terminate`](#terminate) | done | done | planned | planned |
@@ -58,7 +58,7 @@ Website: [karagozmcp.com](https://karagozmcp.com/?utm_source=github&utm_medium=r
 | [`doctor`](#doctor) | done | done | planned | planned |
 | [MCP server](#mcp-server) | done | done | | |
 
-"Done" means tested against a live emulator: macOS, an API 36 image (Android 16), 1080x2400 at 420 dpi. In the iOS simulator column it means the step's smoke passes on macOS: `smoke/3.1-devices-ios.sh` for `devices`, `smoke/3.2-screenshot-ios.sh` for `screenshot`, `smoke/3.3-ui-tree-ios.sh` for `ui-tree`. `devices`, `screenshot` and `ui-tree` were tested on a physical Samsung phone (Android 14) over USB, and `tap`, `swipe`, `text`, `key`, `install`, `launch`, `terminate`, `uninstall` and `logs` on an Infinix phone (Android 12) over USB. No other command has been run on one yet. `doctor` touches no device; its row means tested on the same Mac with fake and real `adb` binaries. For the MCP server, done means `smoke/M-mcp.sh` passes against the live emulator and Claude Code and Codex called its tools; in the Android device column it means its tools returned results from a phone over USB. Windows and Linux have not been run.
+"Done" means tested against a live emulator: macOS, an API 36 image (Android 16), 1080x2400 at 420 dpi. In the iOS simulator column it means the step's smoke passes on macOS: `smoke/3.1-devices-ios.sh` for `devices`, `smoke/3.2-screenshot-ios.sh` for `screenshot`, `smoke/3.3-ui-tree-ios.sh` for `ui-tree`, `smoke/3.4-input-ios.sh` for `tap`, `swipe`, `text` and `key`. `devices`, `screenshot` and `ui-tree` were tested on a physical Samsung phone (Android 14) over USB, and `tap`, `swipe`, `text`, `key`, `install`, `launch`, `terminate`, `uninstall` and `logs` on an Infinix phone (Android 12) over USB. No other command has been run on one yet. `doctor` touches no device; its row means tested on the same Mac with fake and real `adb` binaries. For the MCP server, done means `smoke/M-mcp.sh` passes against the live emulator and Claude Code and Codex called its tools; in the Android device column it means its tools returned results from a phone over USB. Windows and Linux have not been run.
 
 ## Requirements
 
@@ -75,11 +75,12 @@ Website: [karagozmcp.com](https://karagozmcp.com/?utm_source=github&utm_medium=r
   {"error":{"code":"ADB_NOT_FOUND","message":"adb not found (tried ..., PATH). Install platform-tools (brew install --cask android-platform-tools, or download https://developer.android.com/tools/releases/platform-tools and add it to PATH) or set ANDROID_HOME to your Android SDK."}}
   ```
 
-- **A running emulator** (`emulator -avd <name>`), or for `devices`, `screenshot`, `ui-tree`, `tap`, `swipe`, `text`, `key`, `install`, `launch`, `terminate`, `uninstall` and `logs`, a phone with USB debugging on, in state `device`, or for `devices`, `screenshot` and `ui-tree` on macOS, a booted iOS simulator (`open -a Simulator`; on Xcode 27, `xcrun simctl boot <name>`). karagoz installs nothing on a device by itself; `install` installs only the APK you pass it. A phone that adb cannot see is missing from the list: on Windows without the phone maker's USB driver, on a Mac laptop where "Allow accessory to connect" was refused, or in fastboot mode.
+- **A running emulator** (`emulator -avd <name>`), or for `devices`, `screenshot`, `ui-tree`, `tap`, `swipe`, `text`, `key`, `install`, `launch`, `terminate`, `uninstall` and `logs`, a phone with USB debugging on, in state `device`, or for `devices`, `screenshot`, `ui-tree`, `tap`, `swipe`, `text` and `key` on macOS, a booted iOS simulator (`open -a Simulator`; on Xcode 27, `xcrun simctl boot <name>`). karagoz installs nothing on a device by itself; `install` installs only the APK you pass it. A phone that adb cannot see is missing from the list: on Windows without the phone maker's USB driver, on a Mac laptop where "Allow accessory to connect" was refused, or in fastboot mode.
 - For `smoke/1.5-app-lifecycle.sh`, and for `smoke/2.5-app-lifecycle-physical.sh` when a phone is attached: a JDK and Android SDK build-tools with one platform. Both smokes build their own test APK, `dev.karagoz.smoke`, and remove it at the end. See [Development](#development).
 - For `ui-tree` and `tap --text` / `--id`: the screen is on, and no other UiAutomation client is connected (Appium, Maestro, `uiautomator events`). For input to reach apps, the screen is also unlocked: on a lock screen `text` and `key` type into the PIN field, and a wrong PIN counts as a failed unlock attempt; with the screen off, taps are dropped and keys still arrive. Both exit `0`.
-- **Xcode, opened once**, for iOS simulators in `devices`, `screenshot` and `ui-tree` (macOS only). karagoz runs CoreSimulator's own `simctl` (`/Library/Developer/PrivateFrameworks/CoreSimulator.framework/Versions/A/Resources/bin/simctl`), or `$DEVELOPER_DIR/usr/bin/simctl` when `DEVELOPER_DIR` is set. The Command Line Tools alone have no `simctl`, and no `swiftc` for `ui-tree`. On macOS every command that targets a device runs it too, to list simulators ([Device selection](#device-selection)).
-- The first `ui-tree` on a simulator compiles a small helper with the selected Xcode's `swiftc` (`DEVELOPER_DIR`, else the `xcode-select` one) into `~/Library/Caches/karagoz/`. That takes a few seconds, happens again after an Xcode update, and the directory is safe to delete.
+- **Xcode, opened once**, for iOS simulators in `devices`, `screenshot`, `ui-tree`, `tap`, `swipe`, `text` and `key` (macOS only). karagoz runs CoreSimulator's own `simctl` (`/Library/Developer/PrivateFrameworks/CoreSimulator.framework/Versions/A/Resources/bin/simctl`), or `$DEVELOPER_DIR/usr/bin/simctl` when `DEVELOPER_DIR` is set. The Command Line Tools alone have no `simctl`, and no `swiftc` for the helper below. On macOS every command that targets a device runs it too, to list simulators ([Device selection](#device-selection)).
+- The first `ui-tree`, `tap`, `swipe`, `text` or `key` on a simulator compiles a small helper with the selected Xcode's `swiftc` (`DEVELOPER_DIR`, else the `xcode-select` one) into `~/Library/Caches/karagoz/`. That takes a few seconds, happens again after an Xcode update, and the directory is safe to delete.
+- On a simulator, `tap`, `swipe` and `key` need Xcode 27 or newer: they go to the simulator's own input service, which older Xcodes do not have, and return `NOT_SUPPORTED` there. `text` loads Xcode's XCUIAutomation frameworks and puts the simulator in automation mode for the length of the call, as a UI test does; a UI test running on the same simulator makes it fail with `AUTOMATION_BUSY`. When the call ends, the simulator turns its app accessibility setting off; `text` writes it back if it was on, so later `ui-tree` reads still see apps.
 
 ## Install
 
@@ -134,7 +135,7 @@ The value is matched against every listed id first, exactly: adb serials (`emula
 | No value, nothing connected | `NO_DEVICE` |
 | No value and two or more devices listed (in any state), or a name that matches two entries: the same AVD listed as `emulator-5554` and `127.0.0.1:5555`, or two phones of the same model | `DEVICE_AMBIGUOUS` |
 | The picked device is not in state `device` (`offline`, `unauthorized`, ...), or a simulator not `Booted` (`Booting`, `Shutting Down`) | `DEVICE_NOT_READY` |
-| The picked device is an iOS simulator and the command does not run there yet: every command but `devices`, `screenshot`, `ui-tree` and `doctor` | `NOT_SUPPORTED` |
+| The picked device is an iOS simulator and the command does not run there yet: `install`, `launch`, `terminate`, `uninstall` and `logs` | `NOT_SUPPORTED` |
 
 karagoz never guesses between devices. There is no config file.
 
@@ -144,7 +145,7 @@ A phone connected over Wi-Fi as well as USB is listed twice, once per serial, an
 
 ### Coordinates
 
-`screenshot` pixels, `ui-tree` bounds and the `tap` / `swipe` coordinates share one space: physical pixels of the current screen orientation, origin top left. A node's `bounds` of `[581,1905,754,2100]` can be tapped at its center, `(667.5, 2002.5)`, and that point is the same pixel in the screenshot. Decimals are allowed. On an iOS simulator with Xcode 27 the screenshot and the tree follow the interface orientation; with Xcode 26 the screenshot is the panel in portrait, whatever the interface orientation. On iOS, `ui-tree` bounds are the element's frame in points times `scale`.
+`screenshot` pixels, `ui-tree` bounds and the `tap` / `swipe` coordinates share one space: physical pixels of the current screen orientation, origin top left. A node's `bounds` of `[581,1905,754,2100]` can be tapped at its center, `(667.5, 2002.5)`, and that point is the same pixel in the screenshot. Decimals are allowed. On an iOS simulator with Xcode 27 the screenshot and the tree follow the interface orientation; with Xcode 26 the screenshot is the panel in portrait, whatever the interface orientation. On iOS, `ui-tree` bounds are the element's frame in points times `scale`, and `tap` and `swipe` take the same pixels: karagoz turns them for the interface orientation, and takes a `null` rotation as portrait.
 
 `screenshot` reports `scale` (physical pixels per density-independent pixel on Android, per point on iOS) and `logical` size so a caller can convert to dp or points.
 
@@ -196,7 +197,7 @@ The set is closed. Any failure without a code of its own is reported as `INTERNA
 | --- | --- | --- |
 | `NO_COMMAND` | No command given. The message lists the commands. | all |
 | `UNKNOWN_COMMAND` | The command name is not known. | all |
-| `INVALID_ARGS` | Missing, extra, malformed or unknown arguments, an unknown key name, an APK path that is not an existing `.apk` file, a screenshot `--out` that does not end in `.png`, a malformed package name, a `--since` that is not Unix time in seconds, or a `--lines` outside 1 to 999999999. | all |
+| `INVALID_ARGS` | Missing, extra, malformed or unknown arguments, an unknown key name or one with no iOS key on a simulator (`BACK`), an APK path that is not an existing `.apk` file, a screenshot `--out` that does not end in `.png`, a malformed package name, a `--since` that is not Unix time in seconds, or a `--lines` outside 1 to 999999999. | all |
 | `ADB_NOT_FOUND` | No `adb` found. See [Requirements](#requirements). | all that reach adb, except `doctor`, which reports these in its output; `devices` reports them in `errors` when the other platform could be listed |
 | `ADB_TIMEOUT` | adb did not answer in time: 10 s per call, 20 s for a `ui-tree` read, 10 s plus the duration for a long press or swipe, 30 s plus 1 s per started MB for `install`, 30 s for the start in `launch`. The message suggests `adb kill-server`; for `ui-tree` the cause is more often a stuck dump, and for `install` an install prompt on the phone, which the message names first. | all that reach adb, except `doctor`, which reports these in its output; `devices` reports them in `errors` when the other platform could be listed |
 | `ADB_FAILED` | adb exited with an error. The message is adb's stderr, or Node's error when adb printed nothing. For `launch`, `terminate` and `uninstall` it can also be the error the device command printed. For `logs`, logcat's own error text or output that is not whole log records. A device that disconnects mid-command ends here. | all that reach adb, except `doctor`, which reports these in its output; `devices` reports them in `errors` when the other platform could be listed |
@@ -206,13 +207,13 @@ The set is closed. Any failure without a code of its own is reported as `INTERNA
 | `NO_DEVICE` | No device connected and none named. On macOS the message also names booting a simulator. | all but `devices` and `doctor` |
 | `DEVICE_NOT_FOUND` | The named device is not connected. | all but `devices` and `doctor` |
 | `DEVICE_AMBIGUOUS` | More than one device and none named, or a name that matches more than one. | all but `devices` and `doctor` |
-| `DEVICE_NOT_READY` | The device is `offline`, `unauthorized` or similar, or the simulator is `Booting` or `Shutting Down`. | all but `devices` and `doctor` |
-| `HELPER_FAILED` | The iOS tree helper cannot run on this Mac: no Xcode selected, no `swiftc` (the Command Line Tools are not enough), a failed compile, a crash, or an Xcode that changed a private interface karagoz uses. The message says which and what to do. | `ui-tree` on a simulator |
-| `NOT_SUPPORTED` | The device is an iOS simulator and the command does not run there yet: `'key' does not run on iOS simulators yet`. Argument checks come first. | all but `devices`, `screenshot`, `ui-tree` and `doctor` |
+| `DEVICE_NOT_READY` | The device is `offline`, `unauthorized` or similar, or the simulator is `Booting` or `Shutting Down`, or its input service did not answer within 4 s (`tap`, `swipe`, `key` right after a boot). | all but `devices` and `doctor` |
+| `HELPER_FAILED` | The iOS helper cannot run on this Mac: no Xcode selected, no `swiftc` (the Command Line Tools are not enough), a failed compile, a crash, an Xcode that changed a private interface karagoz uses, or input the simulator did not take (no automation session, typing that failed, no answer within 30 s). The message says which and what to do. | `ui-tree`, `tap`, `swipe`, `text`, `key` on a simulator |
+| `NOT_SUPPORTED` | The device is an iOS simulator and the command does not run there yet: `'launch' does not run on iOS simulators yet`; or, with Xcode 26 or older, `'tap' on iOS simulators needs Xcode 27 or later`. Argument checks come first. | all but `devices`, `screenshot`, `ui-tree`, `text` and `doctor` |
 | `CAPTURE_FAILED` | The screen could not be read: bad screenshot data, missing display info, a uiautomator failure, or on iOS a read the helper could not finish. The message says which. | `screenshot`, `ui-tree`, `tap --text/--id` |
-| `AUTOMATION_BUSY` | Another UiAutomation client holds the device. | `ui-tree`, `tap --text/--id` |
+| `AUTOMATION_BUSY` | Another UiAutomation client holds the device; on a simulator, a UI test holds automation mode. | `ui-tree`, `tap --text/--id`; `text` on a simulator |
 | `WRITE_FAILED` | The screenshot file could not be written. | `screenshot` |
-| `TEXT_UNSUPPORTED` | The text has a character Android's `input text` cannot type. | `text` |
+| `TEXT_UNSUPPORTED` | The text has a character the target cannot type: on Android anything but printable ASCII, newline, tab, `ç`, `Ç` and `ß`; on a simulator a control character other than newline and tab. | `text` |
 | `ELEMENT_NOT_FOUND` | No node matches. | `tap --text/--id` |
 | `ELEMENT_AMBIGUOUS` | More than one node matches. | `tap --text/--id` |
 | `ELEMENT_COVERED` | The node's center is under the on-screen keyboard. | `tap --text/--id` |
@@ -444,7 +445,7 @@ The first call compiles the helper ([Requirements](#requirements)) and takes a f
 **Errors on iOS**
 
 - `HELPER_FAILED`: this Mac cannot read iOS trees. No Xcode selected, no `swiftc` at the selected Xcode's toolchain path, a failed compile (swiftc's first error lines), a crashed helper, or an Xcode that changed a private interface karagoz uses (`update karagoz`).
-- `CAPTURE_FAILED`: this screen could not be read: no frontmost application, an accessibility request that took over 5 s, no answer within 30 s, or helper output that could not be parsed.
+- `CAPTURE_FAILED`: this screen could not be read: no frontmost application, an accessibility request that took over 5 s, no answer within 30 s, or helper output that could not be parsed. With Control Center open, a read ends this way after 30 s.
 - `DEVICE_NOT_READY` for a simulator that is still booting, before anything is compiled.
 - Plus the [device selection](#device-selection) errors and the simctl errors from listing simulators.
 
@@ -508,6 +509,20 @@ With `--duration 10` a `"duration":10` field follows `y`. Node:
 - Points are not checked against the screen size.
 - Exit `0` means Android accepted the event, not that the app reacted to it. Read the tree again to check.
 
+#### On an iOS simulator
+
+Same arguments and output. The point goes to the simulator's own input service as a real touch, and `--duration` holds it there.
+
+```json
+{"device":"27024DC1-EDB0-4BF2-8010-08FE3936BAB6","x":603,"y":1015,"element":{"role":"Button","label":"Tap me 0","identifier":"tap-button","bounds":[48,937,1158,1093]}}
+```
+
+- `--text` matches a node's `label` or `value`, `--id` its `identifier`; both whole and case-sensitive, direction marks ignored. There is no `:id/` rule.
+- The node is tapped at its center like a finger, so what covers it gets the tap.
+- There is no keyboard check: `ELEMENT_COVERED` is Android only. The message for no match is `no node with label or value 'Save' in the frontmost app (1 read in 0.3 s)`.
+- A tap takes about 0.6 s; a node tap adds one tree read, about 0.3 s.
+- Errors: `NOT_SUPPORTED` with Xcode 26 or older, `DEVICE_NOT_READY` when the input service does not answer within 4 s (a simulator that has just booted), `HELPER_FAILED`, and for node taps the [`ui-tree` errors on iOS](#on-an-ios-simulator).
+
 ### swipe
 
 ```
@@ -532,7 +547,13 @@ Moves one finger from `(x1, y1)` to `(x2, y2)`.
 
 **Duration matters.** A fast swipe flings a list and a slow one drags it. Measured on a 1200 px drag: 300 ms scrolled a further 1059 px after the finger lifted, 1000 ms scrolled 131 px further, 3000 ms 19 px.
 
-**Errors:** `INVALID_ARGS`, `INPUT_BLOCKED`, the [device selection](#device-selection) errors and the adb errors.
+**Errors:** `INVALID_ARGS`, `INPUT_BLOCKED`, the [device selection](#device-selection) errors and the adb errors. On a simulator, `NOT_SUPPORTED`, `DEVICE_NOT_READY` and `HELPER_FAILED` as for [`tap`](#on-an-ios-simulator-1).
+
+On an iOS simulator the arguments and output are the same, with the same default duration:
+
+```json
+{"device":"27024DC1-EDB0-4BF2-8010-08FE3936BAB6","x1":603,"y1":2228,"x2":603,"y2":917,"duration":300}
+```
 
 ### text
 
@@ -569,6 +590,21 @@ Quotes, spaces and `%s` are typed as they are; karagoz handles the escaping.
 - Characters typed right after a field appears can be lost. Waiting about 2 s after the field shows up fixed it in testing.
 - 100 characters take about 0.9 s.
 
+#### On an iOS simulator
+
+Any Unicode text is typed exactly, at the cursor; iOS's auto-capitalization and smart quotes and dashes are not applied.
+
+```json
+{"device":"27024DC1-EDB0-4BF2-8010-08FE3936BAB6","text":"çğş it's -- ok"}
+```
+
+- Control characters other than newline and tab fail before anything is typed: `cannot type 'U+0001' on an iOS simulator: control characters other than newline and tab; nothing was typed` (`TEXT_UNSUPPORTED`).
+- With no focused field nothing is typed, and the call still exits `0`.
+- It types 120 characters a second after about 1 s of setup: 300 characters took 3.5 s.
+- A cancelled or timed-out call can still type the whole text: the simulator gets it in one piece.
+- An app opened while the call ends can read as an empty tree until it is opened again ([Requirements](#requirements)).
+- Errors: `AUTOMATION_BUSY` when a UI test holds the simulator, `HELPER_FAILED` when the session is not granted or the typing fails.
+
 ### key
 
 ```
@@ -600,6 +636,27 @@ Presses one key.
 - A device knows the key codes of its Android version only (12: up to 288, 13: 304, 14: 316, 15: 318, 16: 337); a higher code is sent as `KEYCODE_UNKNOWN`, still with exit `0`.
 - Some keys act on the whole device: code 312 opens Recents, 318 saves a screenshot.
 - Exit `0` means Android accepted the key, not that the app reacted to it.
+
+#### On an iOS simulator
+
+The same names and codes, and the same output. Only these have an iOS key:
+
+| Name | On the simulator |
+| --- | --- |
+| `HOME` | The Home button |
+| `POWER` | The side button: locks the screen |
+| `VOLUME_UP`, `VOLUME_DOWN` | The volume buttons |
+| `A`-`Z`, `0`-`9`, `ENTER`, `DEL` (backspace), `FORWARD_DEL`, `TAB`, `SPACE`, `ESCAPE`, `DPAD_UP`, `DPAD_DOWN`, `DPAD_LEFT`, `DPAD_RIGHT`, `MOVE_HOME`, `MOVE_END`, `PAGE_UP`, `PAGE_DOWN`, `F1`-`F24`, `COMMA`, `PERIOD`, `MINUS`, `EQUALS`, `LEFT_BRACKET`, `RIGHT_BRACKET`, `BACKSLASH`, `SEMICOLON`, `APOSTROPHE`, `SLASH`, `GRAVE`, `SHIFT_*`, `CTRL_*`, `ALT_*`, `META_*`, `CAPS_LOCK` | The hardware keyboard key |
+
+Any other name fails before anything is sent:
+
+```json
+{"error":{"code":"INVALID_ARGS","message":"'BACK' has no iOS simulator key; iOS takes HOME, POWER, VOLUME_UP, VOLUME_DOWN and keyboard keys (letters, digits, ENTER, DEL, TAB, ESCAPE, DPAD_*, F1-F24); tap the app's back button or swipe from the left edge"}}
+```
+
+- Each key is pressed alone, with no modifier held.
+- Keyboard keys act only where iOS uses them: in a focused field, or with Full Keyboard Access. A letter goes through iOS's typing, so auto-capitalization applies: `key A` in an empty field typed `A`.
+- Errors: `NOT_SUPPORTED`, `DEVICE_NOT_READY` and `HELPER_FAILED` as for [`tap`](#on-an-ios-simulator-1).
 
 ### install
 
