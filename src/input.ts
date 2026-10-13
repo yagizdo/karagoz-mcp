@@ -8,7 +8,7 @@ import {
   typable,
   type Target,
 } from './drivers/android/input.js';
-import { key as iosKey, swipe as iosSwipe, tap as iosTap } from './drivers/ios/input.js';
+import { key as iosKey, swipe as iosSwipe, tap as iosTap, tapElement } from './drivers/ios/input.js';
 import { KaragozError } from './errors.js';
 
 export type { Target };
@@ -23,10 +23,7 @@ export async function key(device: string | undefined, value: string) {
 export async function tap(device: string | undefined, target: Target, duration: number | undefined, timeout: number) {
   const { id, platform } = await resolveTarget(device);
   if (platform === 'android') return androidTap(id, target, duration, timeout);
-  if (target.kind !== 'point') {
-    throw new KaragozError('NOT_SUPPORTED', `'tap --${target.kind}' does not run on iOS simulators yet`);
-  }
-  return iosTap(id, target.x, target.y, duration);
+  return target.kind === 'point' ? iosTap(id, target.x, target.y, duration) : tapElement(id, target, duration, timeout);
 }
 
 export async function swipe(

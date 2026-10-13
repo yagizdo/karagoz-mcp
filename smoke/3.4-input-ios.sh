@@ -1,8 +1,9 @@
 #!/bin/sh
-# Step 3.4: on macOS tap, swipe and key reach a booted iOS simulator through the helper's DTUHID modes, in K25's
-# shapes, with the tree's pixels turned into the unrotated portrait panel for every rotation (K35). Fakes prove the
-# helper's argv, each helper exit's K5 code, the timeout, and DEVICE_NOT_READY and the iOS-less key before any compile;
-# the real part drives a test app and reads every effect back with ui-tree.
+# Step 3.4: on macOS tap, swipe, key and the element tap (tap --text, --id) reach a booted iOS simulator through the
+# helper's DTUHID modes, in K25's and K26's shapes, with the tree's pixels turned into the unrotated portrait panel for
+# every rotation (K35). Fakes prove the helper's argv, each helper exit's K5 code, the timeout, DEVICE_NOT_READY and
+# the iOS-less key before any compile, and element matching on a fake tree; the real part drives a test app and reads
+# every effect back with ui-tree.
 # Precondition: macOS with Xcode. A booted simulator on its home screen is used when one is running and no phone is
 # attached, else the real part prints SKIP. It builds smoke/fixtures/input-ios, installs, drives and uninstalls it,
 # presses HOME and checks that the home screen is the one it recorded. Fake swiftc, simctl and devicectl come through
@@ -117,15 +118,16 @@ chmod +x "$tmp/sdk/platform-tools/adb" "$tmp/dev/usr/bin/simctl" "$tmp/dev/usr/b
 cp "$tmp/dev/usr/bin/simctl" "$tmp/nocc/usr/bin/simctl"
 echo "{\"devices\":{\"com.apple.CoreSimulator.SimRuntime.iOS-27-0\":[{\"udid\":\"A1\",\"name\":\"iPhone 17\",\"state\":\"Booted\",\"isAvailable\":true},{\"udid\":\"A2\",\"name\":\"iPhone 17 Pro\",\"state\":\"Booting\",\"isAvailable\":true}]}}" > "$fake/list.json"
 helper() { printf '%s\n' "$1" > "$fake/helper"; }
-# A helper that records its arguments after the developer dir and UDID, then runs $1.
-logs() { helper "shift 2; echo \"\$*\" > '$fake/argv'; $1"; }
+# A helper that prints $fake/tree.json in tree mode (no input arguments) and counts the reads; in an input mode it
+# records its arguments after the developer dir and UDID, then runs $1.
+logs() { helper "if [ \$# -eq 2 ]; then echo read >> '$fake/reads'; /bin/cat '$fake/tree.json'; exit 0; fi; shift 2; echo \"\$*\" > '$fake/argv'; $1"; }
 rot() { echo "echo '{\"result\":{\"displays\":[{\"primary\":true,\"currentOrientation\":\"$1\"}]}}'" > "$fake/devicectl"; }
 compiles() { [ -e "$fake/swiftc.log" ] && /usr/bin/wc -l < "$fake/swiftc.log" | tr -d ' ' || echo 0; }
 # karagoz with only the fakes; <home> picks the cache directory. Sets $out and $st, and clears the recorded argv.
 run_in() {
   home_dir=$1
   shift
-  rm -f "$fake/argv"
+  rm -f "$fake/argv" "$fake/reads"
   out=$(env -i HOME="$home_dir" PATH=/usr/bin:/bin TMPDIR="$tmp" ANDROID_HOME="$tmp/sdk" DEVELOPER_DIR="$tmp/dev" \
     "$node_bin" dist/cli.js "$@" 2>/dev/null) && st=0 || st=$?
 }
@@ -227,13 +229,51 @@ out=$(env -i HOME="$tmp/home4" PATH=/usr/bin:/bin TMPDIR="$tmp" ANDROID_HOME="$t
 refuses HELPER_FAILED "no swiftc"
 says "no swiftc" "swiftc not found"
 
-# 9. A command with no iOS implementation yet.
+# 9. Element tap: the matching node's bounds center, tapped through the same transform; --text is label or value with
+# direction marks ignored, --id is the identifier; zero-area nodes never match (K26 on iOS).
+cat > "$fake/tree.json" <<'TREE'
+{"screen":{"width":1206,"height":2622,"scale":3},"root":{"role":"AXApplication","label":"Probe","frame":[0,0,402,874],"children":[
+{"role":"AXTextField","value":"Name","identifier":"name-field","frame":[16,100,370,44]},
+{"role":"AXButton","label":"Press","identifier":"press-button","frame":[16,300,370,44],"children":[{"role":"AXStaticText","label":"inner","frame":[20,310,10,10]}]},
+{"role":"AXStaticText","label":"\u200eBuds\u200e","frame":[16,400,100,20]},
+{"role":"AXStaticText","label":"Row","frame":[16,500,370,44]},
+{"role":"AXStaticText","label":"Row","frame":[16,550,370,44]},
+{"role":"AXButton","label":"Hidden","frame":[16,600,0,44]}]}}
+TREE
+logs 'exit 0'
+call tap --text Press --device A1
+succeeds "tap --text" '{"device":"A1","x":603,"y":966,"element":{"role":"Button","label":"Press","identifier":"press-button","bounds":[48,900,1158,1032]}}'
+argv_is "tap --text" "tap 0.5 0.368421 0"
+call tap --text Name --device A1; argv_is "tap --text on a value" "tap 0.5 0.139588 0"
+call tap --id press-button --duration 700 --device A1
+succeeds "tap --id --duration" '{"device":"A1","x":603,"y":966,"duration":700,"element":{"role":"Button","label":"Press","identifier":"press-button","bounds":[48,900,1158,1032]}}'
+argv_is "tap --id --duration" "tap 0.5 0.368421 700"
+call tap --text Buds --device A1; argv_is "direction marks" "tap 0.164179 0.469108 0"
+call tap --text Row --device A1
+refuses ELEMENT_AMBIGUOUS "two Rows"
+[ "$(printf '%s' "$out" | message_of)" = "2 nodes match label or value 'Row': StaticText [48,1500,1158,1632], StaticText [48,1650,1158,1782]; tap one by its coordinates" ] \
+  || fail "ELEMENT_AMBIGUOUS text: $out"
+[ ! -e "$fake/argv" ] || fail "an ambiguous match tapped"
+call tap --text Hidden --device A1
+refuses ELEMENT_NOT_FOUND "zero-area node"
+case "$(printf '%s' "$out" | message_of)" in "no node with label or value 'Hidden' in the frontmost app (1 read in "*) ;; *) fail "ELEMENT_NOT_FOUND text: $out" ;; esac
+call tap --id nope --timeout 1500 --device A1
+refuses ELEMENT_NOT_FOUND "--timeout"
+says "--timeout" "no node with identifier 'nope'"
+[ "$(/usr/bin/wc -l < "$fake/reads")" -ge 2 ] || fail "--timeout 1500 read the tree fewer than 2 times: $out"
+[ ! -e "$fake/argv" ] || fail "a missing element tapped"
+helper "if [ \$# -eq 2 ]; then echo 'ax: no frontmost application' >&2; exit 3; fi; shift 2; echo \"\$*\" > '$fake/argv'"
+call tap --text Press --device A1
+refuses CAPTURE_FAILED "unreadable tree"
+[ ! -e "$fake/argv" ] || fail "an unreadable tree tapped"
+
+# 10. A command with no iOS implementation yet.
 call launch x --device A1
 refuses NOT_SUPPORTED "launch"
 [ "$(printf '%s' "$out" | message_of)" = "'launch' does not run on iOS simulators yet" ] || fail "launch text: $out"
-fakes="fakes: ratios, rotations, swipe, keys, iOS-less key, exits, hung (${took}s), booting, no compiler, launch"
+fakes="fakes: ratios, rotations, swipe, keys, iOS-less key, exits, hung (${took}s), booting, no compiler, element tap, launch"
 
-# 10. Real simulator: the test app, each effect read back with ui-tree, then the home screen as recorded.
+# 11. Real simulator: the test app, each effect read back with ui-tree, then the home screen as recorded.
 phone=$({ command -v adb >/dev/null && adb devices | awk 'NR > 1 && $1 != "" && $1 !~ /^emulator-/'; ioreg -p IOUSB -w0 | grep -iE 'iPhone|iPad'; } || true)
 booted=$("$framework" list devices --json | node -e '
   const { devices } = JSON.parse(require("fs").readFileSync(0, "utf8"));
@@ -288,10 +328,14 @@ else
   real swipe "$x" "$high" "$x" "$low" --device "$booted" >/dev/null || fail "real swipe back"
   real swipe "$x" "$high" "$x" "$low" --device "$booted" >/dev/null || fail "real swipe back"
   wait_for "real swipe back" yes has name-field
+  out=$(real tap --id tap-button --device "$booted") || fail "real tap --id: $out"
+  wait_for "real tap --id" "Tap me 2" label tap-button
+  out=$(real tap --text Press --device "$booted") || fail "real tap --text: $out"
+  wait_for "real tap --text" "pressed 1" label press-count
   out=$(real key HOME --device "$booted") && st=0 || st=$?
   succeeds "real key HOME" "{\"device\":\"$booted\",\"key\":\"KEYCODE_HOME\",\"code\":3}"
   wait_for "real key HOME" " " root
-  real_ok="real $booted: tap, long press, swipe, HOME"
+  real_ok="real $booted: tap, long press, swipe, tap --id, tap --text, HOME"
 fi
 
 echo "ok: $real_ok, $fakes"

@@ -4,12 +4,18 @@ import { cancellation } from '../../cancellation.js';
 import { KaragozError } from '../../errors.js';
 import { rotation } from './devicectl.js';
 import { simctl } from './simctl.js';
-import { CACHE_HINT, helper, RUN_TIMEOUT_MS, xcode } from './ui-tree.js';
+import { CACHE_HINT, helper, readTree, RUN_TIMEOUT_MS, xcode, type IosNode } from './ui-tree.js';
 
 const run = promisify(execFile);
 
 // Android's swipe default, so both platforms state the same duration (K25, K35).
 const SWIPE_MS = 300;
+
+// Invisible direction marks, Unicode's Bidi_Control set, ignored on both sides as on Android (K26). A copy of the
+// Android driver's, so this driver imports nothing from it.
+const BIDI = /\p{Bidi_Control}/gu;
+
+type Selector = { kind: 'text'; label: string } | { kind: 'id'; id: string };
 
 // K25 names to the HID usages dtuhidd takes (K35): hardware buttons on the consumer page (12), the rest on the
 // keyboard page (7). A name in neither has no iOS key.
@@ -144,6 +150,58 @@ export async function swipe(udid: string, x1: number, y1: number, x2: number, y2
   const ratio = await panel(udid);
   await send('swipe', udid, ['swipe', ...ratio(x1, y1), ...ratio(x2, y2), String(duration)], duration);
   return { device: udid, x1, y1, x2, y2, duration };
+}
+
+// --text is the whole label or value, case-sensitive; --id the whole identifier, iOS has no :id/ prefix (K34, K35).
+function matches(node: IosNode, selector: Selector): boolean {
+  if (selector.kind === 'id') return node.identifier === selector.id;
+  const label = selector.label.replaceAll(BIDI, '');
+  return [node.label, node.value].some((value) => value !== undefined && value.replaceAll(BIDI, '') === label);
+}
+
+// A node with no area has nothing to tap; a matching parent and its matching child both count (K26).
+function collect(node: IosNode, selector: Selector, found: IosNode[]): IosNode[] {
+  const [l = 0, t = 0, r = 0, b = 0] = node.bounds;
+  if (r > l && b > t && matches(node, selector)) found.push(node);
+  for (const child of node.children ?? []) collect(child, selector, found);
+  return found;
+}
+
+// Only "no match" reads again; a failed read or an ambiguous match ends it. --timeout waits for the element to appear
+// and never repeats the tap (K26, K11 note).
+// ponytail: no keyboard-cover check, so ELEMENT_COVERED stays Android-only: this simulator never showed a software
+// keyboard (its hardware keyboard state), so where its keys sit was never measured (K35).
+export async function tapElement(udid: string, selector: Selector, duration: number | undefined, timeout: number) {
+  const what = selector.kind === 'text' ? `label or value '${selector.label}'` : `identifier '${selector.id}'`;
+  const start = performance.now();
+  for (let reads = 1; ; reads++) {
+    // Without it a cancelled wait keeps reading for its whole timeout (K31).
+    cancellation.getStore()?.throwIfAborted();
+    const { rotation: rotated, root } = await readTree(udid);
+    const found = collect(root, selector, []);
+    if (found.length > 1) {
+      const shown = found.slice(0, 5).map((node) => `${node.role} [${node.bounds.join(',')}]`);
+      const more = found.length > shown.length ? `, and ${found.length - shown.length} more` : '';
+      throw new KaragozError(
+        'ELEMENT_AMBIGUOUS',
+        `${found.length} nodes match ${what}: ${shown.join(', ')}${more}; tap one by its coordinates`,
+      );
+    }
+    const [match] = found;
+    if (match) {
+      const [l = 0, t = 0, r = 0, b = 0] = match.bounds;
+      const element = { ...match };
+      delete element.children;
+      return { ...(await tap(udid, (l + r) / 2, (t + b) / 2, duration, rotated)), element };
+    }
+    const elapsed = performance.now() - start;
+    if (elapsed >= timeout) {
+      throw new KaragozError(
+        'ELEMENT_NOT_FOUND',
+        `no node with ${what} in the frontmost app (${reads} read${reads === 1 ? '' : 's'} in ${(elapsed / 1000).toFixed(1)} s)`,
+      );
+    }
+  }
 }
 
 // The name check runs before anything compiles: an iOS-less key is wrong for this target and stays wrong (K35).
