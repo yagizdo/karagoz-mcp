@@ -20,12 +20,18 @@ const MAX_BUFFER = 64 * 1024 * 1024;
 const FRAMEWORK = '/Library/Developer/PrivateFrameworks/CoreSimulator.framework/Versions/A/Resources/bin/simctl';
 
 // DEVELOPER_DIR picks an Xcode as it does for xcrun, which also takes the .app path, with or without a trailing slash.
-function binary(): { bin: string; missing: string } {
+export function developerDir(): string | undefined {
   const env = process.env.DEVELOPER_DIR;
-  if (!env)
-    return { bin: FRAMEWORK, missing: `simctl not found (tried ${FRAMEWORK}). Install Xcode and open it once.` };
+  if (!env) return undefined;
   const dev = resolve(env);
-  const bin = join(dev.endsWith('.app') ? join(dev, 'Contents', 'Developer') : dev, 'usr', 'bin', 'simctl');
+  return dev.endsWith('.app') ? join(dev, 'Contents', 'Developer') : dev;
+}
+
+function binary(): { bin: string; missing: string } {
+  const dev = developerDir();
+  if (!dev)
+    return { bin: FRAMEWORK, missing: `simctl not found (tried ${FRAMEWORK}). Install Xcode and open it once.` };
+  const bin = join(dev, 'usr', 'bin', 'simctl');
   return {
     bin,
     missing: `simctl not found (tried ${bin}, from DEVELOPER_DIR). Point DEVELOPER_DIR at an Xcode, not the Command Line Tools, or unset it.`,

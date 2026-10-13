@@ -11,7 +11,7 @@
     "node": ">=22"
   },
   "scripts": {
-    "build": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\" && esbuild src/cli.ts --bundle --platform=node --format=esm --target=node22 --splitting --outdir=dist",
+    "build": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\" && esbuild src/cli.ts --bundle --platform=node --format=esm --target=node22 --splitting --outdir=dist && node -e \"require('fs').copyFileSync('src/drivers/ios/ax-helper.swift','dist/ax-helper.swift')\"",
     "typecheck": "tsc",
     "lint": "oxlint src && prettier --check src",
     "format": "prettier --write src"

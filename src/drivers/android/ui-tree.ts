@@ -1,7 +1,6 @@
 import { KaragozError } from '../../errors.js';
 import { cancellation } from '../../cancellation.js';
 import { adb } from './adb.js';
-import { androidTarget } from '../../devices.js';
 
 // uiautomator's own idle failure arrives after 11.3-12.2 s (measured), and a client killed at 10 s leaves the device
 // process holding the one UiAutomation slot for ~2 s more (K19 note).
@@ -207,10 +206,4 @@ export async function readTree(id: string): Promise<{ rotation: number; root: Ui
     }
   }
   return { rotation: result.rotation, root: result.root };
-}
-
-export async function uiTree(device: string | undefined) {
-  const id = await androidTarget(device, 'ui-tree');
-  const { rotation, root } = await readTree(id);
-  return { device: id, rotation, root };
 }

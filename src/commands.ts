@@ -3,7 +3,7 @@ import { doctor } from './drivers/android/doctor.js';
 import { key, swipe, tap, text, type Target } from './drivers/android/input.js';
 import { logs } from './drivers/android/logs.js';
 import { screenshot } from './screenshot.js';
-import { uiTree } from './drivers/android/ui-tree.js';
+import { uiTree } from './ui-tree.js';
 import { listAll } from './devices.js';
 import { KaragozError, type ErrorCode } from './errors.js';
 
