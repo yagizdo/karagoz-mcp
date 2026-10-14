@@ -327,10 +327,10 @@ refuses CAPTURE_FAILED "unreadable tree"
 [ ! -e "$fake/argv" ] || fail "an unreadable tree tapped"
 
 # 11. A command with no iOS implementation yet.
-call launch x --device A1
-refuses NOT_SUPPORTED "launch"
-[ "$(printf '%s' "$out" | message_of)" = "'launch' does not run on iOS simulators yet" ] || fail "launch text: $out"
-fakes="fakes: ratios, rotations, swipe, keys, iOS-less key, exits, hung (${took}s), booting, no compiler, text, element tap, launch"
+call logs --device A1
+refuses NOT_SUPPORTED "logs"
+[ "$(printf '%s' "$out" | message_of)" = "'logs' does not run on iOS simulators yet" ] || fail "logs text: $out"
+fakes="fakes: ratios, rotations, swipe, keys, iOS-less key, exits, hung (${took}s), booting, no compiler, text, element tap, logs"
 
 # 12. Real simulator: the test app, each effect read back with ui-tree, then the home screen as recorded.
 phone=$({ command -v adb >/dev/null && adb devices | awk 'NR > 1 && $1 != "" && $1 !~ /^emulator-/'; ioreg -p IOUSB -w0 | grep -iE 'iPhone|iPad'; } || true)
