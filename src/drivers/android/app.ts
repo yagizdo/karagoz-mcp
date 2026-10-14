@@ -1,16 +1,9 @@
-import { stat } from 'node:fs/promises';
-import { resolve } from 'node:path';
 import { KaragozError } from '../../errors.js';
 import { adb } from './adb.js';
-import { androidTarget } from '../../devices.js';
 
 // am start -W has no bound of its own; Android gives up after 10 s for a process to attach and 10 s idle after
 // resume (K28).
 const LAUNCH_TIMEOUT_MS = 30_000;
-
-// On GMS phones Android waits up to 17 s for Play Protect's scan, and Xiaomi's and vivo's USB-install prompts refuse
-// on their own after 10-11.6 s; a 10 s base gave up just before either answered (K28 2.5 note).
-const INSTALL_BASE_MS = 30_000;
 
 // Android's package-name alphabet. The value reaches a device shell (K28).
 export function checkPackage(value: string): void {
@@ -40,19 +33,10 @@ async function firstActivity(id: string, pkg: string, category: string): Promise
   return lines[0];
 }
 
-export async function install(device: string | undefined, apk: string) {
-  const path = resolve(apk);
-  if (!path.toLowerCase().endsWith('.apk')) throw new KaragozError('INVALID_ARGS', `'${path}' is not an .apk file`);
-  // Missing, a path through a file, no permission: the caller fixes each the same way, so the cause is dropped.
-  const info = await stat(path).catch(() => undefined);
-  if (!info) throw new KaragozError('INVALID_ARGS', `no file at '${path}'`);
-  if (!info.isFile()) throw new KaragozError('INVALID_ARGS', `'${path}' is not a file`);
-  const id = await androidTarget(device, 'install');
-  const timeout = INSTALL_BASE_MS + Math.ceil(info.size / 1_000_000) * 1000;
+export async function install(id: string, path: string, timeout: number) {
   try {
     // --no-incremental: next to an .idsig adb installs incrementally through an `adb inc-server` that keeps stderr
     // open, and the call does not return until it exits. -r is implied since Android 9, kept for older devices (K28).
-    // One more second per started MB, as input.ts adds a gesture's duration (K19 note, K28).
     await adb(['-s', id, 'install', '-r', '--no-incremental', path], timeout);
   } catch (err) {
     if (!(err instanceof KaragozError)) throw err;
@@ -71,9 +55,7 @@ export async function install(device: string | undefined, apk: string) {
   return { device: id, path };
 }
 
-export async function launch(device: string | undefined, pkg: string) {
-  checkPackage(pkg);
-  const id = await androidTarget(device, 'launch');
+export async function launch(id: string, pkg: string) {
   // getLaunchIntentForPackage's rule: MAIN+INFO first, then MAIN+LAUNCHER, the first result (K28).
   for (const category of ['android.intent.category.INFO', 'android.intent.category.LAUNCHER']) {
     const component = await firstActivity(id, pkg, category);
@@ -94,18 +76,14 @@ export async function launch(device: string | undefined, pkg: string) {
   throw new KaragozError('APP_NOT_LAUNCHABLE', `package '${pkg}' has no launcher activity`);
 }
 
-export async function terminate(device: string | undefined, pkg: string) {
-  checkPackage(pkg);
-  const id = await androidTarget(device, 'terminate');
+export async function terminate(id: string, pkg: string) {
   await checkInstalled(id, pkg);
   const out = (await adb(['-s', id, 'exec-out', 'am', 'force-stop', pkg])).trim();
   if (out) throw new KaragozError('ADB_FAILED', out);
   return { device: id, package: pkg };
 }
 
-export async function uninstall(device: string | undefined, pkg: string) {
-  checkPackage(pkg);
-  const id = await androidTarget(device, 'uninstall');
+export async function uninstall(id: string, pkg: string) {
   await checkInstalled(id, pkg);
   // What adb uninstall runs. A missing package would say DELETE_FAILED_INTERNAL_ERROR, as a protected one does (K28).
   const out = (await adb(['-s', id, 'exec-out', 'cmd', 'package', 'uninstall', pkg])).trim();
