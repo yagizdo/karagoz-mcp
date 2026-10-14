@@ -4,7 +4,7 @@ Device automation for mobile apps. One tool for four targets: Android emulator, 
 
 Website: [karagozmcp.com](https://karagozmcp.com/?utm_source=github&utm_medium=readme)
 
-> **Status: early development.** Twelve commands work on the Android emulator, `devices`, `screenshot`, `ui-tree`, `tap`, `swipe`, `text`, `key`, `install`, `launch`, `terminate`, `uninstall` and `logs` also work on a physical Android device, `doctor` reports the `adb` they use, and the MCP server offers all thirteen to an AI agent. On an iOS simulator, `devices`, `screenshot` and `ui-tree` work; nothing else is written for iOS yet. Nothing is published to npm. See [Status](#status).
+> **Status: early development.** Twelve commands work on the Android emulator, `devices`, `screenshot`, `ui-tree`, `tap`, `swipe`, `text`, `key`, `install`, `launch`, `terminate`, `uninstall` and `logs` also work on a physical Android device, `doctor` reports the `adb` they use, and the MCP server offers all thirteen to an AI agent. On an iOS simulator, all of them work but `logs` and `doctor`. Nothing is published to npm. See [Status](#status).
 
 ## Contents
 
@@ -50,15 +50,15 @@ Website: [karagozmcp.com](https://karagozmcp.com/?utm_source=github&utm_medium=r
 | [`swipe`](#swipe) | done | done | done | planned |
 | [`text`](#text) | done | done | done | planned |
 | [`key`](#key) | done | done | done | planned |
-| [`install`](#install-1) | done | done | planned | planned |
-| [`launch`](#launch) | done | done | planned | planned |
-| [`terminate`](#terminate) | done | done | planned | planned |
-| [`uninstall`](#uninstall) | done | done | planned | planned |
+| [`install`](#install-1) | done | done | done | planned |
+| [`launch`](#launch) | done | done | done | planned |
+| [`terminate`](#terminate) | done | done | done | planned |
+| [`uninstall`](#uninstall) | done | done | done | planned |
 | [`logs`](#logs) | done | done | planned | planned |
 | [`doctor`](#doctor) | done | done | planned | planned |
 | [MCP server](#mcp-server) | done | done | | |
 
-"Done" means tested against a live emulator: macOS, an API 36 image (Android 16), 1080x2400 at 420 dpi. In the iOS simulator column it means the step's smoke passes on macOS: `smoke/3.1-devices-ios.sh` for `devices`, `smoke/3.2-screenshot-ios.sh` for `screenshot`, `smoke/3.3-ui-tree-ios.sh` for `ui-tree`, `smoke/3.4-input-ios.sh` for `tap`, `swipe`, `text` and `key`. `devices`, `screenshot` and `ui-tree` were tested on a physical Samsung phone (Android 14) over USB, and `tap`, `swipe`, `text`, `key`, `install`, `launch`, `terminate`, `uninstall` and `logs` on an Infinix phone (Android 12) over USB. No other command has been run on one yet. `doctor` touches no device; its row means tested on the same Mac with fake and real `adb` binaries. For the MCP server, done means `smoke/M-mcp.sh` passes against the live emulator and Claude Code and Codex called its tools; in the Android device column it means its tools returned results from a phone over USB. Windows and Linux have not been run.
+"Done" means tested against a live emulator: macOS, an API 36 image (Android 16), 1080x2400 at 420 dpi. In the iOS simulator column it means the step's smoke passes on macOS: `smoke/3.1-devices-ios.sh` for `devices`, `smoke/3.2-screenshot-ios.sh` for `screenshot`, `smoke/3.3-ui-tree-ios.sh` for `ui-tree`, `smoke/3.4-input-ios.sh` for `tap`, `swipe`, `text` and `key`, `smoke/3.5-app-lifecycle-ios.sh` for `install`, `launch`, `terminate` and `uninstall`. `devices`, `screenshot` and `ui-tree` were tested on a physical Samsung phone (Android 14) over USB, and `tap`, `swipe`, `text`, `key`, `install`, `launch`, `terminate`, `uninstall` and `logs` on an Infinix phone (Android 12) over USB. No other command has been run on one yet. `doctor` touches no device; its row means tested on the same Mac with fake and real `adb` binaries. For the MCP server, done means `smoke/M-mcp.sh` passes against the live emulator and Claude Code and Codex called its tools; in the Android device column it means its tools returned results from a phone over USB. Windows and Linux have not been run.
 
 ## Requirements
 
@@ -75,10 +75,10 @@ Website: [karagozmcp.com](https://karagozmcp.com/?utm_source=github&utm_medium=r
   {"error":{"code":"ADB_NOT_FOUND","message":"adb not found (tried ..., PATH). Install platform-tools (brew install --cask android-platform-tools, or download https://developer.android.com/tools/releases/platform-tools and add it to PATH) or set ANDROID_HOME to your Android SDK."}}
   ```
 
-- **A running emulator** (`emulator -avd <name>`), or for `devices`, `screenshot`, `ui-tree`, `tap`, `swipe`, `text`, `key`, `install`, `launch`, `terminate`, `uninstall` and `logs`, a phone with USB debugging on, in state `device`, or for `devices`, `screenshot`, `ui-tree`, `tap`, `swipe`, `text` and `key` on macOS, a booted iOS simulator (`open -a Simulator`; on Xcode 27, `xcrun simctl boot <name>`). karagoz installs nothing on a device by itself; `install` installs only the APK you pass it. A phone that adb cannot see is missing from the list: on Windows without the phone maker's USB driver, on a Mac laptop where "Allow accessory to connect" was refused, or in fastboot mode.
+- **A running emulator** (`emulator -avd <name>`), or for `devices`, `screenshot`, `ui-tree`, `tap`, `swipe`, `text`, `key`, `install`, `launch`, `terminate`, `uninstall` and `logs`, a phone with USB debugging on, in state `device`, or for `devices`, `screenshot`, `ui-tree`, `tap`, `swipe`, `text`, `key`, `install`, `launch`, `terminate` and `uninstall` on macOS, a booted iOS simulator (`open -a Simulator`; on Xcode 27, `xcrun simctl boot <name>`). karagoz installs nothing on a device by itself; `install` installs only the app you pass it. A phone that adb cannot see is missing from the list: on Windows without the phone maker's USB driver, on a Mac laptop where "Allow accessory to connect" was refused, or in fastboot mode.
 - For `smoke/1.5-app-lifecycle.sh`, and for `smoke/2.5-app-lifecycle-physical.sh` when a phone is attached: a JDK and Android SDK build-tools with one platform. Both smokes build their own test APK, `dev.karagoz.smoke`, and remove it at the end. See [Development](#development).
 - For `ui-tree` and `tap --text` / `--id`: the screen is on, and no other UiAutomation client is connected (Appium, Maestro, `uiautomator events`). For input to reach apps, the screen is also unlocked: on a lock screen `text` and `key` type into the PIN field, and a wrong PIN counts as a failed unlock attempt; with the screen off, taps are dropped and keys still arrive. Both exit `0`.
-- **Xcode, opened once**, for iOS simulators in `devices`, `screenshot`, `ui-tree`, `tap`, `swipe`, `text` and `key` (macOS only). karagoz runs CoreSimulator's own `simctl` (`/Library/Developer/PrivateFrameworks/CoreSimulator.framework/Versions/A/Resources/bin/simctl`), or `$DEVELOPER_DIR/usr/bin/simctl` when `DEVELOPER_DIR` is set. The Command Line Tools alone have no `simctl`, and no `swiftc` for the helper below. On macOS every command that targets a device runs it too, to list simulators ([Device selection](#device-selection)).
+- **Xcode, opened once**, for iOS simulators in `devices`, `screenshot`, `ui-tree`, `tap`, `swipe`, `text`, `key`, `install`, `launch`, `terminate` and `uninstall` (macOS only). karagoz runs CoreSimulator's own `simctl` (`/Library/Developer/PrivateFrameworks/CoreSimulator.framework/Versions/A/Resources/bin/simctl`), or `$DEVELOPER_DIR/usr/bin/simctl` when `DEVELOPER_DIR` is set. The Command Line Tools alone have no `simctl`, and no `swiftc` for the helper below. On macOS every command that targets a device runs it too, to list simulators ([Device selection](#device-selection)).
 - The first `ui-tree`, `tap`, `swipe`, `text` or `key` on a simulator compiles a small helper with the selected Xcode's `swiftc` (`DEVELOPER_DIR`, else the `xcode-select` one) into `~/Library/Caches/karagoz/`. That takes a few seconds, happens again after an Xcode update, and the directory is safe to delete.
 - On a simulator, `tap`, `swipe` and `key` need Xcode 27 or newer: they go to the simulator's own input service, which older Xcodes do not have, and return `NOT_SUPPORTED` there. `text` loads Xcode's XCUIAutomation frameworks and puts the simulator in automation mode for the length of the call, as a UI test does; a UI test running on the same simulator makes it fail with `AUTOMATION_BUSY`. When the call ends, the simulator turns its app accessibility setting off; `text` writes it back if it was on, so later `ui-tree` reads still see apps.
 
@@ -135,7 +135,7 @@ The value is matched against every listed id first, exactly: adb serials (`emula
 | No value, nothing connected | `NO_DEVICE` |
 | No value and two or more devices listed (in any state), or a name that matches two entries: the same AVD listed as `emulator-5554` and `127.0.0.1:5555`, or two phones of the same model | `DEVICE_AMBIGUOUS` |
 | The picked device is not in state `device` (`offline`, `unauthorized`, ...), or a simulator not `Booted` (`Booting`, `Shutting Down`) | `DEVICE_NOT_READY` |
-| The picked device is an iOS simulator and the command does not run there yet: `install`, `launch`, `terminate`, `uninstall` and `logs` | `NOT_SUPPORTED` |
+| The picked device is an iOS simulator and the command does not run there yet: `logs` | `NOT_SUPPORTED` |
 
 karagoz never guesses between devices. There is no config file.
 
@@ -166,7 +166,7 @@ Every command prints exactly one line of JSON on stdout and exits, except `mcp`,
 
   The same message goes to stderr as `karagoz: <message>`. It can span more than one line when it quotes adb or Node output; the stdout line never does.
 
-  `INSTALL_FAILED` and `UNINSTALL_FAILED` add a `reason` field with Android's own code for the failure:
+  `INSTALL_FAILED` and `UNINSTALL_FAILED` add a `reason` field with the platform's own code for the failure: Android's code, or on an iOS simulator simctl's `<domain>:<code>` (`IXUserPresentableErrorDomain:4`), or `SYSTEM_APP` when `uninstall` is asked to remove a simulator's system app:
 
   ```json
   {"error":{"code":"INSTALL_FAILED","message":"adb: failed to install /Users/me/app-v1.apk: Failure [INSTALL_FAILED_VERSION_DOWNGRADE: Downgrade detected: Update version code 1 is older than current 2]","reason":"INSTALL_FAILED_VERSION_DOWNGRADE"}}
@@ -197,19 +197,19 @@ The set is closed. Any failure without a code of its own is reported as `INTERNA
 | --- | --- | --- |
 | `NO_COMMAND` | No command given. The message lists the commands. | all |
 | `UNKNOWN_COMMAND` | The command name is not known. | all |
-| `INVALID_ARGS` | Missing, extra, malformed or unknown arguments, an unknown key name or one with no iOS key on a simulator (`BACK`), an APK path that is not an existing `.apk` file, a screenshot `--out` that does not end in `.png`, a malformed package name, a `--since` that is not Unix time in seconds, or a `--lines` outside 1 to 999999999. | all |
+| `INVALID_ARGS` | Missing, extra, malformed or unknown arguments, an unknown key name or one with no iOS key on a simulator (`BACK`), an app path that is not an existing `.apk` or `.ipa` file or `.app` directory, an app for the other platform, a screenshot `--out` that does not end in `.png`, a malformed package name, a `--since` that is not Unix time in seconds, or a `--lines` outside 1 to 999999999. | all |
 | `ADB_NOT_FOUND` | No `adb` found. See [Requirements](#requirements). | all that reach adb, except `doctor`, which reports these in its output; `devices` reports them in `errors` when the other platform could be listed |
 | `ADB_TIMEOUT` | adb did not answer in time: 10 s per call, 20 s for a `ui-tree` read, 10 s plus the duration for a long press or swipe, 30 s plus 1 s per started MB for `install`, 30 s for the start in `launch`. The message suggests `adb kill-server`; for `ui-tree` the cause is more often a stuck dump, and for `install` an install prompt on the phone, which the message names first. | all that reach adb, except `doctor`, which reports these in its output; `devices` reports them in `errors` when the other platform could be listed |
 | `ADB_FAILED` | adb exited with an error. The message is adb's stderr, or Node's error when adb printed nothing. For `launch`, `terminate` and `uninstall` it can also be the error the device command printed. For `logs`, logcat's own error text or output that is not whole log records. A device that disconnects mid-command ends here. | all that reach adb, except `doctor`, which reports these in its output; `devices` reports them in `errors` when the other platform could be listed |
-| `SIMCTL_NOT_FOUND` | No `simctl` found: Xcode is missing or was never opened, or `DEVELOPER_DIR` points somewhere without one. See [Requirements](#requirements). | `devices`, inside `errors`; `screenshot` on a simulator; on macOS, every command that targets a device (listing, see [Device selection](#device-selection)) |
-| `SIMCTL_TIMEOUT` | simctl did not answer in 30 s. | `devices`, inside `errors`; `screenshot` on a simulator; on macOS, every command that targets a device (listing, see [Device selection](#device-selection)) |
-| `SIMCTL_FAILED` | simctl exited with an error, or printed something that is not its device list. The message is simctl's stderr, or Node's error when simctl printed nothing; for unexpected output, `unexpected simctl output:` and its first line. | `devices`, inside `errors`; `screenshot` on a simulator; on macOS, every command that targets a device (listing, see [Device selection](#device-selection)) |
+| `SIMCTL_NOT_FOUND` | No `simctl` found: Xcode is missing or was never opened, or `DEVELOPER_DIR` points somewhere without one. See [Requirements](#requirements). | `devices`, inside `errors`; `screenshot`, `install`, `launch`, `terminate` and `uninstall` on a simulator; on macOS, every command that targets a device (listing, see [Device selection](#device-selection)) |
+| `SIMCTL_TIMEOUT` | simctl did not answer in 30 s. | `devices`, inside `errors`; `screenshot`, `install`, `launch`, `terminate` and `uninstall` on a simulator; on macOS, every command that targets a device (listing, see [Device selection](#device-selection)) |
+| `SIMCTL_FAILED` | simctl exited with an error, or printed something karagoz does not expect. The message is simctl's stderr, or Node's error when simctl printed nothing; for unexpected output, `unexpected simctl output:` and its first line. | `devices`, inside `errors`; `screenshot`, `install`, `launch`, `terminate` and `uninstall` on a simulator; on macOS, every command that targets a device (listing, see [Device selection](#device-selection)) |
 | `NO_DEVICE` | No device connected and none named. On macOS the message also names booting a simulator. | all but `devices` and `doctor` |
 | `DEVICE_NOT_FOUND` | The named device is not connected. | all but `devices` and `doctor` |
 | `DEVICE_AMBIGUOUS` | More than one device and none named, or a name that matches more than one. | all but `devices` and `doctor` |
 | `DEVICE_NOT_READY` | The device is `offline`, `unauthorized` or similar, or the simulator is `Booting` or `Shutting Down`, or its input service did not answer within 4 s (`tap`, `swipe`, `key` right after a boot). | all but `devices` and `doctor` |
 | `HELPER_FAILED` | The iOS helper cannot run on this Mac: no Xcode selected, no `swiftc` (the Command Line Tools are not enough), a failed compile, a crash, an Xcode that changed a private interface karagoz uses, or input the simulator did not take (no automation session, typing that failed, no answer within 30 s). The message says which and what to do. | `ui-tree`, `tap`, `swipe`, `text`, `key` on a simulator |
-| `NOT_SUPPORTED` | The device is an iOS simulator and the command does not run there yet: `'launch' does not run on iOS simulators yet`; or, with Xcode 26 or older, `'tap' on iOS simulators needs Xcode 27 or later`. Argument checks come first. | all but `devices`, `screenshot`, `ui-tree`, `text` and `doctor` |
+| `NOT_SUPPORTED` | The device is an iOS simulator and the command does not run there yet: `'logs' does not run on iOS simulators yet`; or, with Xcode 26 or older, `'tap' on iOS simulators needs Xcode 27 or later`. Argument checks come first. | `tap`, `swipe`, `key`, `logs` |
 | `CAPTURE_FAILED` | The screen could not be read: bad screenshot data, missing display info, a uiautomator failure, or on iOS a read the helper could not finish. The message says which. | `screenshot`, `ui-tree`, `tap --text/--id` |
 | `AUTOMATION_BUSY` | Another UiAutomation client holds the device; on a simulator, a UI test holds automation mode. | `ui-tree`, `tap --text/--id`; `text` on a simulator |
 | `WRITE_FAILED` | The screenshot file could not be written. | `screenshot` |
@@ -218,10 +218,10 @@ The set is closed. Any failure without a code of its own is reported as `INTERNA
 | `ELEMENT_AMBIGUOUS` | More than one node matches. | `tap --text/--id` |
 | `ELEMENT_COVERED` | The node's center is under the on-screen keyboard. | `tap --text/--id` |
 | `INPUT_BLOCKED` | The device does not let adb inject input; on Xiaomi, Redmi and POCO, "USB debugging (Security settings)" is off; on vivo and iQOO, "USB simulated click". | `tap`, `swipe`, `text`, `key` |
-| `INSTALL_FAILED` | Android refused the APK. `reason` is Android's code. | `install` |
-| `UNINSTALL_FAILED` | Android refused to remove the app. `reason` is Android's code. | `uninstall` |
+| `INSTALL_FAILED` | The device refused the app. `reason` is Android's code, or simctl's `<domain>:<code>` on a simulator. | `install` |
+| `UNINSTALL_FAILED` | The device refused to remove the app, or it is a simulator's system app (`reason` `SYSTEM_APP`). `reason` is Android's code, or simctl's `<domain>:<code>` on a simulator. | `uninstall` |
 | `APP_NOT_FOUND` | The package is not installed. | `launch`, `terminate`, `uninstall`, `logs` |
-| `APP_NOT_LAUNCHABLE` | The package is installed but has no activity a launcher can start. | `launch` |
+| `APP_NOT_LAUNCHABLE` | The package is installed but has no activity a launcher can start. | `launch` on Android |
 | `INTERNAL` | A bug in karagoz. Please report it with the message. | all |
 
 ## Commands
@@ -235,7 +235,7 @@ The set is closed. Any failure without a code of its own is reported as `INTERNA
 | [`swipe`](#swipe) | Swipe between two points |
 | [`text`](#text) | Type text into the focused field |
 | [`key`](#key) | Press a key |
-| [`install`](#install-1) | Install or replace an app from an APK |
+| [`install`](#install-1) | Install or replace an app |
 | [`launch`](#launch) | Start an app as its launcher icon does |
 | [`terminate`](#terminate) | Stop every process of an app |
 | [`uninstall`](#uninstall) | Remove an app |
@@ -664,11 +664,11 @@ Any other name fails before anything is sent:
 karagoz install <apk> [--device <id>]
 ```
 
-Installs an app from one APK file, or replaces the installed version of the same app.
+Installs an app from one APK file, or on an iOS simulator from a `.app` or `.ipa`, or replaces the installed version of the same app.
 
 | Option | Default | Meaning |
 | --- | --- | --- |
-| `<apk>` | | Path to an `.apk` file. A relative path is resolved against the current directory. |
+| `<apk>` | | Path to an `.apk` file, or for a simulator a `.app` directory or an `.ipa` file. A relative path is resolved against the current directory. |
 | `--device <id>` | see [Device selection](#device-selection) | |
 
 **Output**
@@ -677,11 +677,11 @@ Installs an app from one APK file, or replaces the installed version of the same
 {"device":"emulator-5554","path":"/Users/me/app/build/outputs/apk/debug/app-debug.apk"}
 ```
 
-`path` is the absolute path of the APK, as given (symlinks are not followed). The package name is not reported.
+`path` is the absolute path of the app, as given (symlinks are not followed). The package name is not reported.
 
 **Errors**
 
-- `INVALID_ARGS`: `'<path>' is not an .apk file`, `no file at '<path>'` or `'<path>' is not a file`. Checked before any device call.
+- `INVALID_ARGS`: `'<path>' is not an .apk, .app or .ipa file`, `no file at '<path>'`, `'<path>' is not a file`, or for a `.app` `'<path>' is not a directory`. Checked before any device call. Once the device is picked, and before anything is sent to it: `'<path>' is an Android app; <udid> is an iOS simulator` or `'<path>' is an iOS app; <serial> is an Android device`.
 - `INSTALL_FAILED`: Android refused the APK. The message is adb's, and `reason` is Android's code, as in the [example above](#output-and-errors). Codes seen on the emulator: `INSTALL_FAILED_VERSION_DOWNGRADE` (a lower `versionCode` than the installed app), `INSTALL_FAILED_UPDATE_INCOMPATIBLE` (signed with another key), `INSTALL_PARSE_FAILED_NOT_APK`, `INSTALL_FAILED_DEPRECATED_SDK_VERSION` (`targetSdkVersion` below 24 on Android 16).
 - On a phone, Android's code can come from the phone's own install check, with text that says someone cancelled when nobody did: `INSTALL_FAILED_VERIFICATION_FAILURE` (Play Protect refused the app), `INSTALL_FAILED_USER_RESTRICTED` with `Install canceled by user` (Xiaomi, Redmi, POCO: "Install via USB" is off, or its prompt ran out), `INSTALL_FAILED_ABORTED` with `User rejected permissions` (vivo, iQOO: the same).
 - A failure without an Android code, such as `Error: device is still booting.`, stays `ADB_FAILED`.
@@ -694,6 +694,18 @@ Installs an app from one APK file, or replaces the installed version of the same
 - One `.apk` only. Split APKs, `.apks` and `.aab` are not supported. There is no way to pass `-g` (grant runtime permissions), `-d` (allow a downgrade) or `-t`: an APK marked `testOnly`, which Android Studio's Run button can produce, fails with `INSTALL_FAILED_TEST_ONLY`.
 - Android installs the app for every user on the device that allows adb installs; Secure Folder, Dual Messenger and work profiles get it too.
 - An 8.5 KB APK took 0.7 s, a 100 MB one 2.5 to 3.4 s.
+
+#### On an iOS simulator
+
+Takes a `.app` bundle directory or an `.ipa`, built for the simulator, and runs `simctl install`.
+
+```json
+{"device":"2EC769C1-2EF2-47EB-A441-E6843968F039","path":"/Users/me/Build/Products/Debug-iphonesimulator/Probe.app"}
+```
+
+- A build for a physical iPhone is refused: `INSTALL_FAILED` with `reason` `IXUserPresentableErrorDomain:4` and simctl's message, which says the executable has no code for the simulator. Other refusals carry simctl's own `<domain>:<code>`, such as `IXErrorDomain:13` for a bundle without `Info.plist`. A failure without one stays `SIMCTL_FAILED`.
+- A lower `CFBundleVersion` than the installed app is not refused. The app's data is kept across reinstalls.
+- `SIMCTL_TIMEOUT` after 30 s plus 1 s for every started MB of the file; a `.app` gets 31 s.
 
 ### launch
 
@@ -723,7 +735,7 @@ Starts an app the way tapping its launcher icon does.
 
 **Errors**
 
-- `INVALID_ARGS`: `'<value>' is not a package name`. A package name is letters, digits and `_`, in dot-separated parts that each start with a letter. Checked before any device call.
+- `INVALID_ARGS`: `'<value>' is not a package name`. A package name is letters, digits and `_`, in dot-separated parts that each start with a letter. Checked before any device call, except for a value that is a valid iOS bundle id (`com.foo-bar`, `1abc.x`): that one is refused once an Android device is picked.
 - `APP_NOT_FOUND`: `package 'dev.karagoz.nope' is not installed on emulator-5554`.
 - `APP_NOT_LAUNCHABLE`: `package 'com.android.shell' has no launcher activity`.
 - `ADB_FAILED`: Android refused the start. The message is Android's `Error:` line, such as `Error: Activity class {com.example/com.example.Main} does not exist.`
@@ -735,6 +747,19 @@ Starts an app the way tapping its launcher icon does.
 - Exit `0` means Android started the activity, not that the app is up. An app that crashes at start, and a start with the screen off, also exit `0`. Read the [tree](#ui-tree) to check.
 - Nothing is restarted or cleared. For a fresh start, run [`terminate`](#terminate) first.
 - A cold start of a small app took 1.7 to 2.0 s.
+
+#### On an iOS simulator
+
+`<package>` is the bundle id, such as `com.apple.Preferences`: letters, digits, `-` and `_`, in dot-separated parts. Runs `simctl launch`.
+
+```json
+{"device":"2EC769C1-2EF2-47EB-A441-E6843968F039","package":"dev.karagoz.probe","activity":null}
+```
+
+- It returns when the app's process starts, before the app is in front: a `ui-tree` read right away can still show the previous screen. The app was in front 0.3 to 1.5 s later.
+- `activity` is always `null`.
+- An app that crashes at start also exits `0`. A running app comes to the front as it is.
+- `APP_NOT_FOUND`: `app 'dev.karagoz.nope' is not installed on <udid>`. Any other refusal is `SIMCTL_FAILED` with simctl's message. `APP_NOT_LAUNCHABLE` does not come from a simulator: a bundle without an executable is refused at install.
 
 ### terminate
 
@@ -770,6 +795,17 @@ An app that is installed but not running gives the same output.
 - The app stops in every user on the device, Secure Folder and work profiles included.
 - Took 0.8 to 1.3 s.
 
+#### On an iOS simulator
+
+Runs `simctl terminate`. System apps are stopped like any other.
+
+```json
+{"device":"2EC769C1-2EF2-47EB-A441-E6843968F039","package":"com.apple.Preferences"}
+```
+
+- Stopping the app in front shows the home screen's first page, not the app that was open before.
+- An app that is installed but not running gives the same output. `APP_NOT_FOUND` when it is not installed: simctl answers both the same way, so karagoz checks first.
+
 ### uninstall
 
 ```
@@ -802,6 +838,23 @@ Removes an app and its data.
 - The app's data is always removed; `adb uninstall -k` (keep data) is not offered.
 - The app and its data go from every user on the device, Secure Folder and work profiles included. The installed check looks at the main user only, so an app installed only in a profile gives `APP_NOT_FOUND`.
 - Took 0.6 to 0.8 s.
+
+#### On an iOS simulator
+
+Runs `simctl uninstall`.
+
+```json
+{"device":"2EC769C1-2EF2-47EB-A441-E6843968F039","package":"dev.karagoz.probe"}
+```
+
+- A system app is refused before anything is sent, since a simulator can lose it until it is erased:
+
+  ```json
+  {"error":{"code":"UNINSTALL_FAILED","message":"'com.apple.Preferences' is a system app; a simulator does not remove system apps","reason":"SYSTEM_APP"}}
+  ```
+
+- A running app is killed first; the home screen then shows the page its icon was on.
+- `APP_NOT_FOUND` when it is not installed: simctl reports success for a missing app, so karagoz checks first. A refusal from simctl is `UNINSTALL_FAILED` with its `<domain>:<code>` as `reason`.
 
 ### logs
 
@@ -1065,7 +1118,7 @@ npm run typecheck
 npm run lint        # oxlint and the Prettier check; npm run format fixes formatting
 ```
 
-Each step has one smoke script in `smoke/`. Each builds first and needs a running emulator, `smoke/M-mcp.sh` included, except `smoke/0b-version.sh`, `smoke/1.7-doctor.sh`, `smoke/2.2-screenshot-physical.sh`, `smoke/2.3-ui-tree-physical.sh`, `smoke/2.4-input-physical.sh`, `smoke/2.5-app-lifecycle-physical.sh`, `smoke/2.6-logs-physical.sh`, `smoke/3.1-devices-ios.sh`, `smoke/3.2-screenshot-ios.sh` and `smoke/3.3-ui-tree-ios.sh`: 1.7 uses fake `adb` scripts only and never runs the real adb, 3.1 uses fake `adb` and `simctl` scripts and reads the real simulator list, 3.2 uses fake `adb`, `simctl` and `devicectl` scripts and captures a booted simulator when one runs (else its real step prints `SKIP`), 3.3 adds a fake `swiftc` and reads a booted simulator's tree the same way, all three macOS only (they print `SKIP` elsewhere), and 2.2, 2.3, 2.4, 2.5 and 2.6 need a phone only for their phone step, which they skip when none is listed. The header of each script lists its preconditions:
+Each step has one smoke script in `smoke/`. Each builds first and needs a running emulator, `smoke/M-mcp.sh` included, except `smoke/0b-version.sh`, `smoke/1.7-doctor.sh`, `smoke/2.2-screenshot-physical.sh`, `smoke/2.3-ui-tree-physical.sh`, `smoke/2.4-input-physical.sh`, `smoke/2.5-app-lifecycle-physical.sh`, `smoke/2.6-logs-physical.sh`, `smoke/3.1-devices-ios.sh`, `smoke/3.2-screenshot-ios.sh`, `smoke/3.3-ui-tree-ios.sh`, `smoke/3.4-input-ios.sh` and `smoke/3.5-app-lifecycle-ios.sh`: 1.7 uses fake `adb` scripts only and never runs the real adb, 3.1 uses fake `adb` and `simctl` scripts and reads the real simulator list, 3.2 uses fake `adb`, `simctl` and `devicectl` scripts and captures a booted simulator when one runs (else its real step prints `SKIP`), 3.3 adds a fake `swiftc` and reads a booted simulator's tree the same way, 3.4 and 3.5 build a test app from `smoke/fixtures/input-ios/` and drive, install and remove it as `dev.karagoz.probe` on a booted simulator, all five macOS only (they print `SKIP` elsewhere), and 2.2, 2.3, 2.4, 2.5 and 2.6 need a phone only for their phone step, which they skip when none is listed. The header of each script lists its preconditions:
 
 ```sh
 sh smoke/1.4-input.sh

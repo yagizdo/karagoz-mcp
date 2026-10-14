@@ -114,12 +114,12 @@ const TOOLS: Tool[] = [
   },
   {
     name: 'install',
-    title: 'Install an APK',
+    title: 'Install an app',
     description:
-      'Install an APK, or replace the installed version of the same app. Times out after 30 s plus 1 s per MB.',
+      'Install an .apk, or a .app or .ipa on an iOS simulator, or replace the installed version of the same app. Times out after 30 s plus 1 s per MB.',
     inputSchema: {
       type: 'object',
-      properties: { apk: { type: 'string', description: 'Absolute path to the .apk file.' }, device },
+      properties: { apk: { type: 'string', description: 'Absolute path to the .apk, .app or .ipa.' }, device },
       required: ['apk'],
     },
     annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: false },
@@ -127,7 +127,7 @@ const TOOLS: Tool[] = [
   {
     name: 'launch',
     title: 'Launch an app',
-    description: 'Start an app as its launcher icon does.',
+    description: 'Start an app as its launcher icon does. On iOS it returns before the app is in front.',
     inputSchema: { type: 'object', properties: { package: { type: 'string' }, device }, required: ['package'] },
     annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
   },
