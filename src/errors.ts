@@ -33,7 +33,9 @@ export class KaragozError extends Error {
   constructor(
     readonly code: ErrorCode,
     message: string,
-    // Android's own code for INSTALL_FAILED and UNINSTALL_FAILED, such as INSTALL_FAILED_VERSION_DOWNGRADE (K5, K28).
+    // The platform's own code for INSTALL_FAILED and UNINSTALL_FAILED: Android's, such as
+    // INSTALL_FAILED_VERSION_DOWNGRADE, simctl's <domain>:<code>, or SYSTEM_APP for a simulator's system app (K5, K28,
+    // K36).
     readonly reason?: string,
   ) {
     super(message);

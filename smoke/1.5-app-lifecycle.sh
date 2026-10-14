@@ -49,7 +49,7 @@ refuses() {
 : > "$tmp/x.txt"
 mkdir "$tmp/dir.apk"
 refuses INVALID_ARGS "'install' needs <apk>" install
-refuses INVALID_ARGS "'$tmp/x.txt' is not an .apk file" install "$tmp/x.txt"
+refuses INVALID_ARGS "'$tmp/x.txt' is not an .apk, .app or .ipa file" install "$tmp/x.txt"
 refuses INVALID_ARGS "no file at '$tmp/nope.apk'" install "$tmp/nope.apk"
 refuses INVALID_ARGS "'$tmp/dir.apk' is not a file" install "$tmp/dir.apk"
 for verb in launch terminate uninstall; do
