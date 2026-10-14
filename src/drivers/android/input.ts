@@ -1,7 +1,6 @@
 import { KaragozError } from '../../errors.js';
 import { cancellation } from '../../cancellation.js';
 import { adb, TIMEOUT_MS } from './adb.js';
-import { androidTarget } from '../../devices.js';
 import { readTree, type UiNode } from './ui-tree.js';
 
 // KeyEvent.java at android17-release (frameworks/base 94b4c163b7dfe5ce3607f7bb8456f9573f7de57d): the 341 KEYCODE_ names
@@ -51,7 +50,7 @@ async function send(id: string, args: string[], timeout?: number): Promise<void>
 
 // Digits are always a code, as in Android's keyCodeFromString: 7 is KEYCODE_0, the 7 key is KEYCODE_7. 0 is refused:
 // it is KEYCODE_UNKNOWN, which input sends for any name it does not know.
-export async function key(device: string | undefined, value: string) {
+export function keyCode(value: string): { name: string; code: number } {
   const code = /^\d+$/.test(value) ? Number(value) : KEYS.indexOf(value.toUpperCase().replace(/^KEYCODE_/, ''));
   const name = code >= 1 ? KEYS[code] : undefined;
   if (name === undefined) {
@@ -60,7 +59,10 @@ export async function key(device: string | undefined, value: string) {
       `unknown key '${value}'; use a KeyEvent name such as HOME, BACK or ENTER, or a code from 1 to ${KEYS.length - 1}`,
     );
   }
-  const id = await androidTarget(device, 'key');
+  return { name, code };
+}
+
+export async function key(id: string, { name, code }: { name: string; code: number }) {
   // The code, not the name: the device matches names case-sensitively.
   await send(id, ['keyevent', String(code)]);
   return { device: id, key: `KEYCODE_${name}`, code };
@@ -177,8 +179,7 @@ async function locate(id: string, selector: Selector, timeout: number) {
   }
 }
 
-export async function tap(device: string | undefined, target: Target, duration: number | undefined, timeout: number) {
-  const id = await androidTarget(device, 'tap');
+export async function tap(id: string, target: Target, duration: number | undefined, timeout: number) {
   if (target.kind === 'point') return press(id, target.x, target.y, duration);
   const { node, x, y } = await locate(id, target, timeout);
   const element = { ...node };
@@ -186,20 +187,12 @@ export async function tap(device: string | undefined, target: Target, duration: 
   return { ...(await press(id, x, y, duration)), element };
 }
 
-export async function swipe(
-  device: string | undefined,
-  x1: number,
-  y1: number,
-  x2: number,
-  y2: number,
-  duration = SWIPE_MS,
-) {
-  const id = await androidTarget(device, 'swipe');
+export async function swipe(id: string, x1: number, y1: number, x2: number, y2: number, duration = SWIPE_MS) {
   await send(id, ['swipe', ...[x1, y1, x2, y2, duration].map(String)], TIMEOUT_MS + duration);
   return { device: id, x1, y1, x2, y2, duration };
 }
 
-export async function text(device: string | undefined, value: string) {
+export function typable(value: string): void {
   // for…of walks code points: an emoji is one U+ value, not two surrogates.
   const unsupported = new Set<string>();
   for (const char of value) if (!TYPABLE.test(char)) unsupported.add(char);
@@ -213,7 +206,9 @@ export async function text(device: string | undefined, value: string) {
       `cannot type ${named.join(', ')}: Android's input text types only printable ASCII, newline, tab, ç, Ç and ß; nothing was typed`,
     );
   }
-  const id = await androidTarget(device, 'text');
+}
+
+export async function text(id: string, value: string) {
   let typed = 0;
   // input turns every %s into a space within one call, so a part ends at each % followed by s.
   for (const part of value.split(/(?<=%)(?=s)/)) {

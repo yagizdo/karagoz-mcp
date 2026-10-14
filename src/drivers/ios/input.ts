@@ -1,0 +1,292 @@
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
+import { cancellation } from '../../cancellation.js';
+import { KaragozError } from '../../errors.js';
+import { rotation } from './devicectl.js';
+import { simctl } from './simctl.js';
+import { CACHE_HINT, helper, readTree, RUN_TIMEOUT_MS, xcode, type IosNode } from './ui-tree.js';
+
+const run = promisify(execFile);
+
+// Android's swipe default, so both platforms state the same duration (K25, K35).
+const SWIPE_MS = 300;
+
+// Characters per second for typeText: 300 characters came out exact 3 of 3 times at 60 (6.0 s a call) and at 120
+// (3.5 s) (K35).
+const TYPE_SPEED = 120;
+
+// The XCUI session turns app accessibility off when it ends, whatever it was, and apps opened after that give an empty
+// tree until the simulator restarts. text writes back a 1 it read before (user decision, K35 3.4 build).
+const APP_AX = ['com.apple.Accessibility', 'ApplicationAccessibilityEnabled'];
+
+// Invisible direction marks, Unicode's Bidi_Control set, ignored on both sides as on Android (K26). A copy of the
+// Android driver's, so this driver imports nothing from it.
+const BIDI = /\p{Bidi_Control}/gu;
+
+type Selector = { kind: 'text'; label: string } | { kind: 'id'; id: string };
+
+// K25 names to the HID usages dtuhidd takes (K35): hardware buttons on the consumer page (12), the rest on the
+// keyboard page (7). A name in neither has no iOS key.
+const BUTTONS = new Map([
+  ['HOME', 64],
+  ['POWER', 48],
+  ['VOLUME_UP', 233],
+  ['VOLUME_DOWN', 234],
+]);
+const KEYBOARD = new Map<string, number>([
+  ...Array.from('ABCDEFGHIJKLMNOPQRSTUVWXYZ', (name, i): [string, number] => [name, 4 + i]),
+  ...Array.from('1234567890', (name, i): [string, number] => [name, 30 + i]),
+  ['ENTER', 40],
+  ['ESCAPE', 41],
+  ['DEL', 42],
+  ['TAB', 43],
+  ['SPACE', 44],
+  ['MINUS', 45],
+  ['EQUALS', 46],
+  ['LEFT_BRACKET', 47],
+  ['RIGHT_BRACKET', 48],
+  ['BACKSLASH', 49],
+  ['SEMICOLON', 51],
+  ['APOSTROPHE', 52],
+  ['GRAVE', 53],
+  ['COMMA', 54],
+  ['PERIOD', 55],
+  ['SLASH', 56],
+  ['CAPS_LOCK', 57],
+  ...Array.from({ length: 12 }, (_, i): [string, number] => [`F${i + 1}`, 58 + i]),
+  ['MOVE_HOME', 74],
+  ['PAGE_UP', 75],
+  ['FORWARD_DEL', 76],
+  ['MOVE_END', 77],
+  ['PAGE_DOWN', 78],
+  ['DPAD_RIGHT', 79],
+  ['DPAD_LEFT', 80],
+  ['DPAD_DOWN', 81],
+  ['DPAD_UP', 82],
+  ...Array.from({ length: 12 }, (_, i): [string, number] => [`F${i + 13}`, 104 + i]),
+  ['CTRL_LEFT', 224],
+  ['SHIFT_LEFT', 225],
+  ['ALT_LEFT', 226],
+  ['META_LEFT', 227],
+  ['CTRL_RIGHT', 228],
+  ['SHIFT_RIGHT', 229],
+  ['ALT_RIGHT', 230],
+  ['META_RIGHT', 231],
+]);
+
+// The portrait panel in the tree's pixels, the size dtuhidd's ratios divide (K35).
+async function panelSide(udid: string, side: 'WIDTH' | 'HEIGHT'): Promise<number> {
+  const text = (await simctl(['getenv', udid, `SIMULATOR_MAINSCREEN_${side}`])).trim();
+  const value = Number(text);
+  if (!Number.isFinite(value) || value <= 0) {
+    throw new KaragozError(
+      'SIMCTL_FAILED',
+      `cannot read the panel size from 'simctl getenv' (got '${text.slice(0, 100)}')`,
+    );
+  }
+  return value;
+}
+
+// x, y are the tree's pixels in the interface orientation; dtuhidd takes 0-1 ratios of the unrotated portrait panel.
+// A null rotation (Xcode 26, or devicectl failing) counts as portrait (K35).
+async function panel(udid: string, rotated?: number | null) {
+  const [turn, width, height] = await Promise.all([
+    rotated === undefined ? rotation(udid) : rotated,
+    panelSide(udid, 'WIDTH'),
+    panelSide(udid, 'HEIGHT'),
+  ]);
+  return (x: number, y: number) => {
+    const [px, py] =
+      turn === 90 ? [width - y, x] : turn === 180 ? [width - x, height - y] : turn === 270 ? [y, height - x] : [x, y];
+    return [px / width, py / height].map((ratio) => String(Math.round(ratio * 1e6) / 1e6));
+  };
+}
+
+// One helper run per command; exit codes and stderr per the contract at the top of ax-helper.swift. The compile runs
+// first, so HELPER_FAILED for a missing Xcode wins over the simulator's answer.
+async function send(command: string, udid: string, args: string[], extraMs = 0): Promise<void> {
+  const dev = await xcode();
+  const bin = await helper(dev);
+  const signal = cancellation.getStore();
+  signal?.throwIfAborted();
+  const timeout = RUN_TIMEOUT_MS + extraMs;
+  try {
+    await run(bin, [dev, udid, ...args], { timeout, ...(signal && { signal }) });
+  } catch (err) {
+    // The SDK sends no response for a cancelled call, so the abort passes through (K31).
+    if (signal?.aborted) throw err;
+    if (!(err instanceof Error)) throw err;
+    const stderr = 'stderr' in err && typeof err.stderr === 'string' ? err.stderr.trim().slice(0, 300) : '';
+    const code = 'code' in err ? err.code : undefined;
+    if ('killed' in err && err.killed) {
+      throw new KaragozError('HELPER_FAILED', `the simulator did not answer within ${timeout / 1000} s`);
+    }
+    if (code === 2) {
+      throw new KaragozError(
+        'HELPER_FAILED',
+        `${stderr}; this Xcode changed a private interface karagoz uses; update karagoz`,
+      );
+    }
+    // dtuhidd arrived with CoreSimulator 1155.4 (Xcode 27); the Xcode 26 route waits for its own round (K35).
+    if (code === 4) throw new KaragozError('NOT_SUPPORTED', `'${command}' on iOS simulators needs Xcode 27 or later`);
+    if (code === 6)
+      throw new KaragozError('AUTOMATION_BUSY', stderr || 'another test holds automation on this simulator');
+    if (code === 5) {
+      throw new KaragozError(
+        'DEVICE_NOT_READY',
+        `the simulator's input service did not answer within 4 s; it may still be starting after boot (${stderr})`,
+      );
+    }
+    if (typeof code === 'number')
+      throw new KaragozError('HELPER_FAILED', stderr || `the helper exited with code ${code}`);
+    if ('signal' in err && typeof err.signal === 'string') {
+      throw new KaragozError('HELPER_FAILED', `the helper crashed (${err.signal})`);
+    }
+    if (code === 'EACCES' || code === 'ENOENT') {
+      throw new KaragozError('HELPER_FAILED', `cannot run ${bin} (${code}); ${CACHE_HINT}`);
+    }
+    throw new KaragozError('HELPER_FAILED', stderr || err.message.slice(0, 300));
+  }
+}
+
+// rotated comes from a tree read the caller already made; a plain tap reads it itself.
+export async function tap(udid: string, x: number, y: number, duration: number | undefined, rotated?: number | null) {
+  const ratio = await panel(udid, rotated);
+  await send('tap', udid, ['tap', ...ratio(x, y), String(duration ?? 0)], duration);
+  return duration === undefined ? { device: udid, x, y } : { device: udid, x, y, duration };
+}
+
+export async function swipe(udid: string, x1: number, y1: number, x2: number, y2: number, duration = SWIPE_MS) {
+  const ratio = await panel(udid);
+  await send('swipe', udid, ['swipe', ...ratio(x1, y1), ...ratio(x2, y2), String(duration)], duration);
+  return { device: udid, x1, y1, x2, y2, duration };
+}
+
+// --text is the whole label or value, case-sensitive; --id the whole identifier, iOS has no :id/ prefix (K34, K35).
+function matches(node: IosNode, selector: Selector): boolean {
+  if (selector.kind === 'id') return node.identifier === selector.id;
+  const label = selector.label.replaceAll(BIDI, '');
+  return [node.label, node.value].some((value) => value !== undefined && value.replaceAll(BIDI, '') === label);
+}
+
+// A node with no area has nothing to tap; a matching parent and its matching child both count (K26).
+function collect(node: IosNode, selector: Selector, found: IosNode[]): IosNode[] {
+  const [l = 0, t = 0, r = 0, b = 0] = node.bounds;
+  if (r > l && b > t && matches(node, selector)) found.push(node);
+  for (const child of node.children ?? []) collect(child, selector, found);
+  return found;
+}
+
+// Only "no match" reads again; a failed read or an ambiguous match ends it. --timeout waits for the element to appear
+// and never repeats the tap (K26, K11 note).
+// ponytail: no keyboard-cover check, so ELEMENT_COVERED stays Android-only: this simulator never showed a software
+// keyboard (its hardware keyboard state), so where its keys sit was never measured (K35).
+export async function tapElement(udid: string, selector: Selector, duration: number | undefined, timeout: number) {
+  const what = selector.kind === 'text' ? `label or value '${selector.label}'` : `identifier '${selector.id}'`;
+  const start = performance.now();
+  for (let reads = 1; ; reads++) {
+    // Without it a cancelled wait keeps reading for its whole timeout (K31).
+    cancellation.getStore()?.throwIfAborted();
+    const { rotation: rotated, root } = await readTree(udid);
+    const found = collect(root, selector, []);
+    if (found.length > 1) {
+      const shown = found.slice(0, 5).map((node) => `${node.role} [${node.bounds.join(',')}]`);
+      const more = found.length > shown.length ? `, and ${found.length - shown.length} more` : '';
+      throw new KaragozError(
+        'ELEMENT_AMBIGUOUS',
+        `${found.length} nodes match ${what}: ${shown.join(', ')}${more}; tap one by its coordinates`,
+      );
+    }
+    const [match] = found;
+    if (match) {
+      const [l = 0, t = 0, r = 0, b = 0] = match.bounds;
+      const element = { ...match };
+      delete element.children;
+      return { ...(await tap(udid, (l + r) / 2, (t + b) / 2, duration, rotated)), element };
+    }
+    const elapsed = performance.now() - start;
+    if (elapsed >= timeout) {
+      throw new KaragozError(
+        'ELEMENT_NOT_FOUND',
+        `no node with ${what} in the frontmost app (${reads} read${reads === 1 ? '' : 's'} in ${(elapsed / 1000).toFixed(1)} s)`,
+      );
+    }
+  }
+}
+
+async function appAccessibility(udid: string): Promise<boolean> {
+  try {
+    return (await simctl(['spawn', udid, 'defaults', 'read', ...APP_AX])).trim() === '1';
+  } catch (err) {
+    // A missing key fails the read and means off: there is nothing to write back.
+    if (!(err instanceof KaragozError)) throw err;
+    return false;
+  }
+}
+
+// Outside the call's cancellation: a cancelled text must still leave app accessibility as it found it (K31).
+const restore = (udid: string) =>
+  cancellation.exit(() => simctl(['spawn', udid, 'defaults', 'write', ...APP_AX, '-bool', 'true']));
+
+// Each simulator's last text. testmanagerd turns app accessibility off when a session ends and the server runs calls
+// in parallel, so a text that read the setting during another's write-back would leave it off: texts of one simulator
+// wait in arrival order (K35). Another process typing at the same time still races.
+const turns = new Map<string, Promise<void>>();
+
+// Typed into whatever has focus; with none, nothing is typed and the call still succeeds, as on Android (K35).
+export async function text(udid: string, value: string) {
+  const control = new Set(Array.from(value).filter((char) => /\p{Cc}/u.test(char) && char !== '\n' && char !== '\t'));
+  if (control.size) {
+    const named = Array.from(
+      control,
+      (char) => `'U+${(char.codePointAt(0) ?? 0).toString(16).toUpperCase().padStart(4, '0')}'`,
+    );
+    throw new KaragozError(
+      'TEXT_UNSUPPORTED',
+      `cannot type ${named.join(', ')} on an iOS simulator: control characters other than newline and tab; nothing was typed`,
+    );
+  }
+  const signal = cancellation.getStore();
+  const turn = (turns.get(udid) ?? Promise.resolve()).then(() => {
+    signal?.throwIfAborted();
+    return typeText(udid, value);
+  });
+  const tail = turn.then(
+    () => undefined,
+    () => undefined,
+  );
+  turns.set(udid, tail);
+  void tail.then(() => {
+    if (turns.get(udid) === tail) turns.delete(udid);
+  });
+  return turn;
+}
+
+async function typeText(udid: string, value: string) {
+  const wasOn = await appAccessibility(udid);
+  const typing = Math.ceil(Array.from(value).length / TYPE_SPEED) * 1000;
+  try {
+    await send('text', udid, ['type', String(TYPE_SPEED), value], typing);
+  } catch (err) {
+    // The typing error says what went wrong; a failed write-back on top of it would only hide it.
+    if (wasOn) await restore(udid).catch(() => undefined);
+    throw err;
+  }
+  if (wasOn) await restore(udid);
+  return { device: udid, text: value };
+}
+
+// The name check runs before anything compiles: an iOS-less key is wrong for this target and stays wrong (K35).
+export async function key(udid: string, name: string, code: number) {
+  const button = BUTTONS.get(name);
+  const usage = KEYBOARD.get(name);
+  if (button === undefined && usage === undefined) {
+    const hint = name === 'BACK' ? "; tap the app's back button or swipe from the left edge" : '';
+    throw new KaragozError(
+      'INVALID_ARGS',
+      `'${name}' has no iOS simulator key; iOS takes HOME, POWER, VOLUME_UP, VOLUME_DOWN and keyboard keys (letters, digits, ENTER, DEL, TAB, ESCAPE, DPAD_*, F1-F24)${hint}`,
+    );
+  }
+  await send('key', udid, button === undefined ? ['key', String(usage)] : ['button', '12', String(button)]);
+  return { device: udid, key: `KEYCODE_${name}`, code };
+}
