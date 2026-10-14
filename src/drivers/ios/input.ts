@@ -228,6 +228,11 @@ async function appAccessibility(udid: string): Promise<boolean> {
 const restore = (udid: string) =>
   cancellation.exit(() => simctl(['spawn', udid, 'defaults', 'write', ...APP_AX, '-bool', 'true']));
 
+// Each simulator's last text. testmanagerd turns app accessibility off when a session ends and the server runs calls
+// in parallel, so a text that read the setting during another's write-back would leave it off: texts of one simulator
+// wait in arrival order (K35). Another process typing at the same time still races.
+const turns = new Map<string, Promise<void>>();
+
 // Typed into whatever has focus; with none, nothing is typed and the call still succeeds, as on Android (K35).
 export async function text(udid: string, value: string) {
   const control = new Set(Array.from(value).filter((char) => /\p{Cc}/u.test(char) && char !== '\n' && char !== '\t'));
@@ -241,6 +246,23 @@ export async function text(udid: string, value: string) {
       `cannot type ${named.join(', ')} on an iOS simulator: control characters other than newline and tab; nothing was typed`,
     );
   }
+  const signal = cancellation.getStore();
+  const turn = (turns.get(udid) ?? Promise.resolve()).then(() => {
+    signal?.throwIfAborted();
+    return typeText(udid, value);
+  });
+  const tail = turn.then(
+    () => undefined,
+    () => undefined,
+  );
+  turns.set(udid, tail);
+  void tail.then(() => {
+    if (turns.get(udid) === tail) turns.delete(udid);
+  });
+  return turn;
+}
+
+async function typeText(udid: string, value: string) {
   const wasOn = await appAccessibility(udid);
   const typing = Math.ceil(Array.from(value).length / TYPE_SPEED) * 1000;
   try {

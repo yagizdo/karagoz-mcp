@@ -2,9 +2,9 @@
 # Step 3.4: on macOS tap, swipe, key and the element tap (tap --text, --id) reach a booted iOS simulator through the
 # helper's DTUHID modes and text through its XCUIAutomation mode, in K25's and K26's shapes, with the tree's pixels
 # turned into the unrotated portrait panel for every rotation (K35). Fakes prove the helper's argv, each helper exit's
-# K5 code, the timeout, DEVICE_NOT_READY and the iOS-less key before any compile, text's character check and that it
-# puts app accessibility back, and element matching on a fake tree; the real part drives a test app and reads every
-# effect back with ui-tree.
+# K5 code, the timeout, DEVICE_NOT_READY and the iOS-less key before any compile, text's character check, that it
+# puts app accessibility back and that two texts on one server run in turn, and element matching on a fake tree; the
+# real part drives a test app and reads every effect back with ui-tree.
 # Precondition: macOS with Xcode. A booted simulator on its home screen is used when one is running and no phone is
 # attached, else the real part prints SKIP. It builds smoke/fixtures/input-ios, installs, drives and uninstalls it,
 # presses HOME and checks that the home screen is on the page it recorded and the app is gone. Fake swiftc, simctl and devicectl come through
@@ -100,8 +100,8 @@ case "\$*" in
   "list devices --json") /bin/cat "$fake/list.json" ;;
   "getenv A1 SIMULATOR_MAINSCREEN_WIDTH") echo 1206 ;;
   "getenv A1 SIMULATOR_MAINSCREEN_HEIGHT") echo 2622 ;;
-  "spawn A1 defaults read com.apple.Accessibility ApplicationAccessibilityEnabled") /bin/cat "$fake/appax" ;;
-  "spawn A1 defaults write com.apple.Accessibility ApplicationAccessibilityEnabled -bool true") echo write >> "$fake/appax.log" ;;
+  "spawn A1 defaults read com.apple.Accessibility ApplicationAccessibilityEnabled") echo read >> "$fake/seq"; /bin/cat "$fake/appax" ;;
+  "spawn A1 defaults write com.apple.Accessibility ApplicationAccessibilityEnabled -bool true") echo write >> "$fake/appax.log"; echo write >> "$fake/seq" ;;
   *) exit 1 ;;
 esac
 FAKE
@@ -261,6 +261,32 @@ logs "echo 'ax: synthesis failed' >&2; exit 7"
 call text ok --device A1
 refuses HELPER_FAILED "text exit 7"
 says "text exit 7" "synthesis failed"
+# Two texts sent together to one MCP server run one after the other: a second one reading the setting while the first
+# session's end has turned it off would skip its own write-back and leave it off.
+rm -f "$fake/seq"
+helper "echo start >> '$fake/seq'; /bin/sleep 0.3; echo end >> '$fake/seq'"
+errors=$(env -i HOME="$tmp/home" PATH=/usr/bin:/bin TMPDIR="$tmp" ANDROID_HOME="$tmp/sdk" DEVELOPER_DIR="$tmp/dev" \
+  "$node_bin" -e '
+const server = require("node:child_process").spawn(process.execPath, ["dist/cli.js", "mcp"]);
+const send = (m) => server.stdin.write(JSON.stringify({ jsonrpc: "2.0", ...m }) + "\n");
+const calls = new Set([2, 3]);
+require("node:readline").createInterface({ input: server.stdout }).on("line", (line) => {
+  const { id, result } = JSON.parse(line);
+  if (id === 1) {
+    send({ method: "notifications/initialized" });
+    for (const n of calls) send({ id: n, method: "tools/call", params: { name: "text", arguments: { text: "ok", device: "A1" } } });
+    return;
+  }
+  if (result?.isError) console.log(result.content[0].text);
+  calls.delete(id);
+  if (!calls.size) server.kill();
+});
+send({ id: 1, method: "initialize", params: { protocolVersion: "2025-11-25", capabilities: {}, clientInfo: { name: "smoke", version: "0" } } });
+setTimeout(() => { console.log("no answer within 10 s"); process.exit(1); }, 10_000).unref();
+' 2>/dev/null) || fail "two texts at once: $errors"
+[ -z "$errors" ] || fail "two texts at once: $errors"
+[ "$(cat "$fake/seq")" = "$(printf 'read\nstart\nend\nwrite\nread\nstart\nend\nwrite')" ] \
+  || fail "two texts at once overlapped: $(tr '\n' ' ' < "$fake/seq")"
 
 # 10. Element tap: the matching node's bounds center, tapped through the same transform; --text is label or value with
 # direction marks ignored, --id is the identifier; zero-area nodes never match (K26 on iOS).

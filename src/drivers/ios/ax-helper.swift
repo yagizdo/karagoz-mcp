@@ -300,6 +300,8 @@ func xcui(_ dev: String, _ device: AnyObject, _ input: [String]) -> Never {
   signal(SIGTERM, SIG_IGN)
   let terminate = DispatchSource.makeSignalSource(signal: SIGTERM, queue: DispatchQueue(label: "ax.term"))
   terminate.setEventHandler {
+    // invalidate waits on testmanagerd, and Node sends SIGTERM once and never SIGKILL: end even if it never answers.
+    DispatchQueue.global().asyncAfter(deadline: .now() + 1) { _exit(143) }
     _ = session.perform(NSSelectorFromString("invalidate"))
     _exit(143)
   }
