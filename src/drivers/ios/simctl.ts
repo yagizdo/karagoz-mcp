@@ -38,10 +38,22 @@ function binary(): { bin: string; missing: string } {
   };
 }
 
+// simctl's exit code is the NSError code cut to 8 bits, so the header line, not the exit code, names a failure (K36).
+const HEADER = /^An error was encountered processing the command \(domain=([^,]+), code=(-?\d+)\):$/m;
+
+export function header(text: string): { domain: string; code: number } | undefined {
+  const [, domain, code] = HEADER.exec(text) ?? [];
+  return domain && code ? { domain, code: Number(code) } : undefined;
+}
+
 // The bytes form keeps err.stderr a Buffer, so SIMCTL_FAILED carries simctl's own text; simctl() decodes the same
 // result, as adb() does (K32, K33). simctl's stderr on success ("Wrote screenshot to: <path>") is dropped: it is noise
 // on every capture.
-async function simctlBytes(args: string[]): Promise<Buffer> {
+async function simctlBytes(
+  args: string[],
+  timeout = TIMEOUT_MS,
+  refusal?: 'INSTALL_FAILED' | 'UNINSTALL_FAILED',
+): Promise<Buffer> {
   const { bin, missing } = binary();
   const signal = cancellation.getStore();
   // An aborted signal still spawns simctl and kills it a tick later.
@@ -49,7 +61,7 @@ async function simctlBytes(args: string[]): Promise<Buffer> {
   try {
     return (
       await run(bin, args, {
-        timeout: TIMEOUT_MS,
+        timeout,
         encoding: 'buffer',
         maxBuffer: MAX_BUFFER,
         ...(signal && { signal }),
@@ -65,14 +77,31 @@ async function simctlBytes(args: string[]): Promise<Buffer> {
     if ('killed' in err && err.killed) {
       throw new KaragozError(
         'SIMCTL_TIMEOUT',
-        `simctl did not answer within ${TIMEOUT_MS / 1000}s. The simulator service may still be starting (the first call after login can take several seconds) or be stuck.`,
+        `simctl did not answer within ${timeout / 1000}s. The simulator service may still be starting (the first call after login can take several seconds) or be stuck.`,
       );
     }
     const stderr = 'stderr' in err && Buffer.isBuffer(err.stderr) ? err.stderr.toString('utf8').trim() : '';
+    const match = refusal ? HEADER.exec(stderr) : null;
+    const found = match && header(match[0]);
+    if (refusal && match && found) {
+      // The description lines sit between the header and the first Underlying error block. Not cut: a device build's
+      // refusal runs past 300 characters (K36).
+      const lines = stderr.slice(match.index + match[0].length).split('\n');
+      const end = lines.findIndex((line) => /^\s*Underlying error \(/.test(line));
+      const message = (end < 0 ? lines : lines.slice(0, end))
+        .map((line) => line.trim())
+        .filter(Boolean)
+        .join(' ');
+      throw new KaragozError(refusal, message || match[0], `${found.domain}:${found.code}`);
+    }
     throw new KaragozError('SIMCTL_FAILED', (stderr || err.message).slice(0, 300));
   }
 }
 
-export async function simctl(args: string[]): Promise<string> {
-  return (await simctlBytes(args)).toString('utf8');
+export async function simctl(
+  args: string[],
+  timeout?: number,
+  refusal?: 'INSTALL_FAILED' | 'UNINSTALL_FAILED',
+): Promise<string> {
+  return (await simctlBytes(args, timeout, refusal)).toString('utf8');
 }
