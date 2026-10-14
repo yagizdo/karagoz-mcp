@@ -321,9 +321,10 @@ for label in "real terminate" "real terminate again"; do
   r terminate dev.karagoz.probe
   succeeds "$label" "{\"device\":\"$booted\",\"package\":\"dev.karagoz.probe\"}"
   i=0
-  while [ "$(tree | q root)" = Probe ]; do
+  # A failed ui-tree read leaves q with no root; retry it instead of reading it as "not Probe".
+  while ! root=$(tree | q root) || [ "$root" = Probe ]; do
     i=$((i + 1))
-    [ "$i" -lt 10 ] || fail "$label: Probe is still in front"
+    [ "$i" -lt 10 ] || fail "$label: Probe is still in front or ui-tree fails"
     sleep 0.5
   done
 done

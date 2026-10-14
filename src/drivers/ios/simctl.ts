@@ -82,8 +82,7 @@ async function simctlBytes(
     }
     const stderr = 'stderr' in err && Buffer.isBuffer(err.stderr) ? err.stderr.toString('utf8').trim() : '';
     const match = refusal ? HEADER.exec(stderr) : null;
-    const found = match && header(match[0]);
-    if (refusal && match && found) {
+    if (refusal && match) {
       // The description lines sit between the header and the first Underlying error block. Not cut: a device build's
       // refusal runs past 300 characters (K36).
       const lines = stderr.slice(match.index + match[0].length).split('\n');
@@ -92,7 +91,7 @@ async function simctlBytes(
         .map((line) => line.trim())
         .filter(Boolean)
         .join(' ');
-      throw new KaragozError(refusal, message || match[0], `${found.domain}:${found.code}`);
+      throw new KaragozError(refusal, message || match[0], `${match[1]}:${Number(match[2])}`);
     }
     throw new KaragozError('SIMCTL_FAILED', (stderr || err.message).slice(0, 300));
   }

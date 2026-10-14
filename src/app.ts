@@ -1,5 +1,5 @@
 import { stat } from 'node:fs/promises';
-import { extname, resolve } from 'node:path';
+import { resolve } from 'node:path';
 import { resolveTarget } from './devices.js';
 import {
   checkPackage,
@@ -23,7 +23,8 @@ const INSTALL_BASE_MS = 30_000;
 // Argument checks first, then the target: INVALID_ARGS comes before any device call (K5, K28).
 export async function install(device: string | undefined, apk: string) {
   const path = resolve(apk);
-  const kind = extname(path).toLowerCase();
+  // Not extname: it reads '/tmp/.apk' as a dotfile with no extension, which main's endsWith('.apk') accepted.
+  const kind = path.toLowerCase().slice(-4);
   if (kind !== '.apk' && kind !== '.app' && kind !== '.ipa') {
     throw new KaragozError('INVALID_ARGS', `'${path}' is not an .apk, .app or .ipa file`);
   }
