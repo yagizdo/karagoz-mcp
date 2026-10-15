@@ -987,7 +987,7 @@ On macOS the same line goes on with `xcode`, shown here alone:
 | `xcode.path` | string | With `source`: the developer folder. |
 | `xcode.version`, `xcode.build` | string | From that Xcode's `version.plist`, when it has them: `27.0`, `27A266a`. |
 | `xcode.message` | string | When `status` is not `ok`: the first entry's message in the order `simctl`, `swiftc`, `devicectl`, `helper`, or for `outdated`, which commands need a newer Xcode. |
-| `xcode.simctl`, `xcode.swiftc`, `xcode.devicectl`, `xcode.helper` | object | One entry each: `status`, `path` when known, and `message` when not `ok`, the text the command itself would fail with. |
+| `xcode.simctl`, `xcode.swiftc`, `xcode.devicectl`, `xcode.helper` | object | One entry each: `status`, `path` when known, and `message` when not `ok`: why. For `simctl` and `swiftc` `missing`, it is the text the command itself would fail with. |
 | `xcode.simctl.version` | string | Unless `simctl` is `missing`: this Mac's CoreSimulator version. |
 
 | Status | Means |
