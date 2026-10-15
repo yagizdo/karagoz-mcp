@@ -49,7 +49,7 @@ export async function install(device: string | undefined, apk: string) {
 
 // iOS's bundle id alphabet, of which Android's package names are a subset; Android's own check runs once the target is
 // known. The value reaches a device shell or simctl, so garbage stops here (K28, K36).
-async function target(device: string | undefined, pkg: string) {
+export async function packageTarget(device: string | undefined, pkg: string) {
   if (!/^[A-Za-z0-9_-]+(\.[A-Za-z0-9_-]+)*$/.test(pkg)) {
     throw new KaragozError('INVALID_ARGS', `'${pkg}' is not a package name`);
   }
@@ -59,16 +59,16 @@ async function target(device: string | undefined, pkg: string) {
 }
 
 export async function launch(device: string | undefined, pkg: string) {
-  const { id, platform } = await target(device, pkg);
+  const { id, platform } = await packageTarget(device, pkg);
   return platform === 'ios' ? iosLaunch(id, pkg) : androidLaunch(id, pkg);
 }
 
 export async function terminate(device: string | undefined, pkg: string) {
-  const { id, platform } = await target(device, pkg);
+  const { id, platform } = await packageTarget(device, pkg);
   return platform === 'ios' ? iosTerminate(id, pkg) : androidTerminate(id, pkg);
 }
 
 export async function uninstall(device: string | undefined, pkg: string) {
-  const { id, platform } = await target(device, pkg);
+  const { id, platform } = await packageTarget(device, pkg);
   return platform === 'ios' ? iosUninstall(id, pkg) : androidUninstall(id, pkg);
 }

@@ -10,7 +10,7 @@ function posix(err: unknown, code: number): boolean {
 
 // get_app_container is the one call that tells "not installed" (NSPOSIXErrorDomain 2) apart: simctl's terminate and
 // uninstall report the same result for a missing app as for an idle one (K36). Returns the bundle path.
-async function installed(udid: string, id: string): Promise<string> {
+export async function installed(udid: string, id: string): Promise<string> {
   try {
     return (await simctl(['get_app_container', udid, id])).trim();
   } catch (err) {

@@ -2,8 +2,7 @@
 # Step 3.2: on macOS `screenshot` captures a booted iOS simulator in the K22 shape (scale from the simulator, rotation
 # from devicectl on Xcode 27 and null otherwise, null safeArea, 2.88 on a 1080x2340 panel in either orientation), and
 # target resolution sees both platforms: UDID, name and KARAGOZ_DEVICE select a simulator, an emulator next to a booted
-# simulator makes a bare call DEVICE_AMBIGUOUS, an Android-only command (logs) on a simulator is NOT_SUPPORTED, a
-# missing tool hides only its own platform (K33, K21 3.2 note).
+# simulator makes a bare call DEVICE_AMBIGUOUS, a missing tool hides only its own platform (K33, K21 3.2 note).
 # Precondition: macOS with Xcode. A booted simulator is used when one is running, else that step prints SKIP; nothing
 # here boots, stops or creates one, and no emulator is needed. Fake simctl and devicectl come through DEVELOPER_DIR,
 # fake adb through ANDROID_HOME, all under env -i; the adb server on the default port is never touched.
@@ -125,12 +124,10 @@ if [ -n "$booted" ]; then
     if (r.rotation !== JSON.parse(rot)) fail("rotation differs from devicectl: " + rot);
     if ((require("fs").statSync(r.path).mode & 0o777) !== 0o600) fail("file mode");
   ' "$booted" "$width" "$height" "$scale" "$rotation" || exit 1
-  # Fake adb next to the real simulator: an emulator makes a bare call ambiguous, logs on the simulator is refused.
+  # Fake adb next to the real simulator: an emulator makes a bare call ambiguous.
   emulator
   out=$(real screenshot) && st=0 || st=$?
   refuses DEVICE_AMBIGUOUS "real simulator + emulator, bare screenshot" "$out" "$st"
-  out=$(real logs --device "$booted") && st=0 || st=$?
-  refuses NOT_SUPPORTED "logs on the real simulator" "$out" "$st"
   ok="real ${width}x${height}"
 else
   echo "SKIP: no booted simulator"
@@ -203,13 +200,8 @@ out=$(k screenshot --device nosuch) && st=0 || st=$?
 refuses DEVICE_NOT_FOUND "unknown name" "$out" "$st"
 case "$(printf '%s' "$out" | message_of)" in *"emulator-5554 (Medium_Phone), A1 (iPhone 17 Pro)"*) ;; *) fail "DEVICE_NOT_FOUND listing: $out" ;; esac
 
-# 5. Android-only commands refuse a simulator, before readiness; a booting simulator is not ready for screenshot.
+# 5. A booting simulator is not ready for screenshot.
 sims "$a1,$a2"
-out=$(k logs --device A1) && st=0 || st=$?
-refuses NOT_SUPPORTED "logs on a simulator" "$out" "$st"
-[ "$(printf '%s' "$out" | message_of)" = "'logs' does not run on iOS simulators yet" ] || fail "NOT_SUPPORTED text: $out"
-out=$(k logs --device A2) && st=0 || st=$?
-refuses NOT_SUPPORTED "logs on a booting simulator" "$out" "$st"
 out=$(k screenshot --device A2) && st=0 || st=$?
 refuses DEVICE_NOT_READY "screenshot on a booting simulator" "$out" "$st"
 out=$(k key HOME --device emulator-5554) || fail "key on the emulator next to simulators: $out"
@@ -264,4 +256,4 @@ sleep 1
 ! pgrep -f 'sleep 97\.43' >/dev/null || fail "the hung simctl outlived karagoz"
 [ -z "$(ls -d "$tmp"/karagoz-* 2>/dev/null)" ] || fail "a hung capture left its temp directory"
 
-echo "ok: $ok, capture, mini, rotation (hung ${rot_took}s), select, not supported, failures, listing, hung (${took}s)"
+echo "ok: $ok, capture, mini, rotation (hung ${rot_took}s), select, booting, failures, listing, hung (${took}s)"

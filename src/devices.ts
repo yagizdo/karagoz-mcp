@@ -125,13 +125,3 @@ export async function resolveTarget(device: string | undefined): Promise<{ id: s
   const target = await find(device);
   return { id: ready(target), platform: target.platform };
 }
-
-// For commands with no iOS implementation yet. The platform check comes before readiness: a booting simulator
-// would otherwise get DEVICE_NOT_READY for a call that can never work (K21 3.2 note).
-export async function androidTarget(device: string | undefined, command: string): Promise<string> {
-  const target = await find(device);
-  if (target.platform === 'ios') {
-    throw new KaragozError('NOT_SUPPORTED', `'${command}' does not run on iOS simulators yet`);
-  }
-  return ready(target);
-}

@@ -1,11 +1,5 @@
 import { KaragozError } from '../../errors.js';
 import { adb, adbBytes } from './adb.js';
-import { checkPackage } from './app.js';
-import { androidTarget } from '../../devices.js';
-
-// At 100, 46.5% of measured windows passed the ~10k tokens where Codex cuts a result and Claude Code warns; at 30,
-// 0.2% (K29).
-const LINES = 30;
 
 // LOGGER_ENTRY_MAX_LEN: no entry, header included, is longer (K29).
 const MAX_ENTRY = 5120;
@@ -91,14 +85,7 @@ function newest(entries: Entry[], lines: number) {
   return { records: records.slice(-lines), omitted: Math.max(0, records.length - lines) };
 }
 
-export async function logs(
-  device: string | undefined,
-  pkg: string | undefined,
-  since: string | undefined,
-  lines = LINES,
-) {
-  if (pkg !== undefined) checkPackage(pkg);
-  const id = await androidTarget(device, 'logs');
+export async function logs(id: string, pkg: string | undefined, since: string | undefined, lines: number) {
   if (pkg === undefined) return { device: id, ...newest(await read(id, since), lines) };
   const uid = await uidOf(id, pkg);
   // A header under 28 bytes has no uid, so its record never matches (K29).

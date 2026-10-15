@@ -148,11 +148,12 @@ const TOOLS: Tool[] = [
   {
     name: 'logs',
     title: 'Read device logs',
-    description: 'Read the newest device log records (main, system, crash, kernel), oldest first.',
+    description:
+      'Read the newest device log records, oldest first. On iOS, without since or package, only the last minute.',
     inputSchema: {
       type: 'object',
       properties: {
-        package: { type: 'string', description: "Only records from this app's uid." },
+        package: { type: 'string', description: "Only this app's records." },
         since: {
           type: 'number',
           description: "Unix seconds on the device clock; only later records. Pass a record's time to continue.",

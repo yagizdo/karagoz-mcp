@@ -1,6 +1,7 @@
-// The app smoke 3.4 drives on a simulator. Every input leaves a mark ui-tree shows: a counter in a label, the field's
-// echo, the first visible row.
+// The app the iOS smokes drive on a simulator. Every input leaves a mark ui-tree shows: a counter in a label, the
+// field's echo, the first visible row. Each launch argument goes to the unified log, where smoke 3.6 reads it back.
 import SwiftUI
+import os
 
 struct ContentView: View {
   @State private var name = ""
@@ -32,5 +33,10 @@ struct ContentView: View {
 
 @main
 struct ProbeApp: App {
+  init() {
+    let log = Logger(subsystem: "dev.karagoz.probe", category: "smoke")
+    for arg in CommandLine.arguments.dropFirst() { log.notice("\(arg, privacy: .public)") }
+  }
+
   var body: some Scene { WindowGroup { ContentView() } }
 }

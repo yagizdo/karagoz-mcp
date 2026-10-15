@@ -1,5 +1,6 @@
-import { execFile } from 'node:child_process';
+import { execFile, spawn } from 'node:child_process';
 import { join, resolve } from 'node:path';
+import { createInterface } from 'node:readline';
 import { promisify } from 'node:util';
 import { cancellation } from '../../cancellation.js';
 import { KaragozError } from '../../errors.js';
@@ -46,6 +47,13 @@ export function header(text: string): { domain: string; code: number } | undefin
   return domain && code ? { domain, code: Number(code) } : undefined;
 }
 
+function timedOut(timeout: number): KaragozError {
+  return new KaragozError(
+    'SIMCTL_TIMEOUT',
+    `simctl did not answer within ${timeout / 1000}s. The simulator service may still be starting (the first call after login can take several seconds) or be stuck.`,
+  );
+}
+
 // The bytes form keeps err.stderr a Buffer, so SIMCTL_FAILED carries simctl's own text; simctl() decodes the same
 // result, as adb() does (K32, K33). simctl's stderr on success ("Wrote screenshot to: <path>") is dropped: it is noise
 // on every capture.
@@ -74,12 +82,7 @@ async function simctlBytes(
     if ('code' in err && err.code === 'ENOENT') {
       throw new KaragozError('SIMCTL_NOT_FOUND', missing);
     }
-    if ('killed' in err && err.killed) {
-      throw new KaragozError(
-        'SIMCTL_TIMEOUT',
-        `simctl did not answer within ${timeout / 1000}s. The simulator service may still be starting (the first call after login can take several seconds) or be stuck.`,
-      );
-    }
+    if ('killed' in err && err.killed) throw timedOut(timeout);
     const stderr = 'stderr' in err && Buffer.isBuffer(err.stderr) ? err.stderr.toString('utf8').trim() : '';
     const match = refusal ? HEADER.exec(stderr) : null;
     if (refusal && match) {
@@ -103,4 +106,70 @@ export async function simctl(
   refusal?: 'INSTALL_FAILED' | 'UNINSTALL_FAILED',
 ): Promise<string> {
   return (await simctlBytes(args, timeout, refusal)).toString('utf8');
+}
+
+function spawnFailed(err: Error, missing: string): KaragozError {
+  if ('code' in err && err.code === 'ENOENT') return new KaragozError('SIMCTL_NOT_FOUND', missing);
+  return new KaragozError('SIMCTL_FAILED', err.message.slice(0, 300));
+}
+
+// For output past any buffer: log show prints ~1.45 KB per record, 497 MB for an hour (K37). onLine runs for each
+// stdout line; its first throw kills simctl and becomes the result. No killSignal: simctl does not pass SIGKILL on and
+// the process inside the simulator is orphaned (WebKit #185164).
+export async function simctlLines(args: string[], onLine: (line: string) => void): Promise<void> {
+  const { bin, missing } = binary();
+  const signal = cancellation.getStore();
+  signal?.throwIfAborted();
+  let child;
+  try {
+    child = spawn(bin, args, { stdio: ['ignore', 'pipe', 'pipe'], timeout: TIMEOUT_MS, ...(signal && { signal }) });
+  } catch (err) {
+    // ENOTDIR (a file on DEVELOPER_DIR's path) throws here; ENOENT and EACCES come as 'error'.
+    if (!(err instanceof Error)) throw err;
+    throw spawnFailed(err, missing);
+  }
+  // Listeners go on before any await: readline drops lines that arrive while nothing listens (K37).
+  let failure: Error | undefined;
+  child.on('error', (err) => {
+    failure = err;
+  });
+  let stderr = '';
+  child.stderr.setEncoding('utf8');
+  child.stderr.on('data', (chunk: string) => {
+    if (stderr.length < 4096) stderr += chunk;
+  });
+  const reader = createInterface({ input: child.stdout, crlfDelay: Infinity });
+  let thrown: { err: unknown } | undefined;
+  const read = (line: string) => {
+    try {
+      onLine(line);
+    } catch (err) {
+      // Already killed by the timeout or an abort: this is the cut last line, and that result wins.
+      if (child.killed) return;
+      thrown = { err };
+      child.kill();
+      reader.off('line', read);
+    }
+  };
+  reader.on('line', read);
+  const [code, ended] = await new Promise<[number | null, NodeJS.Signals | null]>((done) => {
+    child.on('close', (exit, by) => done([exit, by]));
+  });
+  // The SDK sends no response for a cancelled call, so the abort passes through unmapped (K31).
+  signal?.throwIfAborted();
+  if (failure) throw spawnFailed(failure, missing);
+  if (thrown) throw thrown.err;
+  if (child.killed) throw timedOut(TIMEOUT_MS);
+  if (code === 0) return;
+  // Every log call prints this line and exits 0 (K37).
+  const text = stderr
+    .split('\n')
+    .filter((line) => !line.startsWith('getpwuid_r did not find a match'))
+    .join('\n')
+    .trim()
+    .slice(0, 300);
+  throw new KaragozError(
+    'SIMCTL_FAILED',
+    text || (ended ? `simctl ended by ${ended}` : `simctl exited with code ${code}`),
+  );
 }
