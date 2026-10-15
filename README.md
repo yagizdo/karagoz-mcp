@@ -4,7 +4,7 @@ Device automation for mobile apps. One tool for four targets: Android emulator, 
 
 Website: [karagozmcp.com](https://karagozmcp.com/?utm_source=github&utm_medium=readme)
 
-> **Status: early development.** Twelve commands work on the Android emulator, `devices`, `screenshot`, `ui-tree`, `tap`, `swipe`, `text`, `key`, `install`, `launch`, `terminate`, `uninstall` and `logs` also work on a physical Android device, `doctor` reports the `adb` and Xcode they use, and the MCP server offers all thirteen to an AI agent. On an iOS simulator, all thirteen work. Nothing is published to npm. See [Status](#status).
+> **Status: early development.** Twelve commands work on the Android emulator, `devices`, `screenshot`, `ui-tree`, `tap`, `swipe`, `text`, `key`, `install`, `launch`, `terminate`, `uninstall` and `logs` also work on a physical Android device, `doctor` reports the `adb` and Xcode they use, and the MCP server offers all thirteen to an AI agent. On an iOS simulator, all thirteen work. On macOS, `devices` also lists the iPhones connected to the Mac; no other command runs on one yet. Nothing is published to npm. See [Status](#status).
 
 ## Contents
 
@@ -43,7 +43,7 @@ Website: [karagozmcp.com](https://karagozmcp.com/?utm_source=github&utm_medium=r
 
 | Command | Android emulator | Android device | iOS simulator | iOS device |
 | --- | --- | --- | --- | --- |
-| [`devices`](#devices) | done | done | done | planned |
+| [`devices`](#devices) | done | done | done | done |
 | [`screenshot`](#screenshot) | done | done | done | planned |
 | [`ui-tree`](#ui-tree) | done | done | done | planned |
 | [`tap`](#tap) | done | done | done | planned |
@@ -75,10 +75,10 @@ Website: [karagozmcp.com](https://karagozmcp.com/?utm_source=github&utm_medium=r
   {"error":{"code":"ADB_NOT_FOUND","message":"adb not found (tried ..., PATH). Install platform-tools (brew install --cask android-platform-tools, or download https://developer.android.com/tools/releases/platform-tools and add it to PATH) or set ANDROID_HOME to your Android SDK."}}
   ```
 
-- **A running emulator** (`emulator -avd <name>`), or for `devices`, `screenshot`, `ui-tree`, `tap`, `swipe`, `text`, `key`, `install`, `launch`, `terminate`, `uninstall` and `logs`, a phone with USB debugging on, in state `device`, or for `devices`, `screenshot`, `ui-tree`, `tap`, `swipe`, `text`, `key`, `install`, `launch`, `terminate`, `uninstall` and `logs` on macOS, a booted iOS simulator (`open -a Simulator`; on Xcode 27, `xcrun simctl boot <name>`). karagoz installs nothing on a device by itself; `install` installs only the app you pass it. A phone that adb cannot see is missing from the list: on Windows without the phone maker's USB driver, on a Mac laptop where "Allow accessory to connect" was refused, or in fastboot mode.
+- **A running emulator** (`emulator -avd <name>`), or for `devices`, `screenshot`, `ui-tree`, `tap`, `swipe`, `text`, `key`, `install`, `launch`, `terminate`, `uninstall` and `logs`, a phone with USB debugging on, in state `device`, or for `devices`, `screenshot`, `ui-tree`, `tap`, `swipe`, `text`, `key`, `install`, `launch`, `terminate`, `uninstall` and `logs` on macOS, a booted iOS simulator (`open -a Simulator`; on Xcode 27, `xcrun simctl boot <name>`), or for `devices` on macOS, an iPhone connected to the Mac. karagoz installs nothing on a device by itself; `install` installs only the app you pass it. A phone that adb cannot see is missing from the list: on Windows without the phone maker's USB driver, on a Mac laptop where "Allow accessory to connect" was refused, or in fastboot mode.
 - For `smoke/1.5-app-lifecycle.sh`, and for `smoke/2.5-app-lifecycle-physical.sh` when a phone is attached: a JDK and Android SDK build-tools with one platform. Both smokes build their own test APK, `dev.karagoz.smoke`, and remove it at the end. See [Development](#development).
 - For `ui-tree` and `tap --text` / `--id`: the screen is on, and no other UiAutomation client is connected (Appium, Maestro, `uiautomator events`). For input to reach apps, the screen is also unlocked: on a lock screen `text` and `key` type into the PIN field, and a wrong PIN counts as a failed unlock attempt; with the screen off, taps are dropped and keys still arrive. Both exit `0`.
-- **Xcode, opened once**, for iOS simulators in `devices`, `screenshot`, `ui-tree`, `tap`, `swipe`, `text`, `key`, `install`, `launch`, `terminate`, `uninstall` and `logs` (macOS only). karagoz runs CoreSimulator's own `simctl` (`/Library/Developer/PrivateFrameworks/CoreSimulator.framework/Versions/A/Resources/bin/simctl`), or `$DEVELOPER_DIR/usr/bin/simctl` when `DEVELOPER_DIR` is set. The Command Line Tools alone have no `simctl`, and no `swiftc` for the helper below. On macOS every command that targets a device runs it too, to list simulators ([Device selection](#device-selection)).
+- **Xcode, opened once**, for iOS simulators in `devices`, `screenshot`, `ui-tree`, `tap`, `swipe`, `text`, `key`, `install`, `launch`, `terminate`, `uninstall` and `logs` (macOS only). karagoz runs CoreSimulator's own `simctl` (`/Library/Developer/PrivateFrameworks/CoreSimulator.framework/Versions/A/Resources/bin/simctl`), or `$DEVELOPER_DIR/usr/bin/simctl` when `DEVELOPER_DIR` is set. The Command Line Tools alone have no `simctl`, and no `swiftc` for the helper below. For iPhones in `devices`, Xcode 15 or newer: karagoz runs CoreDevice's own `devicectl` (`/Library/Developer/PrivateFrameworks/CoreDevice.framework/Versions/A/Resources/bin/devicectl`), or `$DEVELOPER_DIR/usr/bin/devicectl` when `DEVELOPER_DIR` is set; the Command Line Tools alone have none. On macOS every command that targets a device runs `simctl` and `devicectl` too, to list simulators and iPhones ([Device selection](#device-selection)).
 - The first `ui-tree`, `tap`, `swipe`, `text` or `key` on a simulator compiles a small helper with the selected Xcode's `swiftc` (`DEVELOPER_DIR`, else the `xcode-select` one, else `/Applications/Xcode.app`) into `~/Library/Caches/karagoz/`. That takes a few seconds, happens again after an Xcode update, and the directory is safe to delete.
 - On a simulator, `tap`, `swipe` and `key` need Xcode 27 or newer: they go to the simulator's own input service, which older Xcodes do not have, and return `NOT_SUPPORTED` there. `text` loads Xcode's XCUIAutomation frameworks and puts the simulator in automation mode for the length of the call, as a UI test does; a UI test running on the same simulator makes it fail with `AUTOMATION_BUSY`. When the call ends, the simulator turns its app accessibility setting off; `text` writes it back if it was on, so later `ui-tree` reads still see apps.
 
@@ -127,18 +127,19 @@ Every command except `devices` works on one device, picked in this order:
 
 A variable is ignored when anything above it is given; an empty one counts as unset. `KARAGOZ_DEVICE` names a device on either platform.
 
-The value is matched against every listed id first, exactly: adb serials (`emulator-5554`) and, on macOS, the UDIDs of booted simulators. If no id matches, it is matched against every `name` that [`devices`](#devices) prints: an emulator's AVD name (`Medium_Phone_API_36.1`), a phone's model (`SM-S908N`) or a simulator's name (`iPhone 17 Pro`), exactly and case-sensitively. A name matched on both platforms is ambiguous; neither wins.
+The value is matched against every listed id first, exactly: adb serials (`emulator-5554`) and, on macOS, the UDIDs of booted simulators and connected iPhones. If no id matches, it is matched against every `name` that [`devices`](#devices) prints: an emulator's AVD name (`Medium_Phone_API_36.1`), a phone's model (`SM-S908N`), a simulator's name (`iPhone 17 Pro`) or an iPhone's model (`iPhone 14 Pro Max`), exactly and case-sensitively. A name matched on both platforms, or by an iPhone and a simulator, is ambiguous; neither wins.
 
 | Situation | Error |
 | --- | --- |
 | A value is given and nothing matches | `DEVICE_NOT_FOUND`, listing what is connected |
 | No value, nothing connected | `NO_DEVICE` |
 | No value and two or more devices listed (in any state), or a name that matches two entries: the same AVD listed as `emulator-5554` and `127.0.0.1:5555`, or two phones of the same model | `DEVICE_AMBIGUOUS` |
+| The picked device is an iPhone: no command but `devices` runs on one yet. This comes before any readiness check. | `NOT_SUPPORTED` |
 | The picked device is not in state `device` (`offline`, `unauthorized`, ...), or a simulator not `Booted` (`Booting`, `Shutting Down`) | `DEVICE_NOT_READY` |
 
 karagoz never guesses between devices. There is no config file.
 
-On macOS every command that targets a device lists booted simulators next to adb's devices, in parallel. A missing `adb` or `simctl` means that platform has no devices. Any other failure of one listing stops the command, unless the value is an id the other platform listed: a hung simulator service makes a bare call fail with `SIMCTL_TIMEOUT` after 30 s. When nothing is listed and `adb` is missing, the error is `ADB_NOT_FOUND`.
+On macOS every command that targets a device lists booted simulators and connected iPhones next to adb's devices, in parallel. A missing `adb`, `simctl` or `devicectl` means that listing has no devices. Any other failure of one listing stops the command, unless the value is an id another listing returned: a hung simulator service makes a bare call fail with `SIMCTL_TIMEOUT` after 30 s, a hung CoreDevice service with `DEVICECTL_TIMEOUT` after 10 s. When nothing is listed and `adb` is missing, the error is `ADB_NOT_FOUND`.
 
 A phone connected over Wi-Fi as well as USB is listed twice, once per serial, and its model matches both: pick it by serial then. Quote a `--device` value that contains spaces, as some mDNS serials do.
 
@@ -203,12 +204,15 @@ The set is closed. Any failure without a code of its own is reported as `INTERNA
 | `SIMCTL_NOT_FOUND` | No `simctl` found: Xcode is missing or was never opened, or `DEVELOPER_DIR` points somewhere without one. See [Requirements](#requirements). | `devices`, inside `errors`; `screenshot`, `install`, `launch`, `terminate`, `uninstall` and `logs` on a simulator; on macOS, every command that targets a device (listing, see [Device selection](#device-selection)) |
 | `SIMCTL_TIMEOUT` | simctl did not answer in 30 s; for `install`, 30 s plus 1 s per started MB of the file (31 s for a `.app`). For `logs`, the read did not finish in 30 s; the message says what to pass to read less. | `devices`, inside `errors`; `screenshot`, `install`, `launch`, `terminate`, `uninstall` and `logs` on a simulator; on macOS, every command that targets a device (listing, see [Device selection](#device-selection)) |
 | `SIMCTL_FAILED` | simctl exited with an error, or printed something karagoz does not expect. The message is simctl's stderr, or Node's error when simctl printed nothing; for unexpected output, `unexpected simctl output:` and its first line. For `logs`, `log`'s own error, or output that is not `log show`'s records. | `devices`, inside `errors`; `screenshot`, `install`, `launch`, `terminate`, `uninstall` and `logs` on a simulator; on macOS, every command that targets a device (listing, see [Device selection](#device-selection)) |
+| `DEVICECTL_NOT_FOUND` | No `devicectl` found: Xcode older than 15, or never opened, or only the Command Line Tools, or `DEVELOPER_DIR` points somewhere without one. See [Requirements](#requirements). | `devices`, inside `errors`; on macOS, every command that targets a device (listing, see [Device selection](#device-selection)) |
+| `DEVICECTL_TIMEOUT` | devicectl did not answer in 10 s. | `devices`, inside `errors`; on macOS, every command that targets a device (listing, see [Device selection](#device-selection)) |
+| `DEVICECTL_FAILED` | devicectl exited with an error, or printed something karagoz does not expect. The message is devicectl's stderr, or Node's error when it printed nothing; for unexpected output, `unexpected devicectl output:` and its first line. | `devices`, inside `errors`; on macOS, every command that targets a device (listing, see [Device selection](#device-selection)) |
 | `NO_DEVICE` | No device connected and none named. On macOS the message also names booting a simulator. | all but `devices` and `doctor` |
 | `DEVICE_NOT_FOUND` | The named device is not connected. | all but `devices` and `doctor` |
 | `DEVICE_AMBIGUOUS` | More than one device and none named, or a name that matches more than one. | all but `devices` and `doctor` |
 | `DEVICE_NOT_READY` | The device is `offline`, `unauthorized` or similar, or the simulator is `Booting` or `Shutting Down`, or its input service did not answer within 4 s (`tap`, `swipe`, `key` right after a boot). | all but `devices` and `doctor` |
 | `HELPER_FAILED` | The iOS helper cannot run on this Mac: no Xcode selected, no `swiftc` (the Command Line Tools are not enough), a failed compile, a crash, an Xcode that changed a private interface karagoz uses, or input the simulator did not take (no automation session, typing that failed, no answer within 30 s). The message says which and what to do. | `ui-tree`, `tap`, `swipe`, `text`, `key` on a simulator |
-| `NOT_SUPPORTED` | The device is an iOS simulator with Xcode 26 or older: `'tap' on iOS simulators needs Xcode 27 or later`. Argument checks come first. | `tap`, `swipe`, `key` |
+| `NOT_SUPPORTED` | The device is an iOS simulator with Xcode 26 or older: `'tap' on iOS simulators needs Xcode 27 or later`. Or the device is an iPhone, on which no command but `devices` runs yet: `device <UDID> is an iPhone; karagoz lists iPhones but runs no command on one yet.` Argument checks come first. | `tap`, `swipe`, `key`; for an iPhone, all but `devices` and `doctor` |
 | `CAPTURE_FAILED` | The screen could not be read: bad screenshot data, missing display info, a uiautomator failure, or on iOS a read the helper could not finish. The message says which. | `screenshot`, `ui-tree`, `tap --text/--id` |
 | `AUTOMATION_BUSY` | Another UiAutomation client holds the device; on a simulator, a UI test holds automation mode. | `ui-tree`, `tap --text/--id`; `text` on a simulator |
 | `WRITE_FAILED` | The screenshot file could not be written. | `screenshot` |
@@ -248,7 +252,7 @@ The set is closed. Any failure without a code of its own is reported as `INTERNA
 karagoz devices
 ```
 
-Lists what `adb devices` lists and, on macOS, the iOS simulators that are running. Takes no options.
+Lists what `adb devices` lists and, on macOS, the iOS simulators that are running and the iPhones connected to the Mac. Takes no options.
 
 **Output**
 
@@ -268,25 +272,32 @@ An iOS simulator running next to the emulator (macOS):
 {"devices":[{"id":"emulator-5554","platform":"android","kind":"emulator","state":"device","name":"Medium_Phone_API_36.1"},{"id":"4E70BFCA-5FC6-49B5-92EC-48E265B2D50F","platform":"ios","kind":"simulator","state":"Booted","name":"iPhone 17 Pro"}]}
 ```
 
+An iPhone on USB next to the emulator (macOS, UDID masked, simulator rows left out):
+
+```json
+{"devices":[{"id":"emulator-5554","platform":"android","kind":"emulator","state":"device","name":"Medium_Phone_API_37.0"},{"id":"XXXXXXXX-XXXXXXXXXXXXXXXX","platform":"ios","kind":"physical","state":"paired","name":"iPhone 14 Pro Max"}]}
+```
+
 | Field | Type | Meaning |
 | --- | --- | --- |
-| `id` | string | The adb serial, or the simulator's UDID. Pass it to `--device`. |
+| `id` | string | The adb serial, or the simulator's or iPhone's UDID. Pass it to `--device`. |
 | `platform` | `"android"` or `"ios"` | |
-| `kind` | `"emulator"`, `"physical"` or `"simulator"` | `simulator` for iOS simulators. `emulator` when the id is `emulator-<port>`, or when the device reports `ro.boot.qemu` or `ro.kernel.qemu` as `1`, or `ro.hardware` as `ranchu` or `goldfish` (an emulator attached with `adb connect`). Genymotion, and other ids not in state `device`, read as `physical`. |
-| `state` | string | adb's state, unchanged: `device`, `offline`, `unauthorized`, ... Only `device` can be used. For simulators, simctl's state: `Booted`, `Booting`, `Shutting Down`; only `Booted` is usable. |
-| `name` | string or `null` | The AVD name for emulators, the model (`ro.product.model`) for phones, the simulator's name for simulators. `null` when the device does not answer, or when it is not in state `device` and its id is not `emulator-<port>`. |
+| `kind` | `"emulator"`, `"physical"` or `"simulator"` | `simulator` for iOS simulators, `physical` for iPhones. `emulator` when the id is `emulator-<port>`, or when the device reports `ro.boot.qemu` or `ro.kernel.qemu` as `1`, or `ro.hardware` as `ranchu` or `goldfish` (an emulator attached with `adb connect`). Genymotion, and other ids not in state `device`, read as `physical`. |
+| `state` | string | adb's state, unchanged: `device`, `offline`, `unauthorized`, ... Only `device` can be used. For simulators, simctl's state: `Booted`, `Booting`, `Shutting Down`; only `Booted` is usable. For iPhones, devicectl's pairing state: `paired`, `unpaired` (unlock the phone and tap Trust when it asks), `pairingInProgress`. |
+| `name` | string or `null` | The AVD name for emulators, the model (`ro.product.model`) for phones, the simulator's name for simulators, the model (`iPhone 14 Pro Max`) for iPhones, `null` for an unpaired iPhone. `null` when the device does not answer, or when it is not in state `device` and its id is not `emulator-<port>`. |
 
-No devices is not an error: `{"devices":[]}`, exit `0`. Android devices come first in adb's order, then simulators in simctl's order.
+No devices is not an error: `{"devices":[]}`, exit `0`. Android devices come first in adb's order, then simulators in simctl's order, then iPhones in devicectl's order.
 
-If adb or simctl is missing, fails or hangs, the other platform is still listed, `errors` holds one `{"platform","code","message"}` per failed platform, and the exit is `0`. When every platform tried fails, Android's error is printed as the usual envelope and the exit is `1`. On Linux and Windows simulators are not looked for.
+If adb, simctl or devicectl is missing, fails or hangs, the other listings are still printed, `errors` holds one `{"platform","code","message"}` per failed listing (two `ios` entries when simctl and devicectl both fail), and the exit is `0`. When every listing tried fails, Android's error is printed as the usual envelope and the exit is `1`. On Linux and Windows simulators and iPhones are not looked for.
 
-**Errors:** `INVALID_ARGS`, `ADB_NOT_FOUND`, `ADB_TIMEOUT`, `ADB_FAILED`; `SIMCTL_NOT_FOUND`, `SIMCTL_TIMEOUT`, `SIMCTL_FAILED` inside `errors` only.
+**Errors:** `INVALID_ARGS`, `ADB_NOT_FOUND`, `ADB_TIMEOUT`, `ADB_FAILED`; `SIMCTL_NOT_FOUND`, `SIMCTL_TIMEOUT`, `SIMCTL_FAILED`, `DEVICECTL_NOT_FOUND`, `DEVICECTL_TIMEOUT`, `DEVICECTL_FAILED` inside `errors` only.
 
 **Notes**
 
 - About 55 ms, plus about 50 ms per emulator for its name, asked in parallel. A device whose id is not `emulator-<port>` costs one more call in parallel, a chained `getprop` of about 135 ms. With a phone on USB and one emulator, the whole `karagoz devices` run took 257 to 289 ms (three runs, macOS).
 - On macOS the simulator listing runs in parallel with adb and takes about 0.12 s once the simulator service runs. The first call after login can take several seconds while macOS starts that service (30 s limit).
 - Shut-down simulators, and watchOS, tvOS and visionOS simulators, are not listed.
+- The iPhone listing is one `devicectl list devices` call, also in parallel, about 0.06 s. devicectl also knows simulators, phones paired before but not connected now, and nearby devices that could be paired: none of them is listed. iPhones on iOS 16 and older are not listed either. An iPad is listed the way an iPhone is.
 - A device listed as `(no serial number)`, or two devices that share one serial, cannot be targeted: adb's `-s` cannot tell them apart.
 - karagoz does not pair or connect over Wi-Fi. Use `adb pair` and `adb connect`; a paired Android 11+ phone reconnects by itself.
 - If an emulator's name comes back `null`, check that `HOME` points to your home directory; the emulator console reads a token from there.
@@ -446,7 +457,7 @@ The first call compiles the helper ([Requirements](#requirements)) and takes a f
 - `HELPER_FAILED`: this Mac cannot read iOS trees. No Xcode selected, no `swiftc` at the selected Xcode's toolchain path, a failed compile (swiftc's first error lines), a crashed helper, or an Xcode that changed a private interface karagoz uses (`update karagoz`).
 - `CAPTURE_FAILED`: this screen could not be read: no frontmost application, an accessibility request that took over 5 s, no answer within 30 s, or helper output that could not be parsed. With Control Center open, a read ends this way after 30 s.
 - `DEVICE_NOT_READY` for a simulator that is still booting, before anything is compiled.
-- Plus the [device selection](#device-selection) errors and the simctl errors from listing simulators.
+- Plus the [device selection](#device-selection) errors and the simctl and devicectl errors from listing simulators and iPhones.
 
 ### tap
 
@@ -1172,7 +1183,7 @@ npm run typecheck
 npm run lint        # oxlint and the Prettier check; npm run format fixes formatting
 ```
 
-Each step has one smoke script in `smoke/`. Each builds first and needs a running emulator, `smoke/M-mcp.sh` included, except `smoke/0b-version.sh`, `smoke/1.7-doctor.sh`, `smoke/2.2-screenshot-physical.sh`, `smoke/2.3-ui-tree-physical.sh`, `smoke/2.4-input-physical.sh`, `smoke/2.5-app-lifecycle-physical.sh`, `smoke/2.6-logs-physical.sh`, `smoke/3.1-devices-ios.sh`, `smoke/3.2-screenshot-ios.sh`, `smoke/3.3-ui-tree-ios.sh`, `smoke/3.4-input-ios.sh`, `smoke/3.5-app-lifecycle-ios.sh` and `smoke/3.6-logs-ios.sh`: 1.7 uses fake `adb` scripts only and never runs the real adb, 3.1 uses fake `adb` and `simctl` scripts and reads the real simulator list, 3.2 uses fake `adb`, `simctl` and `devicectl` scripts and captures a booted simulator when one runs (else its real step prints `SKIP`), 3.3 adds a fake `swiftc` and reads a booted simulator's tree the same way, 3.4, 3.5 and 3.6 build a test app from `smoke/fixtures/input-ios/` and drive, install and remove it as `dev.karagoz.probe` on a booted simulator (3.6 reads its log back), all six macOS only (they print `SKIP` elsewhere), and 2.2, 2.3, 2.4, 2.5 and 2.6 need a phone only for their phone step, which they skip when none is listed. The header of each script lists its preconditions:
+Each step has one smoke script in `smoke/`. Each builds first and needs a running emulator, `smoke/M-mcp.sh` included, except `smoke/0b-version.sh`, `smoke/1.7-doctor.sh`, `smoke/2.2-screenshot-physical.sh`, `smoke/2.3-ui-tree-physical.sh`, `smoke/2.4-input-physical.sh`, `smoke/2.5-app-lifecycle-physical.sh`, `smoke/2.6-logs-physical.sh`, `smoke/3.1-devices-ios.sh`, `smoke/3.2-screenshot-ios.sh`, `smoke/3.3-ui-tree-ios.sh`, `smoke/3.4-input-ios.sh`, `smoke/3.5-app-lifecycle-ios.sh`, `smoke/3.6-logs-ios.sh` and `smoke/4.1-devices-ios-device.sh`: 1.7 uses fake `adb` scripts only and never runs the real adb, 3.1 uses fake `adb` and `simctl` scripts and reads the real simulator list, 3.2 uses fake `adb`, `simctl` and `devicectl` scripts and captures a booted simulator when one runs (else its real step prints `SKIP`), 3.3 adds a fake `swiftc` and reads a booted simulator's tree the same way, 3.4, 3.5 and 3.6 build a test app from `smoke/fixtures/input-ios/` and drive, install and remove it as `dev.karagoz.probe` on a booted simulator (3.6 reads its log back), 4.1 uses fake `adb`, `simctl` and `devicectl` scripts and reads the real iPhone list, all seven macOS only (they print `SKIP` elsewhere), and 2.2, 2.3, 2.4, 2.5 and 2.6 need a phone only for their phone step, which they skip when none is listed. The header of each script lists its preconditions:
 
 ```sh
 sh smoke/1.4-input.sh

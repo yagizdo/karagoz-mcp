@@ -15,9 +15,9 @@ cd "$(dirname "$0")/.."
 npm run --silent build
 
 tmp=$(mktemp -d)
-# set +e: errexit stays on inside the trap. sleep 97.31, 97.41 and 97.42 are the fake adb and simctl hangs; the pkill is
-# a safety net.
-trap 'set +e; pkill -f "sleep 97\.(31|41|42)"; rm -rf "$tmp"' EXIT
+# set +e: errexit stays on inside the trap. sleep 97.31, 97.41, 97.42 and 97.44 are the fake adb, simctl and devicectl
+# hangs; the pkill is a safety net.
+trap 'set +e; pkill -f "sleep 97\.(31|41|42|44)"; rm -rf "$tmp"' EXIT
 # Prints .error.code, or not-json. The envelope must be exactly one line (K5).
 code_of() { node -e '
   const out = require("fs").readFileSync(0, "utf8").trimEnd();
@@ -114,7 +114,13 @@ else
   echo '{"devices":{}}'
 fi
 FAKE
-chmod +x "$tmp/dev/usr/bin/simctl"
+# A fake devicectl for the same servers: no iPhone, and a hang on demand.
+cat > "$tmp/dev/usr/bin/devicectl" <<'FAKE'
+#!/bin/sh
+[ -e "$FAKE/devicectl-hang" ] && exec sleep 97.44
+echo '{"result":{"devices":[]}}'
+FAKE
+chmod +x "$tmp/dev/usr/bin/simctl" "$tmp/dev/usr/bin/devicectl"
 printf '%s' "<?xml version='1.0' encoding='UTF-8' standalone='yes' ?><hierarchy rotation=\"0\"><node class=\"android.widget.FrameLayout\" package=\"dev.karagoz.fake\" bounds=\"[0,0][100,100]\" /></hierarchy>" \
   > "$tmp/fake/tree.xml"
 
@@ -329,6 +335,21 @@ await sleep(500);
 if (faked.answered(hungIos)) fail('cancel simctl: the cancelled call was answered');
 if (faked.stderr.some((line) => line.startsWith('karagoz:'))) fail(`cancel simctl: stderr ${JSON.stringify(faked.stderr)}`);
 rmSync(simctlHang);
+
+// Cancel, fake devicectl: the iPhone listing's devicectl dies with the call too, and nothing answers it.
+const devicectlHang = `${tmp}/fake/devicectl-hang`;
+const devicectlSleeping = () => running('sleep 97\\.44');
+writeFileSync(devicectlHang, '');
+const hungPhones = faked.send('tools/call', { name: 'devices', arguments: {} });
+if (!(await until(devicectlSleeping, 3000))) fail('cancel devicectl: the fake devicectl never started sleep 97.44');
+faked.notify('notifications/cancelled', { requestId: hungPhones, reason: 'smoke' });
+if (!(await until(() => !devicectlSleeping(), 2000))) {
+  fail('cancel devicectl: sleep 97.44 still running 2 s after notifications/cancelled');
+}
+await sleep(500);
+if (faked.answered(hungPhones)) fail('cancel devicectl: the cancelled call was answered');
+if (faked.stderr.some((line) => line.startsWith('karagoz:'))) fail(`cancel devicectl: stderr ${JSON.stringify(faked.stderr)}`);
+rmSync(devicectlHang);
 
 // Cancel, streaming simctl: a cancelled logs call kills its log show, and nothing answers it.
 const simulator = `${tmp}/fake/simctl-sim`;
