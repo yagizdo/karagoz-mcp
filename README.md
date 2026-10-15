@@ -127,7 +127,7 @@ Every command except `devices` works on one device, picked in this order:
 
 A variable is ignored when anything above it is given; an empty one counts as unset. `KARAGOZ_DEVICE` names a device on either platform.
 
-The value is matched against every listed id first, exactly: adb serials (`emulator-5554`) and, on macOS, the UDIDs of booted simulators and connected iPhones. If no id matches, it is matched against every `name` that [`devices`](#devices) prints: an emulator's AVD name (`Medium_Phone_API_36.1`), a phone's model (`SM-S908N`) a simulator's name (`iPhone 17 Pro`) or an iPhone's model (`iPhone 14 Pro Max`), exactly and case-sensitively. A name matched on both platforms, or by an iPhone and a simulator, is ambiguous; neither wins.
+The value is matched against every listed id first, exactly: adb serials (`emulator-5554`) and, on macOS, the UDIDs of booted simulators and connected iPhones. If no id matches, it is matched against every `name` that [`devices`](#devices) prints: an emulator's AVD name (`Medium_Phone_API_36.1`), a phone's model (`SM-S908N`), a simulator's name (`iPhone 17 Pro`) or an iPhone's model (`iPhone 14 Pro Max`), exactly and case-sensitively. A name matched on both platforms, or by an iPhone and a simulator, is ambiguous; neither wins.
 
 | Situation | Error |
 | --- | --- |
