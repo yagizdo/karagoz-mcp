@@ -62,6 +62,7 @@ cat > "$tmp/dev/usr/bin/devicectl" <<FAKE
 #!/bin/sh
 case "\$*" in
   "device info displays --device "*" --json-output - -q") exec /bin/sh "$fake/devicectl" ;;
+  "list devices --json-output - -q") echo '{"result":{"devices":[]}}' ;;
   *) exit 1 ;;
 esac
 FAKE

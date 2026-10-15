@@ -2,8 +2,8 @@
 # Step 4.1: on macOS `devices` lists the iPhones attached to the Mac, read from devicectl, after the Android entries and
 # the simulators: id the UDID, kind physical, state devicectl's pairing state, name the model. Simulators, remembered
 # phones that are not attached, nearby unpaired devices and other Apple devices are dropped; Xcode 27's properties
-# dictionary and the older keys read the same; a missing, failing or hung devicectl is one ios errors entry (K18 4.1
-# note, K39).
+# dictionary and the older keys read the same; a missing, failing or hung devicectl is one ios errors entry. Targeted
+# commands find an iPhone by UDID or model and refuse it with NOT_SUPPORTED (K18 and K21 4.1 notes, K39).
 # Precondition: macOS with Xcode. No emulator is needed. Step 1 reads the real devicectl list only and compares zero
 # rows when no iPhone is attached. Fake adb, simctl and devicectl come through ANDROID_HOME and DEVELOPER_DIR under
 # env -i; the adb server on the default port is never touched.
@@ -141,4 +141,50 @@ is hung "$out" "$(entry DEVICECTL_TIMEOUT "devicectl did not answer within 10s. 
 [ "$elapsed" -ge 9 ] && [ "$elapsed" -lt 16 ] || fail "hung: took ${elapsed}s, expected about 10"
 ! pgrep -f 'sleep 97\.39' >/dev/null || fail "hung: the fake devicectl's sleep outlived karagoz"
 
-echo "ok: real ($real), Xcode 27 shape, Xcode 26 shape, missing, failing, not-json, no-list, hung (${elapsed}s)"
+# 5. Targets: an iPhone is found by UDID, model or KARAGOZ_DEVICE and refused before any readiness check, unpaired
+# included; a name on an iPhone and a simulator, or no value with several devices, is ambiguous (K21 4.1 note).
+code_of() { "$node_bin" -e '
+  const out = require("fs").readFileSync(0, "utf8").trimEnd();
+  try { console.log(out.includes("\n") ? "not-one-line" : JSON.parse(out).error.code) } catch { console.log("not-json") }
+'; }
+field() { "$node_bin" -e "console.log(JSON.parse(require('fs').readFileSync(0, 'utf8')).$1)"; }
+# refuses <step> <code> <karagoz args...>: non-zero exit, one JSON line, that code.
+refuses() {
+  step=$1 code=$2
+  shift 2
+  if out=$(kz "$@"); then fail "$step exited 0: $out"; fi
+  is "$step" "$(printf '%s' "$out" | code_of)" "$code"
+}
+dc "/bin/cat '$tmp/phones27.json'"
+refuses "by UDID" NOT_SUPPORTED screenshot --device P1
+is "by UDID text" "$(printf '%s' "$out" | field error.message)" \
+  "device P1 is an iPhone; karagoz lists iPhones but runs no command on one yet."
+refuses "by model" NOT_SUPPORTED ui-tree --device "iPhone 14 Pro Max"
+kdev=P3
+refuses "unpaired, from KARAGOZ_DEVICE" NOT_SUPPORTED key HOME
+kdev=
+refuses "iPhone and simulator name" DEVICE_AMBIGUOUS screenshot --device "iPhone 17 Pro"
+refuses "unknown value" DEVICE_NOT_FOUND screenshot --device nope
+case "$(printf '%s' "$out" | field error.message)" in *"P1 (iPhone 14 Pro Max)"*"P3, "*) ;; *) fail "DEVICE_NOT_FOUND text: $out" ;; esac
+adb_lists ''
+sims ''
+cat > "$tmp/one.json" <<'JSON'
+{"result":{"devices":[{"visibilityClass":"default","properties":{"hardware":{"udid":"P1","reality":"physical","platform":"iOS","marketingName":"iPhone 14 Pro Max"},"connection":{"pairingState":"paired","state":"connected","transportType":"wired"}}}]}}
+JSON
+dc "/bin/cat '$tmp/one.json'"
+refuses "bare, one iPhone" NOT_SUPPORTED screenshot
+adb_lists 'fake-1\tdevice\n'
+refuses "bare, emulator and iPhone" DEVICE_AMBIGUOUS screenshot
+# A missing devicectl means no iPhones: the one emulator is the target.
+devdir=$tmp/nodc
+out=$(kz key HOME) || fail "bare, no devicectl, one emulator exited non-zero: $out"
+is "bare, no devicectl" "$(printf '%s' "$out" | field device)" fake-1
+devdir=$tmp/dev
+dc 'exec /bin/sleep 97.39'
+start=$(date +%s)
+refuses "bare, hung devicectl" DEVICECTL_TIMEOUT key HOME
+took=$(($(date +%s) - start))
+[ "$took" -ge 9 ] && [ "$took" -lt 16 ] || fail "bare, hung devicectl: took ${took}s, expected about 10"
+! pgrep -f 'sleep 97\.39' >/dev/null || fail "bare, hung devicectl: the fake devicectl's sleep outlived karagoz"
+
+echo "ok: real ($real), Xcode 27 shape, Xcode 26 shape, missing, failing, not-json, no-list, hung (${elapsed}s), targets (${took}s)"

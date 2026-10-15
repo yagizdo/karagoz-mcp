@@ -7,7 +7,9 @@ type Platform = 'android' | 'ios';
 type Row = { id: string; platform: string; kind: string; state: string; name: string | null };
 type Listing<T> = { platform: Platform; rows: T[] } | { platform: Platform; error: KaragozError };
 // A device as resolution sees it. Android names stay null until no id matches: each one costs an adb call (K21).
-type Candidate = { id: string; platform: Platform; state: string; name: string | null };
+type Candidate =
+  | { id: string; platform: 'android'; state: string; name: string | null }
+  | { id: string; platform: 'ios'; kind: 'simulator' | 'physical'; state: string; name: string | null };
 
 // iOS simulators exist only on macOS (K18 3.1 note).
 export const IS_MAC = process.platform === 'darwin';
@@ -64,7 +66,22 @@ async function find(device: string | undefined): Promise<Candidate> {
     ...(IS_MAC
       ? [
           attempt<Candidate>('ios', async () =>
-            (await listSimulators()).map(({ id, state, name }) => ({ id, platform: 'ios' as const, state, name })),
+            (await listSimulators()).map(({ id, state, name }) => ({
+              id,
+              platform: 'ios' as const,
+              kind: 'simulator' as const,
+              state,
+              name,
+            })),
+          ),
+          attempt<Candidate>('ios', async () =>
+            (await listPhones()).map(({ id, state, name }) => ({
+              id,
+              platform: 'ios' as const,
+              kind: 'physical' as const,
+              state,
+              name,
+            })),
           ),
         ]
       : []),
@@ -124,5 +141,12 @@ function ready({ id, platform, state }: Candidate): string {
 // Every later adb call passes -s <id> and every simctl call the UDID, so the tools' own defaults never apply (K21).
 export async function resolveTarget(device: string | undefined): Promise<{ id: string; platform: Platform }> {
   const target = await find(device);
+  // No command runs on an iPhone yet; the permanent answer comes before any readiness check (K21 4.1 note).
+  if (target.platform === 'ios' && target.kind === 'physical') {
+    throw new KaragozError(
+      'NOT_SUPPORTED',
+      `device ${target.id} is an iPhone; karagoz lists iPhones but runs no command on one yet.`,
+    );
+  }
   return { id: ready(target), platform: target.platform };
 }
