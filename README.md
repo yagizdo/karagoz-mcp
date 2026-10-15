@@ -4,7 +4,7 @@ Device automation for mobile apps. One tool for four targets: Android emulator, 
 
 Website: [karagozmcp.com](https://karagozmcp.com/?utm_source=github&utm_medium=readme)
 
-> **Status: early development.** Twelve commands work on the Android emulator, `devices`, `screenshot`, `ui-tree`, `tap`, `swipe`, `text`, `key`, `install`, `launch`, `terminate`, `uninstall` and `logs` also work on a physical Android device, `doctor` reports the `adb` they use, and the MCP server offers all thirteen to an AI agent. On an iOS simulator, all of them work but `logs` and `doctor`. Nothing is published to npm. See [Status](#status).
+> **Status: early development.** Twelve commands work on the Android emulator, `devices`, `screenshot`, `ui-tree`, `tap`, `swipe`, `text`, `key`, `install`, `launch`, `terminate`, `uninstall` and `logs` also work on a physical Android device, `doctor` reports the `adb` they use, and the MCP server offers all thirteen to an AI agent. On an iOS simulator, all of them work but `doctor`. Nothing is published to npm. See [Status](#status).
 
 ## Contents
 
@@ -54,11 +54,11 @@ Website: [karagozmcp.com](https://karagozmcp.com/?utm_source=github&utm_medium=r
 | [`launch`](#launch) | done | done | done | planned |
 | [`terminate`](#terminate) | done | done | done | planned |
 | [`uninstall`](#uninstall) | done | done | done | planned |
-| [`logs`](#logs) | done | done | planned | planned |
+| [`logs`](#logs) | done | done | done | planned |
 | [`doctor`](#doctor) | done | done | planned | planned |
 | [MCP server](#mcp-server) | done | done | | |
 
-"Done" means tested against a live emulator: macOS, an API 36 image (Android 16), 1080x2400 at 420 dpi. In the iOS simulator column it means the step's smoke passes on macOS: `smoke/3.1-devices-ios.sh` for `devices`, `smoke/3.2-screenshot-ios.sh` for `screenshot`, `smoke/3.3-ui-tree-ios.sh` for `ui-tree`, `smoke/3.4-input-ios.sh` for `tap`, `swipe`, `text` and `key`, `smoke/3.5-app-lifecycle-ios.sh` for `install`, `launch`, `terminate` and `uninstall`. `devices`, `screenshot` and `ui-tree` were tested on a physical Samsung phone (Android 14) over USB, and `tap`, `swipe`, `text`, `key`, `install`, `launch`, `terminate`, `uninstall` and `logs` on an Infinix phone (Android 12) over USB. No other command has been run on one yet. `doctor` touches no device; its row means tested on the same Mac with fake and real `adb` binaries. For the MCP server, done means `smoke/M-mcp.sh` passes against the live emulator and Claude Code and Codex called its tools; in the Android device column it means its tools returned results from a phone over USB. Windows and Linux have not been run.
+"Done" means tested against a live emulator: macOS, an API 36 image (Android 16), 1080x2400 at 420 dpi. In the iOS simulator column it means the step's smoke passes on macOS: `smoke/3.1-devices-ios.sh` for `devices`, `smoke/3.2-screenshot-ios.sh` for `screenshot`, `smoke/3.3-ui-tree-ios.sh` for `ui-tree`, `smoke/3.4-input-ios.sh` for `tap`, `swipe`, `text` and `key`, `smoke/3.5-app-lifecycle-ios.sh` for `install`, `launch`, `terminate` and `uninstall`, `smoke/3.6-logs-ios.sh` for `logs`. `devices`, `screenshot` and `ui-tree` were tested on a physical Samsung phone (Android 14) over USB, and `tap`, `swipe`, `text`, `key`, `install`, `launch`, `terminate`, `uninstall` and `logs` on an Infinix phone (Android 12) over USB. No other command has been run on one yet. `doctor` touches no device; its row means tested on the same Mac with fake and real `adb` binaries. For the MCP server, done means `smoke/M-mcp.sh` passes against the live emulator and Claude Code and Codex called its tools; in the Android device column it means its tools returned results from a phone over USB. Windows and Linux have not been run.
 
 ## Requirements
 
@@ -75,10 +75,10 @@ Website: [karagozmcp.com](https://karagozmcp.com/?utm_source=github&utm_medium=r
   {"error":{"code":"ADB_NOT_FOUND","message":"adb not found (tried ..., PATH). Install platform-tools (brew install --cask android-platform-tools, or download https://developer.android.com/tools/releases/platform-tools and add it to PATH) or set ANDROID_HOME to your Android SDK."}}
   ```
 
-- **A running emulator** (`emulator -avd <name>`), or for `devices`, `screenshot`, `ui-tree`, `tap`, `swipe`, `text`, `key`, `install`, `launch`, `terminate`, `uninstall` and `logs`, a phone with USB debugging on, in state `device`, or for `devices`, `screenshot`, `ui-tree`, `tap`, `swipe`, `text`, `key`, `install`, `launch`, `terminate` and `uninstall` on macOS, a booted iOS simulator (`open -a Simulator`; on Xcode 27, `xcrun simctl boot <name>`). karagoz installs nothing on a device by itself; `install` installs only the app you pass it. A phone that adb cannot see is missing from the list: on Windows without the phone maker's USB driver, on a Mac laptop where "Allow accessory to connect" was refused, or in fastboot mode.
+- **A running emulator** (`emulator -avd <name>`), or for `devices`, `screenshot`, `ui-tree`, `tap`, `swipe`, `text`, `key`, `install`, `launch`, `terminate`, `uninstall` and `logs`, a phone with USB debugging on, in state `device`, or for `devices`, `screenshot`, `ui-tree`, `tap`, `swipe`, `text`, `key`, `install`, `launch`, `terminate`, `uninstall` and `logs` on macOS, a booted iOS simulator (`open -a Simulator`; on Xcode 27, `xcrun simctl boot <name>`). karagoz installs nothing on a device by itself; `install` installs only the app you pass it. A phone that adb cannot see is missing from the list: on Windows without the phone maker's USB driver, on a Mac laptop where "Allow accessory to connect" was refused, or in fastboot mode.
 - For `smoke/1.5-app-lifecycle.sh`, and for `smoke/2.5-app-lifecycle-physical.sh` when a phone is attached: a JDK and Android SDK build-tools with one platform. Both smokes build their own test APK, `dev.karagoz.smoke`, and remove it at the end. See [Development](#development).
 - For `ui-tree` and `tap --text` / `--id`: the screen is on, and no other UiAutomation client is connected (Appium, Maestro, `uiautomator events`). For input to reach apps, the screen is also unlocked: on a lock screen `text` and `key` type into the PIN field, and a wrong PIN counts as a failed unlock attempt; with the screen off, taps are dropped and keys still arrive. Both exit `0`.
-- **Xcode, opened once**, for iOS simulators in `devices`, `screenshot`, `ui-tree`, `tap`, `swipe`, `text`, `key`, `install`, `launch`, `terminate` and `uninstall` (macOS only). karagoz runs CoreSimulator's own `simctl` (`/Library/Developer/PrivateFrameworks/CoreSimulator.framework/Versions/A/Resources/bin/simctl`), or `$DEVELOPER_DIR/usr/bin/simctl` when `DEVELOPER_DIR` is set. The Command Line Tools alone have no `simctl`, and no `swiftc` for the helper below. On macOS every command that targets a device runs it too, to list simulators ([Device selection](#device-selection)).
+- **Xcode, opened once**, for iOS simulators in `devices`, `screenshot`, `ui-tree`, `tap`, `swipe`, `text`, `key`, `install`, `launch`, `terminate`, `uninstall` and `logs` (macOS only). karagoz runs CoreSimulator's own `simctl` (`/Library/Developer/PrivateFrameworks/CoreSimulator.framework/Versions/A/Resources/bin/simctl`), or `$DEVELOPER_DIR/usr/bin/simctl` when `DEVELOPER_DIR` is set. The Command Line Tools alone have no `simctl`, and no `swiftc` for the helper below. On macOS every command that targets a device runs it too, to list simulators ([Device selection](#device-selection)).
 - The first `ui-tree`, `tap`, `swipe`, `text` or `key` on a simulator compiles a small helper with the selected Xcode's `swiftc` (`DEVELOPER_DIR`, else the `xcode-select` one) into `~/Library/Caches/karagoz/`. That takes a few seconds, happens again after an Xcode update, and the directory is safe to delete.
 - On a simulator, `tap`, `swipe` and `key` need Xcode 27 or newer: they go to the simulator's own input service, which older Xcodes do not have, and return `NOT_SUPPORTED` there. `text` loads Xcode's XCUIAutomation frameworks and puts the simulator in automation mode for the length of the call, as a UI test does; a UI test running on the same simulator makes it fail with `AUTOMATION_BUSY`. When the call ends, the simulator turns its app accessibility setting off; `text` writes it back if it was on, so later `ui-tree` reads still see apps.
 
@@ -135,7 +135,6 @@ The value is matched against every listed id first, exactly: adb serials (`emula
 | No value, nothing connected | `NO_DEVICE` |
 | No value and two or more devices listed (in any state), or a name that matches two entries: the same AVD listed as `emulator-5554` and `127.0.0.1:5555`, or two phones of the same model | `DEVICE_AMBIGUOUS` |
 | The picked device is not in state `device` (`offline`, `unauthorized`, ...), or a simulator not `Booted` (`Booting`, `Shutting Down`) | `DEVICE_NOT_READY` |
-| The picked device is an iOS simulator and the command does not run there yet: `logs` | `NOT_SUPPORTED` |
 
 karagoz never guesses between devices. There is no config file.
 
@@ -201,15 +200,15 @@ The set is closed. Any failure without a code of its own is reported as `INTERNA
 | `ADB_NOT_FOUND` | No `adb` found. See [Requirements](#requirements). | all that reach adb, except `doctor`, which reports these in its output; `devices` reports them in `errors` when the other platform could be listed |
 | `ADB_TIMEOUT` | adb did not answer in time: 10 s per call, 20 s for a `ui-tree` read, 10 s plus the duration for a long press or swipe, 30 s plus 1 s per started MB for `install`, 30 s for the start in `launch`. The message suggests `adb kill-server`; for `ui-tree` the cause is more often a stuck dump, and for `install` an install prompt on the phone, which the message names first. | all that reach adb, except `doctor`, which reports these in its output; `devices` reports them in `errors` when the other platform could be listed |
 | `ADB_FAILED` | adb exited with an error. The message is adb's stderr, or Node's error when adb printed nothing. For `launch`, `terminate` and `uninstall` it can also be the error the device command printed. For `logs`, logcat's own error text or output that is not whole log records. A device that disconnects mid-command ends here. | all that reach adb, except `doctor`, which reports these in its output; `devices` reports them in `errors` when the other platform could be listed |
-| `SIMCTL_NOT_FOUND` | No `simctl` found: Xcode is missing or was never opened, or `DEVELOPER_DIR` points somewhere without one. See [Requirements](#requirements). | `devices`, inside `errors`; `screenshot`, `install`, `launch`, `terminate` and `uninstall` on a simulator; on macOS, every command that targets a device (listing, see [Device selection](#device-selection)) |
-| `SIMCTL_TIMEOUT` | simctl did not answer in 30 s; for `install`, 30 s plus 1 s per started MB of the file (31 s for a `.app`). | `devices`, inside `errors`; `screenshot`, `install`, `launch`, `terminate` and `uninstall` on a simulator; on macOS, every command that targets a device (listing, see [Device selection](#device-selection)) |
-| `SIMCTL_FAILED` | simctl exited with an error, or printed something karagoz does not expect. The message is simctl's stderr, or Node's error when simctl printed nothing; for unexpected output, `unexpected simctl output:` and its first line. | `devices`, inside `errors`; `screenshot`, `install`, `launch`, `terminate` and `uninstall` on a simulator; on macOS, every command that targets a device (listing, see [Device selection](#device-selection)) |
+| `SIMCTL_NOT_FOUND` | No `simctl` found: Xcode is missing or was never opened, or `DEVELOPER_DIR` points somewhere without one. See [Requirements](#requirements). | `devices`, inside `errors`; `screenshot`, `install`, `launch`, `terminate`, `uninstall` and `logs` on a simulator; on macOS, every command that targets a device (listing, see [Device selection](#device-selection)) |
+| `SIMCTL_TIMEOUT` | simctl did not answer in 30 s; for `install`, 30 s plus 1 s per started MB of the file (31 s for a `.app`). For `logs`, the read did not finish in 30 s; the message says what to pass to read less. | `devices`, inside `errors`; `screenshot`, `install`, `launch`, `terminate`, `uninstall` and `logs` on a simulator; on macOS, every command that targets a device (listing, see [Device selection](#device-selection)) |
+| `SIMCTL_FAILED` | simctl exited with an error, or printed something karagoz does not expect. The message is simctl's stderr, or Node's error when simctl printed nothing; for unexpected output, `unexpected simctl output:` and its first line. For `logs`, `log`'s own error, or output that is not `log show`'s records. | `devices`, inside `errors`; `screenshot`, `install`, `launch`, `terminate`, `uninstall` and `logs` on a simulator; on macOS, every command that targets a device (listing, see [Device selection](#device-selection)) |
 | `NO_DEVICE` | No device connected and none named. On macOS the message also names booting a simulator. | all but `devices` and `doctor` |
 | `DEVICE_NOT_FOUND` | The named device is not connected. | all but `devices` and `doctor` |
 | `DEVICE_AMBIGUOUS` | More than one device and none named, or a name that matches more than one. | all but `devices` and `doctor` |
 | `DEVICE_NOT_READY` | The device is `offline`, `unauthorized` or similar, or the simulator is `Booting` or `Shutting Down`, or its input service did not answer within 4 s (`tap`, `swipe`, `key` right after a boot). | all but `devices` and `doctor` |
 | `HELPER_FAILED` | The iOS helper cannot run on this Mac: no Xcode selected, no `swiftc` (the Command Line Tools are not enough), a failed compile, a crash, an Xcode that changed a private interface karagoz uses, or input the simulator did not take (no automation session, typing that failed, no answer within 30 s). The message says which and what to do. | `ui-tree`, `tap`, `swipe`, `text`, `key` on a simulator |
-| `NOT_SUPPORTED` | The device is an iOS simulator and the command does not run there yet: `'logs' does not run on iOS simulators yet`; or, with Xcode 26 or older, `'tap' on iOS simulators needs Xcode 27 or later`. Argument checks come first. | `tap`, `swipe`, `key`, `logs` |
+| `NOT_SUPPORTED` | The device is an iOS simulator with Xcode 26 or older: `'tap' on iOS simulators needs Xcode 27 or later`. Argument checks come first. | `tap`, `swipe`, `key` |
 | `CAPTURE_FAILED` | The screen could not be read: bad screenshot data, missing display info, a uiautomator failure, or on iOS a read the helper could not finish. The message says which. | `screenshot`, `ui-tree`, `tap --text/--id` |
 | `AUTOMATION_BUSY` | Another UiAutomation client holds the device; on a simulator, a UI test holds automation mode. | `ui-tree`, `tap --text/--id`; `text` on a simulator |
 | `WRITE_FAILED` | The screenshot file could not be written. | `screenshot` |
@@ -341,7 +340,7 @@ On iOS the PNG is exactly what simctl encoded; karagoz does not rotate or re-enc
 - `SIMCTL_FAILED`: on iOS the capture failed; the message is simctl's text. The first capture right after a boot can fail with `Error creating the image`. `SIMCTL_TIMEOUT` after 30 s, `SIMCTL_NOT_FOUND` without Xcode.
 - `WRITE_FAILED`: the file could not be written, or the default directory is not yours (`pass --out`). Two captures of one device in the same millisecond without `--out`: the second fails.
 - `INVALID_ARGS`: `'<absolute path>' is not a .png file` for an `--out` that does not end in `.png`, before any device call.
-- Plus the [device selection](#device-selection) errors (`NOT_SUPPORTED` excepted), the other `INVALID_ARGS` cases and the adb errors.
+- Plus the [device selection](#device-selection) errors, the other `INVALID_ARGS` cases and the adb errors.
 
 **Notes**
 
@@ -866,8 +865,8 @@ Reads the device log once and prints the newest records as JSON. Each record is 
 
 | Option | Default | Meaning |
 | --- | --- | --- |
-| `--package <package>` | all records | Keep only the records written under this package's Linux user id (uid) in the main Android user. |
-| `--since <seconds>` | the whole log | Unix time in seconds on the device clock, up to 9 decimals and at most 4294967295. Only records stamped later are read. |
+| `--package <package>` | all records | Keep only this app's records. On Android, those written under its Linux user id (uid) in the main Android user; on a simulator, see [On an iOS simulator](#on-an-ios-simulator-8). |
+| `--since <seconds>` | Android: the whole log. iOS: the last minute, or the whole log with `--package` | Unix time in seconds on the device clock, up to 9 decimals and at most 4294967295. Only records stamped later are read. |
 | `--lines <n>` | `30` | How many of the newest matching records to return, 1 to 999999999. |
 | `--device <id>` | see [Device selection](#device-selection) | |
 
@@ -881,14 +880,15 @@ That record was written with `adb shell log -t KaragozManual "hello from karagoz
 
 | Field | Type | Meaning |
 | --- | --- | --- |
-| `device` | string | Serial of the device read. |
+| `device` | string | Serial or UDID of the device read. |
 | `package` | string | Only with `--package`: the package as given. |
-| `uid` | number | Only with `--package`: the uid the records were matched on. `com.android.settings` has 1000, which it shares with the system server. |
-| `records` | array | The matching records, at most `--lines`, oldest first in the order the device's log daemon received them. |
-| `records[].time` | number | When the record was written: seconds since the Unix epoch on the device clock, to the microsecond, rounded up. |
+| `uid` | number | Only with `--package`, on Android: the uid the records were matched on. `com.android.settings` has 1000, which it shares with the system server. |
+| `records` | array | The matching records, at most `--lines`, oldest first: on Android in the order the device's log daemon received them, on iOS by time. |
+| `records[].time` | number | When the record was written: seconds since the Unix epoch on the device clock, to the microsecond. Rounded up on Android; on iOS as `log` prints it. |
 | `records[].pid`, `records[].tid` | number | Process and thread that wrote it. |
-| `records[].level` | string | `V`, `D`, `I`, `W`, `E` or `F`; `?` for any other priority. |
-| `records[].tag` | string | The log tag. |
+| `records[].level` | string | `V`, `D`, `I`, `W`, `E` or `F`; `?` for any other priority. On iOS, `D`, `I`, `E`, `F` or `?` (see [On an iOS simulator](#on-an-ios-simulator-8)). |
+| `records[].tag` | string | On Android the log tag; on iOS the name of the process that wrote it. |
+| `records[].subsystem`, `records[].category` | string | Only on iOS: the record's `os_log` subsystem and category, `""` when it has none. |
 | `records[].message` | string | The message, newlines kept. |
 | `omitted` | number | How many older matching records `--lines` left out. `0` when `records` holds every match. |
 
@@ -914,7 +914,7 @@ Take the largest `time`, not the last record's: records are in arrival order, an
 - `ADB_TIMEOUT` after 10 s.
 - Plus the [device selection](#device-selection) errors and the adb errors.
 
-**Notes**
+**Notes on Android**
 
 - Logs read: main, system and crash, plus kernel from Android 11, logcat's defaults. The events log is not read.
 - The log is never cleared, resized or reconfigured, so other tools and the user keep their history. A call reads what is there and exits; nothing streams. To wait for a line, call again with `--since`.
@@ -926,6 +926,26 @@ Take the largest `time`, not the last record's: records are in arrival order, an
 - A missing line does not prove the app did not write it: some phones drop lines before they reach the log. A `log.tag` property of `I` (`adb shell getprop log.tag`) drops `D` and `V` lines, Developer options' "Logger buffer sizes: Off" drops nearly all, and Huawei and Honor phones keep app logs off until "AP Log" is turned on in a hidden menu.
 - Android cuts a record's tag and message at 4068 bytes together when it is written. Bytes that are not valid UTF-8 become U+FFFD.
 - From Android 15 the device ends a read after 5 s without data and still exits `0`, so a read cut short looks complete.
+
+#### On an iOS simulator
+
+Runs `simctl spawn <udid> log show --style ndjson --info --debug` once, bounded in time and filtered, and reads its output as it streams.
+
+```
+karagoz logs --package dev.karagoz.probe --lines 1
+```
+
+```json
+{"device":"2EC769C1-2EF2-47EB-A441-E6843968F039","package":"dev.karagoz.probe","records":[{"time":1792054562.937849,"pid":43961,"tid":5236136,"level":"I","tag":"Probe","subsystem":"com.apple.Accessibility","category":"AXAppAccessibility","message":"Presentation controller doesn't modalize: <_UIRootPresentationController: 0x10536f350>"}],"omitted":297}
+```
+
+- `log show` has no record count, so the window is a time span: without `--since`, the last minute; with `--package`, the whole log. On an idle simulator a minute took under 1 s and an hour 8 s; a read that passes 30 s fails with `SIMCTL_TIMEOUT`.
+- `--package` keeps the records of every process started from the app's bundle in its current install (the app and its extensions, with the lines of the frameworks they load) and the `exited ...` line `launchd_sim` writes when such a process ends, the only trace of a crash by signal. Records from before the last install, other processes' lines about the app, and `print` and stderr output are not included.
+- `level`: Debug is `D`, Info and Default are `I`, Error is `E`, Fault is `F`, anything else `?`. `Logger.notice` and `NSLog` write Default.
+- The simulator keeps Info records in memory only for a few minutes (gone after 213 s in testing) and does not store Debug records by default.
+- `time` comes from the computer's clock. Pass the largest `time` of one result as the next `--since`: `log` takes whole seconds, and karagoz drops records at or before the exact value, so nothing comes back twice. Of two records in the same microsecond, the second can be lost.
+- Each `log show` writes a record of its own run; karagoz leaves it out. The log is never cleared or reconfigured. There is no `uid`.
+- Errors: `APP_NOT_FOUND` (`app 'dev.karagoz.nope' is not installed on <udid>`) before the read. `SIMCTL_FAILED` with `log`'s own error, such as `log: Bad predicate ...`, or for output that is not `log show`'s records: `unexpected log output: <line>`, `log show ended without its summary line`. `SIMCTL_TIMEOUT` after 30 s: `log show did not finish within 30s. Pass a later --since, or --package, to read less of the simulator log.` `DEVICE_NOT_READY` for a simulator that is not booted.
 
 ### doctor
 
@@ -1118,7 +1138,7 @@ npm run typecheck
 npm run lint        # oxlint and the Prettier check; npm run format fixes formatting
 ```
 
-Each step has one smoke script in `smoke/`. Each builds first and needs a running emulator, `smoke/M-mcp.sh` included, except `smoke/0b-version.sh`, `smoke/1.7-doctor.sh`, `smoke/2.2-screenshot-physical.sh`, `smoke/2.3-ui-tree-physical.sh`, `smoke/2.4-input-physical.sh`, `smoke/2.5-app-lifecycle-physical.sh`, `smoke/2.6-logs-physical.sh`, `smoke/3.1-devices-ios.sh`, `smoke/3.2-screenshot-ios.sh`, `smoke/3.3-ui-tree-ios.sh`, `smoke/3.4-input-ios.sh` and `smoke/3.5-app-lifecycle-ios.sh`: 1.7 uses fake `adb` scripts only and never runs the real adb, 3.1 uses fake `adb` and `simctl` scripts and reads the real simulator list, 3.2 uses fake `adb`, `simctl` and `devicectl` scripts and captures a booted simulator when one runs (else its real step prints `SKIP`), 3.3 adds a fake `swiftc` and reads a booted simulator's tree the same way, 3.4 and 3.5 build a test app from `smoke/fixtures/input-ios/` and drive, install and remove it as `dev.karagoz.probe` on a booted simulator, all five macOS only (they print `SKIP` elsewhere), and 2.2, 2.3, 2.4, 2.5 and 2.6 need a phone only for their phone step, which they skip when none is listed. The header of each script lists its preconditions:
+Each step has one smoke script in `smoke/`. Each builds first and needs a running emulator, `smoke/M-mcp.sh` included, except `smoke/0b-version.sh`, `smoke/1.7-doctor.sh`, `smoke/2.2-screenshot-physical.sh`, `smoke/2.3-ui-tree-physical.sh`, `smoke/2.4-input-physical.sh`, `smoke/2.5-app-lifecycle-physical.sh`, `smoke/2.6-logs-physical.sh`, `smoke/3.1-devices-ios.sh`, `smoke/3.2-screenshot-ios.sh`, `smoke/3.3-ui-tree-ios.sh`, `smoke/3.4-input-ios.sh`, `smoke/3.5-app-lifecycle-ios.sh` and `smoke/3.6-logs-ios.sh`: 1.7 uses fake `adb` scripts only and never runs the real adb, 3.1 uses fake `adb` and `simctl` scripts and reads the real simulator list, 3.2 uses fake `adb`, `simctl` and `devicectl` scripts and captures a booted simulator when one runs (else its real step prints `SKIP`), 3.3 adds a fake `swiftc` and reads a booted simulator's tree the same way, 3.4, 3.5 and 3.6 build a test app from `smoke/fixtures/input-ios/` and drive, install and remove it as `dev.karagoz.probe` on a booted simulator (3.6 reads its log back), all six macOS only (they print `SKIP` elsewhere), and 2.2, 2.3, 2.4, 2.5 and 2.6 need a phone only for their phone step, which they skip when none is listed. The header of each script lists its preconditions:
 
 ```sh
 sh smoke/1.4-input.sh
