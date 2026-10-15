@@ -1,3 +1,5 @@
+import { closeSync, openSync, readSync } from 'node:fs';
+import { basename, join } from 'node:path';
 import { KaragozError } from '../../errors.js';
 import { installed } from './app.js';
 import { isRecord } from './devices.js';
@@ -35,6 +37,75 @@ function quoted(text: string): string {
   return `"${escaped}"`;
 }
 
+// LC_UUID, the build UUID the linker derives from the code (Apple TN3178).
+const LC_UUID = 0x1b;
+
+// The build UUIDs of a Mach-O file, one per architecture; none when the file is missing or not a 64-bit Mach-O.
+function buildIds(file: string): Set<string> {
+  const ids = new Set<string>();
+  let fd: number;
+  try {
+    fd = openSync(file, 'r');
+  } catch {
+    // A process image this install does not have is not this build.
+    return ids;
+  }
+  try {
+    const at = (offset: number, size: number) => {
+      const buf = Buffer.alloc(size);
+      return buf.subarray(0, readSync(fd, buf, 0, size, offset));
+    };
+    const head = at(0, 8);
+    const magic = head.length === 8 ? head.readUInt32BE(0) : 0;
+    const wide = magic === 0xcafebabf;
+    const count = magic === 0xcafebabe || wide ? Math.min(head.readUInt32BE(4), 16) : 0;
+    const table = at(8, count * (wide ? 32 : 20));
+    const slices = count
+      ? Array.from({ length: Math.floor(table.length / (wide ? 32 : 20)) }, (_, i) =>
+          wide ? Number(table.readBigUInt64BE(i * 32 + 8)) : table.readUInt32BE(i * 20 + 8),
+        )
+      : [0];
+    for (const base of slices) {
+      const mach = at(base, 32);
+      if (mach.length < 32 || mach.readUInt32LE(0) !== 0xfeedfacf) continue;
+      const cmds = at(base + 32, Math.min(mach.readUInt32LE(20), 1 << 20));
+      for (let off = 0; off + 8 <= cmds.length;) {
+        const size = cmds.readUInt32LE(off + 4);
+        if (cmds.readUInt32LE(off) === LC_UUID && off + 24 <= cmds.length) {
+          const hex = cmds.toString('hex', off + 8, off + 24).toUpperCase();
+          ids.add(`${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`);
+        }
+        if (size < 8) break;
+        off += size;
+      }
+    }
+  } finally {
+    closeSync(fd);
+  }
+  return ids;
+}
+
+// log prints the path of a build's first install: uuidtext keeps one path per build UUID, so a reinstalled build logs
+// under an older folder (K37). The folder name picks candidates; the file's own LC_UUID in this install decides.
+// ponytail: two apps whose executables are byte-identical (two template Flutter apps with the same plugins) share a
+// UUID and mix; telling them apart needs the bundle id, which no record carries.
+function sameBuild(app: string): (image: string, build: string) => boolean {
+  const folder = `/${basename(app)}/`;
+  const seen = new Map<string, Set<string>>();
+  return (image, build) => {
+    const at = image.indexOf(folder);
+    // Outside the folder: launchd's exit line, let through by its own clause of the predicate.
+    if (at === -1) return true;
+    const file = join(app, image.slice(at + folder.length));
+    let ids = seen.get(file);
+    if (!ids) {
+      ids = buildIds(file);
+      seen.set(file, ids);
+    }
+    return ids.has(build.toUpperCase());
+  };
+}
+
 function unexpected(line: string): KaragozError {
   return new KaragozError('SIMCTL_FAILED', `unexpected log output: ${line.slice(0, 300)}`);
 }
@@ -55,8 +126,9 @@ function time(match: RegExpExecArray): number | undefined {
   return (at(y) * 1e6 + Number(micro)) / 1e6;
 }
 
-// One ndjson line: a logEvent record, or the summary line that proves the read finished (K37).
-function parse(line: string): LogRecord | 'finished' {
+// One ndjson line: a logEvent record with its process image's path and build UUID, or the summary line that proves
+// the read finished (K37).
+function parse(line: string): { record: LogRecord; image: string; build: string } | 'finished' {
   let value: unknown;
   try {
     value = JSON.parse(line);
@@ -66,13 +138,15 @@ function parse(line: string): LogRecord | 'finished' {
   }
   if (!isRecord(value)) throw unexpected(line);
   if ('finished' in value) return 'finished';
-  const { timestamp, processID, threadID, messageType, processImagePath, subsystem, category, eventMessage } = value;
+  const { timestamp, processID, threadID, messageType, processImagePath, processImageUUID, subsystem, category } =
+    value;
+  const { eventMessage } = value;
   const match = typeof timestamp === 'string' ? TIMESTAMP.exec(timestamp) : null;
   const at = match ? time(match) : undefined;
   if (at === undefined || typeof processID !== 'number' || typeof threadID !== 'number') throw unexpected(line);
   if (typeof eventMessage !== 'string') throw unexpected(line);
   const path = typeof processImagePath === 'string' ? processImagePath : '';
-  return {
+  const record = {
     time: at,
     pid: processID,
     tid: threadID,
@@ -82,6 +156,7 @@ function parse(line: string): LogRecord | 'finished' {
     category: typeof category === 'string' ? category : '',
     message: eventMessage,
   };
+  return { record, image: path, build: typeof processImageUUID === 'string' ? processImageUUID : '' };
 }
 
 // log show has no record count: without --since, the window is the last minute, or the whole store for one app (K37).
@@ -89,12 +164,14 @@ export async function logs(udid: string, pkg: string | undefined, since: string 
   // --start takes whole seconds; karagoz keeps only records after the exact value (K37).
   const bound =
     since !== undefined ? ['--start', `@${since.split('.')[0]}`] : pkg === undefined ? ['--last', '1m'] : [];
-  // The app's bundle and its extensions from this install, and launchd's exit line, the only trace of a signal
+  const app = pkg === undefined ? undefined : await installed(udid, pkg);
+  // Processes started from a bundle with the app's folder name, and launchd's exit line, the only trace of a signal
   // crash (K37).
   const predicate =
-    pkg === undefined
+    app === undefined
       ? OTHERS
-      : `type == logEvent AND (processImagePath BEGINSWITH ${quoted(`${await installed(udid, pkg)}/`)} OR (process == "launchd_sim" AND subsystem CONTAINS "UIKitApplication:${pkg}[" AND composedMessage BEGINSWITH "exited "))`;
+      : `type == logEvent AND (processImagePath CONTAINS ${quoted(`/${basename(app)}/`)} OR (process == "launchd_sim" AND subsystem CONTAINS "UIKitApplication:${pkg}[" AND composedMessage BEGINSWITH "exited "))`;
+  const ours = app === undefined ? undefined : sameBuild(app);
   const after = since === undefined ? -Infinity : Number(since);
   const ring: LogRecord[] = [];
   // An object, not two lets: TypeScript would read the checks after the call as if the callback never ran.
@@ -110,9 +187,10 @@ export async function logs(udid: string, pkg: string | undefined, since: string 
         read.done = true;
         return;
       }
-      if (parsed.time <= after) return;
+      const { record, image, build } = parsed;
+      if (record.time <= after || (ours && !ours(image, build))) return;
       read.matched += 1;
-      ring.push(parsed);
+      ring.push(record);
       if (ring.length === 2 * lines) ring.splice(0, lines);
     },
   ).catch((err: unknown) => {

@@ -179,7 +179,7 @@ argv_is "no flags" $(show) --last 1m --predicate "$p0"
 call logs --since 1792047461.304527 --device A1
 argv_is "--since" $(show) --start @1792047461 --predicate "$p0"
 printf '%s\n' '/c/Pro"b\e.app' > "$fake/container"
-pp='type == logEvent AND (processImagePath BEGINSWITH "/c/Pro\"b\\e.app/" OR (process == "launchd_sim" AND subsystem CONTAINS "UIKitApplication:dev.karagoz.probe[" AND composedMessage BEGINSWITH "exited "))'
+pp='type == logEvent AND (processImagePath CONTAINS "/Pro\"b\\e.app/" OR (process == "launchd_sim" AND subsystem CONTAINS "UIKitApplication:dev.karagoz.probe[" AND composedMessage BEGINSWITH "exited "))'
 call logs --package dev.karagoz.probe --device A1
 succeeds "--package" '{"device":"A1","package":"dev.karagoz.probe","records":[],"omitted":0}'
 argv_is "--package" $(show) --predicate "$pp"
@@ -286,7 +286,46 @@ dev="$tmp/nosim"
 call logs --device A1
 refuses DEVICE_NOT_FOUND "no simctl"
 dev="$tmp/dev"
-fakes="fakes: arguments, android order, argv, mapping, lines, since, not installed, log error, malformed, hung (${took}s), targets"
+
+# l. --package keeps a record only when its process ran this install's build: the log prints the path of the first
+# install of a build (K37), so the folder name picks candidates and the file's LC_UUID decides. W is a fat binary.
+app="$tmp/apps/Probe.app"
+mkdir -p "$app/PlugIns/W.appex"
+node -e '
+  const fs = require("fs");
+  const thin = (uuid) => {
+    const b = Buffer.alloc(56);
+    b.writeUInt32LE(0xfeedfacf, 0); b.writeUInt32LE(1, 16); b.writeUInt32LE(24, 20);
+    b.writeUInt32LE(0x1b, 32); b.writeUInt32LE(24, 36); Buffer.from(uuid.replace(/-/g, ""), "hex").copy(b, 40);
+    return b;
+  };
+  const [dir, probe, x86, arm] = process.argv.slice(1);
+  fs.writeFileSync(`${dir}/Probe`, thin(probe));
+  const fat = Buffer.alloc(8192 + 56);
+  fat.writeUInt32BE(0xcafebabe, 0); fat.writeUInt32BE(2, 4);
+  fat.writeUInt32BE(4096, 16); fat.writeUInt32BE(56, 20); thin(x86).copy(fat, 4096);
+  fat.writeUInt32BE(8192, 36); fat.writeUInt32BE(56, 40); thin(arm).copy(fat, 8192);
+  fs.writeFileSync(`${dir}/PlugIns/W.appex/W`, fat);
+' "$app" 6DA4FE03-DAB4-3781-A289-AF1ECEBCFD0B 11111111-2222-3333-4444-555555555555 AAAAAAAA-BBBB-CCCC-DDDD-EEEEEEEEEEEE
+printf '%s\n' "$app" > "$fake/container"
+rec() { # <pid> <path> <uuid>
+  printf '{"timestamp":"2026-10-15 09:57:41.00000%s+0300","processID":%s,"threadID":1,"messageType":"Default","processImagePath":"%s","processImageUUID":"%s","eventMessage":"m%s"}\n' "$1" "$1" "$2" "$3" "$1"
+}
+answer "$(
+  rec 1 /old/25CA/Probe.app/Probe 6DA4FE03-DAB4-3781-A289-AF1ECEBCFD0B
+  rec 2 /other/X/Probe.app/Probe 0F0F0F0F-0000-0000-0000-000000000000
+  rec 3 /old/25CA/Probe.app/PlugIns/W.appex/W AAAAAAAA-BBBB-CCCC-DDDD-EEEEEEEEEEEE
+  rec 4 /old/25CA/Probe.app/PlugIns/Gone.appex/Gone 6DA4FE03-DAB4-3781-A289-AF1ECEBCFD0B
+  rec 5 /sbin/launchd_sim 99999999-0000-0000-0000-000000000000
+  echo "$finished"
+)"
+call logs --package dev.karagoz.probe --device A1
+[ "$st" = 0 ] || fail "build filter exited $st: $out"
+[ "$(printf '%s' "$out" | records_of | sed 's/.*"message":"\([^"]*\)"}/\1/' | paste -sd ' ' -)" = "m1 m3 m5" ] || fail "build filter: $out"
+call logs --package dev.karagoz.probe --lines 1 --device A1
+case $out in *'"message":"m5"}],"omitted":2}') ;; *) fail "build filter --lines 1: $out" ;; esac
+answer "$finished"
+fakes="fakes: arguments, android order, argv, mapping, lines, since, not installed, log error, malformed, hung (${took}s), targets, build filter"
 
 # Real simulator: Probe logs each launch argument with Logger.notice, so a marker comes back as its own record.
 phone=$({ command -v adb >/dev/null && adb devices | awk 'NR > 1 && $1 != "" && $1 !~ /^emulator-/'; ioreg -p IOUSB -w0 | grep -iE 'iPhone|iPad'; } || true)
@@ -347,14 +386,16 @@ wait_for() {
   done
 }
 started=1
+# An app launch writes ~2,400 records in the second after its first line (measured): the newest 1000 missed the marker.
+many=100000
 
 "$framework" install "$booted" "$tmp/Probe.app"
 m1="karagoz-smoke-$$-$(date +%s)-one"
 "$framework" launch "$booted" dev.karagoz.probe "$m1" >/dev/null
-wait_for "$m1" --lines 1000
+wait_for "$m1" --lines "$many"
 why=$(check marker "$m1") || fail "default read: $why"
 
-r --package dev.karagoz.probe --lines 1000
+r --package dev.karagoz.probe --lines "$many"
 why=$(check has "$m1") || fail "--package: $why"
 why=$(check own) || fail "--package: $why"
 t=$(check latest)
@@ -366,7 +407,7 @@ why=$(check one) || fail "--package --lines 1: $why"
 "$framework" terminate "$booted" dev.karagoz.probe >/dev/null
 m2="karagoz-smoke-$$-$(date +%s)-two"
 "$framework" launch "$booted" dev.karagoz.probe "$m2" >/dev/null
-wait_for "$m2" --package dev.karagoz.probe --since "$t" --lines 1000
+wait_for "$m2" --package dev.karagoz.probe --since "$t" --lines "$many"
 why=$(check after "$t" "$m1") || fail "--since $t: $why"
 
 echo "ok: real $booted: default, package, lines, chain, exit line, $fakes"
