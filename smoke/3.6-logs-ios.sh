@@ -198,6 +198,7 @@ answer "$(cat <<EOF
 {"timestamp":"2026-10-15 09:57:43.000010+0300","processID":16,"threadID":106,"messageType":"Bogus","processImagePath":"/bin/x","subsystem":"","category":"","eventMessage":"odd"}
 {"timestamp":"$((year + 1))-12-30 10:00:00.000001Z","processID":17,"threadID":107,"messageType":"Default","processImagePath":"/bin/y","eventMessage":"december"}
 {"timestamp":"$((year - 2))-01-02 10:00:00.000002Z","processID":18,"threadID":108,"messageType":"Default","processImagePath":"/bin/y","eventMessage":"january"}
+{"timestamp":"$((year + 1))-12-26 10:00:00.000003Z","processID":19,"threadID":109,"messageType":"Default","processImagePath":"/bin/y","eventMessage":"december 26"}
 $finished
 EOF
 )"
@@ -220,6 +221,7 @@ $(node -e '
   const rec = (time, pid, message) => ({ time, pid, tid: pid + 90, level: "I", tag: "y", subsystem: "", category: "", message });
   console.log(JSON.stringify(rec(at(y, 12, 30, 1), 17, "december")));
   console.log(JSON.stringify(rec(at(y - 1, 1, 2, 2), 18, "january")));
+  console.log(JSON.stringify(rec(at(y, 12, 26, 3), 19, "december 26")));
 ' "$year")"
 [ "$recs" = "$want" ] || fail "mapping: got
 $recs

@@ -110,7 +110,8 @@ function unexpected(line: string): KaragozError {
   return new KaragozError('SIMCTL_FAILED', `unexpected log output: ${line.slice(0, 300)}`);
 }
 
-// log prints a week-year (YYYY): December 29-31 can carry next year and January 1-3 last year (K37).
+// log prints a week-year (YYYY): December 26-31 can carry next year (week 1 may start on Dec 26) and, under ISO rules,
+// January 1-3 last year (K37).
 // ponytail: a genuine January 1-3 record from more than a year ago moves forward too; the stores measured held days.
 function time(match: RegExpExecArray): number | undefined {
   const [, year, month, day, hour, minute, second, micro, sign, offHour, offMinute] = match;
@@ -121,7 +122,7 @@ function time(match: RegExpExecArray): number | undefined {
   const now = Date.now() / 1000;
   let y = Number(year);
   const date = `${month}-${day}`;
-  if (date >= '12-29' && at(y) > now) y -= 1;
+  if (date >= '12-26' && at(y) > now) y -= 1;
   else if (date <= '01-03' && at(y + 1) <= now) y += 1;
   return (at(y) * 1e6 + Number(micro)) / 1e6;
 }
