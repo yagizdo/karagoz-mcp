@@ -74,7 +74,10 @@ export async function xcode(): Promise<string> {
 
 export function swiftc(dev: string): { bin: string; missing: string } {
   const bin = join(dev, 'Toolchains', 'XcodeDefault.xctoolchain', 'usr', 'bin', 'swiftc');
-  return { bin, missing: `swiftc not found at ${bin}; install Xcode, the Command Line Tools are not enough` };
+  return {
+    bin,
+    missing: `swiftc not found at ${bin}; install or select an Xcode (xcode-select -s <Xcode.app> or DEVELOPER_DIR), the Command Line Tools are not enough`,
+  };
 }
 
 // The cache sits in the user's home, but a directory or binary someone else owns there is refused, as screenshot
