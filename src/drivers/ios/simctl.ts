@@ -9,7 +9,7 @@ const run = promisify(execFile);
 
 // The first call after login starts CoreSimulatorService: 8.9 s in one report, and 15 s was too short in two
 // projects (K32).
-const TIMEOUT_MS = 30_000;
+export const TIMEOUT_MS = 30_000;
 
 // Sized when the screenshot PNG (2.9 MB, measured) came on stdout; it now comes through a file. Kept: lowering it
 // gains nothing. Node's 1 MB default failed adb's PNG (K22).
