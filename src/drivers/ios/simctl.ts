@@ -1,5 +1,5 @@
 import { execFile, spawn } from 'node:child_process';
-import { join, resolve } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { createInterface } from 'node:readline';
 import { promisify } from 'node:util';
 import { cancellation } from '../../cancellation.js';
@@ -19,6 +19,8 @@ const MAX_BUFFER = 64 * 1024 * 1024;
 // dialog and the shim's `xcodebuild -runFirstLaunch`, which hangs without a TTY (K32). If Apple moves it, iOS reads
 // as SIMCTL_NOT_FOUND; the fallback is the selected Xcode's shim after checking its EXPECTED_VERSION.
 const FRAMEWORK = '/Library/Developer/PrivateFrameworks/CoreSimulator.framework/Versions/A/Resources/bin/simctl';
+// The framework's Info.plist: its CFBundleVersion is the CoreSimulator version a shim's EXPECTED_VERSION names.
+export const FRAMEWORK_PLIST = join(dirname(FRAMEWORK), '..', 'Info.plist');
 
 // DEVELOPER_DIR picks an Xcode as it does for xcrun, which also takes the .app path, with or without a trailing slash.
 export function developerDir(): string | undefined {
@@ -28,7 +30,7 @@ export function developerDir(): string | undefined {
   return dev.endsWith('.app') ? join(dev, 'Contents', 'Developer') : dev;
 }
 
-function binary(): { bin: string; missing: string } {
+export function binary(): { bin: string; missing: string } {
   const dev = developerDir();
   if (!dev)
     return { bin: FRAMEWORK, missing: `simctl not found (tried ${FRAMEWORK}). Install Xcode and open it once.` };

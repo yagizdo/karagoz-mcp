@@ -7,9 +7,9 @@ import { cancellation } from './cancellation.js';
 import { KaragozError } from './errors.js';
 
 const INSTRUCTIONS =
-  'karagoz drives Android emulators and phones over adb, and iOS simulators on macOS. To see the screen, call ui_tree first: node bounds are the pixels tap and swipe take; take a screenshot only when you need the image. Pass device only when more than one device is connected. Each result is one JSON object; on failure, branch on error.code. If adb is missing or the wrong one runs, call doctor.';
+  'karagoz drives Android emulators and phones over adb, and iOS simulators on macOS. To see the screen, call ui_tree first: node bounds are the pixels tap and swipe take; take a screenshot only when you need the image. Pass device only when more than one device is connected. Each result is one JSON object; on failure, branch on error.code. If adb or Xcode is missing, old or broken, call doctor.';
 
-const device = { type: 'string', description: 'Serial or name.' };
+const device = { type: 'string', description: 'Id or name.' };
 
 const TOOLS: Tool[] = [
   {
@@ -166,9 +166,9 @@ const TOOLS: Tool[] = [
   },
   {
     name: 'doctor',
-    title: 'Check adb',
+    title: 'Check adb and Xcode',
     description:
-      'Report which adb karagoz uses, its version, other adb binaries it found, and how to install platform-tools if adb is missing or old.',
+      'Report which adb and Xcode tools karagoz uses, their versions, and how to fix one that is missing, old or broken.',
     inputSchema: { type: 'object', properties: {} },
     annotations: { readOnlyHint: true, openWorldHint: false },
   },

@@ -30,10 +30,15 @@ refuses() {
   [ -z "$msg" ] || [ "$(printf '%s' "$got" | message_of)" = "$msg" ] \
     || { echo "FAIL: $*: expected the message '$msg', got: $got"; exit 1; }
 }
-# Runs doctor with only the VAR=value pairs given; env -i keeps the machine's PATH and SDK variables out. Sets $got.
+# Runs doctor with only the VAR=value pairs given; env -i keeps the machine's PATH and SDK variables out. Sets $full to
+# the line and $got to its adb object alone: on macOS the line also carries this Mac's Xcode, which smoke 3.7 checks.
 doc() {
-  got=$(env -i HOME="$tmp/home" ARGS="$tmp/args" "$@" "$node_bin" dist/cli.js doctor 2>/dev/null) \
-    || { printf 'FAIL: doctor exited non-zero: %s\n' "$got"; exit 1; }
+  full=$(env -i HOME="$tmp/home" ARGS="$tmp/args" "$@" "$node_bin" dist/cli.js doctor 2>/dev/null) \
+    || { printf 'FAIL: doctor exited non-zero: %s\n' "$full"; exit 1; }
+  got=$(printf '%s' "$full" | node -e '
+    const out = require("fs").readFileSync(0, "utf8").trimEnd();
+    try { console.log(out.includes("\n") ? "not-one-line" : JSON.stringify({ adb: JSON.parse(out).adb })) } catch { console.log("not-json") }
+  ')
 }
 # Fails unless $got is exactly $2. $1: the case. printf, not echo: this machine's sh echo expands backslashes (K9).
 is() { [ "$got" = "$2" ] || { printf 'FAIL: %s: expected %s, got: %s\n' "$1" "$2" "$got"; exit 1; }; }
@@ -98,6 +103,9 @@ fi
 [ "$(printf '%s' "$got" | code_of)" = ADB_NOT_FOUND ] || { printf 'FAIL: expected ADB_NOT_FOUND, got: %s\n' "$got"; exit 1; }
 [ "$(printf '%s' "$got" | message_of)" = "adb not found (tried PATH, $default). $hint" ] \
   || { printf 'FAIL: ADB_NOT_FOUND message changed: %s\n' "$got"; exit 1; }
+keys=$(printf '%s' "$full" | node -e 'console.log(Object.keys(JSON.parse(require("fs").readFileSync(0, "utf8"))).join())')
+if [ "$(uname)" = Darwin ]; then want=adb,xcode; else want=adb; fi
+[ "$keys" = "$want" ] || { echo "FAIL: doctor's keys: expected $want, got $keys"; exit 1; }
 
 # 3. Found: ANDROID_HOME is used, PATH is listed.
 fake "$tmp/a/platform-tools" 'Version 37.0.1-15733141'

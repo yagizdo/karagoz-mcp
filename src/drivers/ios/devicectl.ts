@@ -14,6 +14,11 @@ const TIMEOUT_MS = 10_000;
 // (K32). If Apple moves it, rotation reads as null.
 const FRAMEWORK = '/Library/Developer/PrivateFrameworks/CoreDevice.framework/Versions/A/Resources/bin/devicectl';
 
+export function devicectlPath(): string {
+  const dev = developerDir();
+  return dev ? join(dev, 'usr', 'bin', 'devicectl') : FRAMEWORK;
+}
+
 // Apple's rotN and Android's ROTATION_N turn opposite ways: landscapeLeft (turned counter-clockwise) is rot270 in
 // devicectl and ROTATION_90 on Android (K34).
 const ROTATION = new Map([
@@ -26,8 +31,7 @@ const ROTATION = new Map([
 // The simulator's interface orientation. It is metadata, so any failure is null, meaning unknown, rather than an error
 // (K6 3.2 note); Xcode 26's devicectl does not read simulators.
 export async function rotation(udid: string): Promise<number | null> {
-  const dev = developerDir();
-  const bin = dev ? join(dev, 'usr', 'bin', 'devicectl') : FRAMEWORK;
+  const bin = devicectlPath();
   const signal = cancellation.getStore();
   // An aborted signal still spawns devicectl and kills it a tick later.
   signal?.throwIfAborted();
