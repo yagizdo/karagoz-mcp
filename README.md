@@ -437,7 +437,7 @@ Node fields, in this order:
 | `bounds` | always | `[left, top, right, bottom]` in [screen pixels](#coordinates): the frame in points times `screenshot`'s `scale`, rounded to 0.01. Not clipped to the screen: an element below the fold has a bottom past the screen's height. |
 | `children` | when the node has any | Nodes, same shape. |
 
-The root is the frontmost app, or SpringBoard on the home screen. An alert, a system alert included, is in the tree in place of what it covers. Only elements on screen are listed. Keyboard keys and WebView content have not been measured.
+The root is the frontmost app, or SpringBoard on the home screen. An alert, a system alert included, is in the tree in place of what it covers. Only elements on screen are listed. Keyboard keys and WebView content have not been measured. An app stopped in a debugger (an Xcode breakpoint or pause) reads as a root `Application` with `bounds` `[0,0,0,0]` and no label or children, with exit 0.
 
 The first call compiles the helper ([Requirements](#requirements)) and takes a few seconds; later calls take about 0.25 s. The helper only reads: it installs nothing in the simulator, needs no macOS permission and leaves no process running.
 
@@ -693,6 +693,7 @@ Installs an app from one APK file, or on an iOS simulator from a `.app` or `.ipa
 - One `.apk` only. Split APKs, `.apks` and `.aab` are not supported. There is no way to pass `-g` (grant runtime permissions), `-d` (allow a downgrade) or `-t`: an APK marked `testOnly`, which Android Studio's Run button can produce, fails with `INSTALL_FAILED_TEST_ONLY`.
 - Android installs the app for every user on the device that allows adb installs; Secure Folder, Dual Messenger and work profiles get it too.
 - An 8.5 KB APK took 0.7 s, a 100 MB one 2.5 to 3.4 s.
+- On Android 17, installing over the app in front puts a system placeholder in its task and restarts the app 2 to 20 s after `install` returns; such an install took 4 to 10 s. A `launch` in that window exits 0, reports `com.android.systemui/com.android.wm.shell.packageupdate.PackageUpdateActivity` as `activity` and starts nothing.
 
 #### On an iOS simulator
 
@@ -704,7 +705,7 @@ Takes a `.app` bundle directory or an `.ipa`, built for the simulator, and runs 
 
 - A build for a physical iPhone is refused: `INSTALL_FAILED` with `reason` `IXUserPresentableErrorDomain:4` and simctl's message, which says the executable has no code for the simulator. Other refusals carry simctl's own `<domain>:<code>`, such as `IXErrorDomain:13` for a bundle without `Info.plist`. A failure without one stays `SIMCTL_FAILED`.
 - A lower `CFBundleVersion` than the installed app is not refused. The app's data is kept across reinstalls.
-- `SIMCTL_TIMEOUT` after 30 s plus 1 s for every started MB of the file; a `.app` gets 31 s.
+- `SIMCTL_TIMEOUT` after 30 s plus 1 s for every started MB of the file; a `.app` gets 31 s. Over an app stopped in a debugger (an Xcode breakpoint or pause) the install waits for the debugger: the call ends in `SIMCTL_TIMEOUT`, and the app is installed once it continues or the debug session ends. Meanwhile other calls to that simulator can time out too.
 
 ### launch
 
@@ -804,6 +805,7 @@ Runs `simctl terminate`. System apps are stopped like any other.
 
 - Stopping the app in front shows the home screen's first page, not the app that was open before.
 - An app that is installed but not running gives the same output. `APP_NOT_FOUND` when it is not installed: simctl answers both the same way, so karagoz checks first.
+- An app stopped in a debugger (an Xcode breakpoint or pause) does not stop until the debugger lets it run: karagoz exits with `SIMCTL_TIMEOUT` after 30 s, the app stops when it continues or the debug session ends, and other calls to that simulator can time out for up to 5 minutes. An app that runs under the debugger stops at once, and Xcode's session ends.
 
 ### uninstall
 
@@ -854,6 +856,7 @@ Runs `simctl uninstall`.
 
 - A running app is killed first; the home screen then shows the page its icon was on.
 - `APP_NOT_FOUND` when it is not installed: simctl reports success for a missing app, so karagoz checks first. A refusal from simctl is `UNINSTALL_FAILED` with its `<domain>:<code>` as `reason`.
+- As with `install`, an app stopped in a debugger ends the call in `SIMCTL_TIMEOUT` after 30 s; the app is removed once the debugger lets it run or the debug session ends.
 
 ### logs
 

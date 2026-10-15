@@ -2,7 +2,8 @@
 # Step 3.5: on macOS install, launch, terminate and uninstall reach a booted iOS simulator through simctl in K28's
 # shapes (K36). Fakes prove every argument check before any call, the wrong-platform file, launch's output check,
 # APP_NOT_FOUND from get_app_container, "found nothing to terminate" as success, SYSTEM_APP with no uninstall sent,
-# INSTALL_FAILED and UNINSTALL_FAILED with simctl's <domain>:<code>, target resolution and the hung simctl's timeout.
+# INSTALL_FAILED and UNINSTALL_FAILED with simctl's <domain>:<code>, target resolution and each verb's timeout message
+# over a hung simctl (terminate, install, uninstall).
 # Precondition: macOS with Xcode. A booted simulator on its home screen is used when one is running and no phone is
 # attached, else the real part prints SKIP. It builds smoke/fixtures/input-ios, installs it as .app and .ipa,
 # launches, terminates and uninstalls dev.karagoz.probe, tries a bundle with no Info.plist, then checks the app is gone,
@@ -72,7 +73,7 @@ trap 'set +e; pkill -f "sleep 97\.51"; restore; st=$?; rm -rf "$tmp"; [ "$st" = 
 # Fakes. Scripts call /bin tools by absolute path: env -i leaves no PATH for them. Each records its arguments.
 fake="$tmp/fake"
 mkdir -p "$tmp/sdk/platform-tools" "$tmp/dev/usr/bin" "$tmp/nosim" "$tmp/home" "$tmp/dir.ipa" \
-  "$fake/Probe.app" "$fake/Device.app" "$fake/Plain.app"
+  "$fake/Probe.app" "$fake/Device.app" "$fake/Plain.app" "$fake/Hang.app"
 : > "$tmp/x.txt"
 : > "$tmp/a.apk"
 : > "$tmp/file.app"
@@ -124,6 +125,9 @@ case "\$*" in
     exit 7 ;;
   "install A1 $fake/Device.app") /bin/cat "$fake/device.err" >&2; exit 4 ;;
   "install A1 $fake/Plain.app") echo 'simctl broke' >&2; exit 1 ;;
+  # exec, as for the hung terminate.
+  "install A1 $fake/Hang.app") exec /bin/sleep 97.51 ;;
+  "uninstall A1 dev.karagoz.hang") exec /bin/sleep 97.51 ;;
   *) echo "fake simctl: unexpected arguments: \$*" >&2; exit 1 ;;
 esac
 FAKE
@@ -254,15 +258,24 @@ call launch x
 refuses NO_DEVICE "no device"
 sims "$a1,$a2"
 
-# j. A hung simctl is killed after K32's 30 s.
-start=$(date +%s)
-call terminate dev.karagoz.hang --device A1
-took=$(($(date +%s) - start))
-refuses SIMCTL_TIMEOUT "hung simctl" "simctl did not answer within 30s. The simulator service may still be starting (the first call after login can take several seconds) or be stuck."
-[ "$took" -ge 29 ] && [ "$took" -le 40 ] || fail "hung simctl took ${took}s"
-sleep 1
-! pgrep -f 'sleep 97\.51' >/dev/null || fail "the hung simctl outlived karagoz"
-fakes="fakes: arguments, other platform, launch, not installed, idle, system app, refusals, targets, hung (${took}s)"
+# j. A hung simctl is killed after 30 s, 31 s for an install of a .app; each verb names a debugger-stopped app first.
+hung() { # <label> <request> <seconds> <karagoz arguments>
+  label=$1 request=$2 seconds=$3
+  shift 3
+  start=$(date +%s)
+  call "$@"
+  took=$(($(date +%s) - start))
+  refuses SIMCTL_TIMEOUT "$label" "simctl did not answer within ${seconds}s. If a debugger such as Xcode has the app stopped (a breakpoint or a pause), the simulator holds the $request until the app continues or the debug session ends, then finishes it; until then other calls to this simulator can wait too. Otherwise the simulator service may still be starting (the first call after login can take several seconds) or be stuck."
+  [ "$took" -ge 29 ] && [ "$took" -le 41 ] || fail "$label took ${took}s"
+  sleep 1
+  ! pgrep -f 'sleep 97\.51' >/dev/null || fail "$label: the hung simctl outlived karagoz"
+}
+hung "hung terminate" stop 30 terminate dev.karagoz.hang --device A1
+t1=$took
+hung "hung install" install 31 install "$fake/Hang.app" --device A1
+t2=$took
+hung "hung uninstall" removal 30 uninstall dev.karagoz.hang --device A1
+fakes="fakes: arguments, other platform, launch, not installed, idle, system app, refusals, targets, hung terminate/install/uninstall (${t1}/${t2}/${took}s)"
 
 # Real simulator: Probe as .app and .ipa, each effect read back, then everything as recorded.
 phone=$({ command -v adb >/dev/null && adb devices | awk 'NR > 1 && $1 != "" && $1 !~ /^emulator-/'; ioreg -p IOUSB -w0 | grep -iE 'iPhone|iPad'; } || true)
