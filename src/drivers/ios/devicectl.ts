@@ -90,7 +90,8 @@ export async function listPhones() {
     const { udid, reality, platform, marketingName } = group(properties.hardware, device.hardwareProperties);
     const connection = group(properties.connection, device.connectionProperties);
     const { pairingState } = connection;
-    if (reality !== 'physical' || platform !== 'iOS') return [];
+    // devicectl 642.16 omits reality for an unpaired phone (measured).
+    if ((reality !== undefined && reality !== 'physical') || platform !== 'iOS') return [];
     if ((connection.state ?? connection.tunnelState) === 'unavailable') return [];
     if (device.visibilityClass !== undefined && device.visibilityClass !== 'default') return [];
     if (typeof udid !== 'string' || typeof pairingState !== 'string') return [];

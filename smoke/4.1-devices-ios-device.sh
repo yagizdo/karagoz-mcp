@@ -48,13 +48,14 @@ kz() {
     "$node_bin" dist/cli.js "$@" 2>/dev/null
 }
 
-# Xcode 27's shape. P1 also carries the deprecated keys, with a different model name: properties must win. Kept: P1-P4.
-# Dropped: G1 remembered but not attached, S1 a simulator, W1 a watch, E1 no hardware info, N1 nearby and pairable.
+# Xcode 27's shape. P1 also carries the deprecated keys, with a different model name: properties must win. Kept: P1-P4;
+# P3 is unpaired and, as devicectl prints such a phone, has no reality and no model name (measured). Dropped: G1
+# remembered but not attached, S1 a simulator, W1 a watch, E1 no hardware info, N1 nearby and pairable.
 cat > "$tmp/phones27.json" <<'JSON'
 {"info":{"outcome":"success","jsonVersion":5,"environment":{"TERM":"x"}},"result":{"devices":[
 {"identifier":"C1","visibilityClass":"default","hardwareProperties":{"udid":"P1","reality":"physical","platform":"iOS","marketingName":"OLD"},"connectionProperties":{"pairingState":"paired","tunnelState":"connected","transportType":"wired"},"properties":{"hardware":{"udid":"P1","reality":"physical","platform":"iOS","marketingName":"iPhone 14 Pro Max"},"connection":{"pairingState":"paired","state":"connected","transportType":"wired"},"state":{"name":"Owner's iPhone"}}},
 {"identifier":"C2","visibilityClass":"default","properties":{"hardware":{"udid":"P2","reality":"physical","platform":"iOS","marketingName":"iPhone 17 Pro"},"connection":{"pairingState":"paired","state":"disconnected","transportType":"localNetwork"}}},
-{"identifier":"C3","visibilityClass":"default","properties":{"hardware":{"udid":"P3","reality":"physical","platform":"iOS","productType":"iPhone15,3"},"connection":{"pairingState":"unpaired","state":"disconnected","transportType":"wired"}}},
+{"identifier":"C3","visibilityClass":"default","properties":{"hardware":{"udid":"P3","platform":"iOS","productType":"iPhone15,3"},"connection":{"pairingState":"unpaired","state":"disconnected","transportType":"wired"}}},
 {"identifier":"C4","visibilityClass":"default","properties":{"hardware":{"udid":"P4","reality":"physical","platform":"iOS","marketingName":"iPad Air 11-inch (M3)"},"connection":{"pairingState":"pairingInProgress","state":"connecting","transportType":"wired"}}},
 {"identifier":"C5","visibilityClass":"default","properties":{"hardware":{"udid":"G1","reality":"physical","platform":"iOS","marketingName":"iPhone 12"},"connection":{"pairingState":"paired","state":"unavailable"}}},
 {"identifier":"C6","visibilityClass":"simulators","properties":{"hardware":{"udid":"S1","reality":"simulated","platform":"iOS","marketingName":"iPhone 17"},"connection":{"pairingState":"paired","state":"connected","transportType":"sameMachine"}}},
@@ -91,7 +92,8 @@ want=$("$framework" list devices --json-output - -q | "$node_bin" -e '
   const rows = result.devices.flatMap((d) => {
     const hw = d.properties?.hardware ?? d.hardwareProperties ?? {};
     const c = d.properties?.connection ?? d.connectionProperties ?? {};
-    if (hw.reality !== "physical" || hw.platform !== "iOS" || (c.state ?? c.tunnelState) === "unavailable") return [];
+    if ((hw.reality ?? "physical") !== "physical" || hw.platform !== "iOS") return [];
+    if ((c.state ?? c.tunnelState) === "unavailable") return [];
     if (d.visibilityClass !== undefined && d.visibilityClass !== "default") return [];
     if (typeof hw.udid !== "string" || typeof c.pairingState !== "string") return [];
     const name = typeof hw.marketingName === "string" ? hw.marketingName : null;
