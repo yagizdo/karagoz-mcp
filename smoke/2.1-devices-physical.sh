@@ -28,13 +28,18 @@ message_of() { node -e '
 # it, so it never claims a phone the default server holds or auto-connects one paired over Wi-Fi. KARAGOZ_DEVICE and
 # ANDROID_SERIAL from the calling shell are cleared: either would turn the NO_DEVICE step into DEVICE_NOT_FOUND.
 on_test() { ANDROID_ADB_SERVER_PORT=$port ADB_USB=0 ADB_EMU=0 ADB_MDNS=0 KARAGOZ_DEVICE= ANDROID_SERIAL= DEVELOPER_DIR="$tmp/dev" "$@"; }
-# A simctl that lists no simulator, so the exact devices lines below hold with one running on the Mac (smoke 3.1).
+# A simctl that lists no simulator and a devicectl that lists no iPhone, so the exact devices lines below hold with one
+# running or attached (smokes 3.1, 4.1).
 mkdir -p "$tmp/dev/usr/bin"
 cat > "$tmp/dev/usr/bin/simctl" <<'EOF'
 #!/bin/sh
 echo '{"devices":{}}'
 EOF
-chmod +x "$tmp/dev/usr/bin/simctl"
+cat > "$tmp/dev/usr/bin/devicectl" <<'EOF'
+#!/bin/sh
+echo '{"result":{"devices":[]}}'
+EOF
+chmod +x "$tmp/dev/usr/bin/simctl" "$tmp/dev/usr/bin/devicectl"
 
 # 1. A ready, named emulator on the default server. Its adb port is the console port in emulator-<N> plus one.
 list=$(node dist/cli.js devices) || { echo "FAIL: devices exited non-zero: $list"; exit 1; }

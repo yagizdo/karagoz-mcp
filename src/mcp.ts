@@ -15,7 +15,7 @@ const TOOLS: Tool[] = [
   {
     name: 'devices',
     title: 'List devices',
-    description: 'List Android devices and emulators, and running iOS simulators.',
+    description: 'List Android devices and emulators, running iOS simulators, and iPhones connected to this Mac.',
     inputSchema: { type: 'object', properties: {} },
     annotations: { readOnlyHint: true, openWorldHint: false },
   },

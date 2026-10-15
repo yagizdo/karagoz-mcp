@@ -1,4 +1,5 @@
 import { describe, entries, listDevices } from './drivers/android/devices.js';
+import { listPhones } from './drivers/ios/devicectl.js';
 import { listSimulators } from './drivers/ios/devices.js';
 import { KaragozError } from './errors.js';
 
@@ -26,7 +27,7 @@ async function attempt<T>(platform: Platform, list: () => Promise<T[]>): Promise
 export async function listAll() {
   const listings = await Promise.all([
     attempt<Row>('android', listDevices),
-    ...(IS_MAC ? [attempt<Row>('ios', listSimulators)] : []),
+    ...(IS_MAC ? [attempt<Row>('ios', listSimulators), attempt<Row>('ios', listPhones)] : []),
   ]);
   const failed = listings.flatMap((listing) => ('error' in listing ? [listing] : []));
   const [first] = failed;

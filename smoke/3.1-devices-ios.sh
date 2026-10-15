@@ -2,8 +2,8 @@
 # Step 3.1: on macOS `devices` lists running iOS simulators next to the Android entries; a missing, failing or hung
 # simctl or adb becomes an errors entry, and only both failing fails the command (K18 3.1 note, K32).
 # Precondition: macOS with Xcode. No emulator or simulator is needed, and nothing here boots, stops or creates one;
-# the adb server on the default port is never touched. Fake simctl comes through DEVELOPER_DIR, fake adb through
-# ANDROID_HOME, both under env -i.
+# the adb server on the default port is never touched. Fake simctl and devicectl come through DEVELOPER_DIR, fake
+# adb through ANDROID_HOME, all under env -i.
 set -e
 cd "$(dirname "$0")/.."
 [ "$(uname -s)" = Darwin ] || { echo "SKIP: iOS simulators need macOS"; echo "ok: skipped"; exit 0; }
@@ -31,7 +31,9 @@ cat > "$tmp/fixture.json" <<'JSON'
 {"devices":{"com.apple.CoreSimulator.SimRuntime.iOS-26-2":[{"udid":"A1","name":"iPhone 17 Pro","state":"Booted","isAvailable":true,"dataPath":"/Users/me/x"},{"udid":"A2","name":"iPhone 17","state":"Booting","isAvailable":true},{"udid":"A3","name":"iPhone 16","state":"Shutdown","isAvailable":true},{"udid":"A4","name":"Gone","state":"Booted","isAvailable":false,"availabilityError":"runtime profile not found"},{"udid":"A5","name":"iPad Air 11-inch (M3)","state":"Booted","isAvailable":true},{"udid":"A6","state":"Booted","isAvailable":true}],"com.apple.CoreSimulator.SimRuntime.watchOS-26-0":[{"udid":"W1","name":"Apple Watch","state":"Booted","isAvailable":true}],"com.apple.CoreSimulator.SimRuntime.tvOS-26-0":[{"udid":"T1","name":"Apple TV","state":"Booted","isAvailable":true}],"com.apple.CoreSimulator.SimRuntime.xrOS-26-0":[{"udid":"X1","name":"Apple Vision Pro","state":"Booted","isAvailable":true}]}}
 JSON
 simctl() { printf '#!/bin/sh\n%s\n' "$1" > "$tmp/dev/usr/bin/simctl"; chmod +x "$tmp/dev/usr/bin/simctl"; }
-chmod +x "$tmp/sdk/platform-tools/adb"
+# devicectl lists no iPhone, so its listing adds nothing here (smoke 4.1 covers it).
+printf '#!/bin/sh\necho %s\n' "'{\"result\":{\"devices\":[]}}'" > "$tmp/dev/usr/bin/devicectl"
+chmod +x "$tmp/sdk/platform-tools/adb" "$tmp/dev/usr/bin/devicectl"
 # karagoz with only the fakes: no real adb on PATH or in the default SDK under this HOME.
 run() { env -i HOME="$tmp/home" PATH=/usr/bin:/bin "$@" "$node_bin" dist/cli.js devices 2>/dev/null; }
 android='{"id":"fake-1","platform":"android","kind":"physical","state":"device","name":null}'
@@ -52,7 +54,7 @@ want=$("$framework" list devices --json | node -e '
 got=$(echo "$out" | node -e '
   const r = JSON.parse(require("fs").readFileSync(0, "utf8"));
   if (r.errors?.some((e) => e.platform === "ios")) { console.log("ios error: " + JSON.stringify(r.errors)); process.exit(); }
-  console.log(JSON.stringify(r.devices.filter((d) => d.platform === "ios")));
+  console.log(JSON.stringify(r.devices.filter((d) => d.platform === "ios" && d.kind === "simulator")));
 ')
 [ "$got" = "$want" ] || fail "real Mac: iOS rows $got, simctl says $want"
 real=$(echo "$want" | node -e 'console.log(JSON.parse(require("fs").readFileSync(0, "utf8")).length)')
@@ -64,16 +66,19 @@ out=$(run ANDROID_HOME="$tmp/sdk" DEVELOPER_DIR="$tmp/dev") || fail "parse exite
 is parse "$out" "{\"devices\":[$android,$ios]}"
 
 # 3. DEVELOPER_DIR as the .app path, with and without a trailing slash, as xcrun takes it.
-cp "$tmp/dev/usr/bin/simctl" "$tmp/X.app/Contents/Developer/usr/bin/simctl"
+cp "$tmp/dev/usr/bin/simctl" "$tmp/dev/usr/bin/devicectl" "$tmp/X.app/Contents/Developer/usr/bin/"
 out=$(run ANDROID_HOME="$tmp/sdk" DEVELOPER_DIR="$tmp/X.app") || fail ".app exited non-zero: $out"
 is .app "$out" "{\"devices\":[$android,$ios]}"
 out=$(run ANDROID_HOME="$tmp/sdk" DEVELOPER_DIR="$tmp/X.app/") || fail ".app/ exited non-zero: $out"
 is .app/ "$out" "{\"devices\":[$android,$ios]}"
 
-# 4-6. simctl missing, failing, not JSON, hung: Android still listed, one ios entry, exit 0.
+# 4-6. simctl missing, failing, not JSON, hung: Android still listed, one ios entry, exit 0. A DEVELOPER_DIR without
+# simctl has no devicectl either: a second ios entry.
 entry() { echo "{\"devices\":[$android],\"errors\":[{\"platform\":\"ios\",\"code\":\"$1\",\"message\":\"$2\"}]}"; }
 out=$(run ANDROID_HOME="$tmp/sdk" DEVELOPER_DIR="$tmp/empty") || fail "missing simctl exited non-zero: $out"
-is missing "$out" "$(entry SIMCTL_NOT_FOUND "simctl not found (tried $tmp/empty/usr/bin/simctl, from DEVELOPER_DIR). Point DEVELOPER_DIR at an Xcode, not the Command Line Tools, or unset it.")"
+simctl_missing="{\"platform\":\"ios\",\"code\":\"SIMCTL_NOT_FOUND\",\"message\":\"simctl not found (tried $tmp/empty/usr/bin/simctl, from DEVELOPER_DIR). Point DEVELOPER_DIR at an Xcode, not the Command Line Tools, or unset it.\"}"
+devicectl_missing="{\"platform\":\"ios\",\"code\":\"DEVICECTL_NOT_FOUND\",\"message\":\"devicectl not found (tried $tmp/empty/usr/bin/devicectl, from DEVELOPER_DIR). Point DEVELOPER_DIR at an Xcode 15 or later, not the Command Line Tools, or unset it.\"}"
+is missing "$out" "{\"devices\":[$android],\"errors\":[$simctl_missing,$devicectl_missing]}"
 simctl 'echo "xcrun: error: unable to find utility" >&2; exit 72'
 out=$(run ANDROID_HOME="$tmp/sdk" DEVELOPER_DIR="$tmp/dev") || fail "failing simctl exited non-zero: $out"
 is failing "$out" "$(entry SIMCTL_FAILED 'xcrun: error: unable to find utility')"
