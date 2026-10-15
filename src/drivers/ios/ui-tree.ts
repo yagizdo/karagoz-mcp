@@ -42,33 +42,65 @@ export type IosNode = {
 
 let source: Promise<string> | undefined;
 
-export async function xcode(): Promise<string> {
+export const NO_XCODE = `no Xcode selected: set DEVELOPER_DIR or run xcode-select -s <Xcode.app> (${XCODE_SELECT} and ${DEFAULT_XCODE} are missing)`;
+
+// The developer dir the helper builds with, and which rule picked it; undefined when there is none. doctor reports the
+// same lookup the commands use (K30).
+export async function selected(): Promise<
+  { dev: string; source: 'DEVELOPER_DIR' | 'xcode-select' | 'default' } | undefined
+> {
   const dev = developerDir();
-  if (dev) return dev;
+  if (dev) return { dev, source: 'DEVELOPER_DIR' };
   try {
-    return await readlink(XCODE_SELECT);
+    return { dev: await readlink(XCODE_SELECT), source: 'xcode-select' };
   } catch {
     // No link (never selected, or xcode-select -r): xcode-select's default search, which xcrun follows, takes over.
   }
   try {
     await access(DEFAULT_XCODE);
-    return DEFAULT_XCODE;
+    return { dev: DEFAULT_XCODE, source: 'default' };
   } catch {
-    // Neither is there: no Xcode is selected; the message says how to pick one.
-    throw new KaragozError(
-      'HELPER_FAILED',
-      `no Xcode selected: set DEVELOPER_DIR or run xcode-select -s <Xcode.app> (${XCODE_SELECT} and ${DEFAULT_XCODE} are missing)`,
-    );
+    // Neither is there: no Xcode is selected.
+    return undefined;
   }
+}
+
+export async function xcode(): Promise<string> {
+  const found = await selected();
+  // The message says how to pick one.
+  if (!found) throw new KaragozError('HELPER_FAILED', NO_XCODE);
+  return found.dev;
+}
+
+export function swiftc(dev: string): { bin: string; missing: string } {
+  const bin = join(dev, 'Toolchains', 'XcodeDefault.xctoolchain', 'usr', 'bin', 'swiftc');
+  return { bin, missing: `swiftc not found at ${bin}; install Xcode, the Command Line Tools are not enough` };
 }
 
 // The cache sits in the user's home, but a directory or binary someone else owns there is refused, as screenshot
 // refuses a shared temp directory (src/screenshot.ts).
 const owned = (info: { uid: number }) => !process.getuid || info.uid === process.getuid();
 
-// The binary for this source, Xcode and architecture, compiled on first use (K34). The key is computed on every call,
-// so an Xcode update or a new karagoz compiles again within the same MCP server.
-export async function helper(dev: string): Promise<string> {
+// true when the user's own directory or file is at path, false when nothing is there yet.
+export async function owns(path: string, kind: 'directory' | 'file'): Promise<boolean> {
+  let info;
+  try {
+    info = await lstat(path);
+  } catch (err) {
+    if (!(err instanceof Error)) throw err;
+    const code = 'code' in err ? String(err.code) : err.message;
+    if (code === 'ENOENT') return false;
+    throw new KaragozError('HELPER_FAILED', `cannot check ${path} (${code}); ${CACHE_HINT}`);
+  }
+  if (!(kind === 'directory' ? info.isDirectory() : info.isFile()) || !owned(info)) {
+    throw new KaragozError('HELPER_FAILED', `${path} is not a ${kind} owned by the current user; ${CACHE_HINT}`);
+  }
+  return true;
+}
+
+// Where the helper for this source, Xcode and architecture lives. The key is computed on every call, so an Xcode
+// update or a new karagoz compiles again within the same MCP server.
+export async function helperPath(dev: string): Promise<{ root: string; dir: string; bin: string }> {
   source ??= readFile(SOURCE, 'utf8');
   const text = await source.catch(() => {
     throw new KaragozError('HELPER_FAILED', `cannot read ${SOURCE}; reinstall karagoz`);
@@ -82,36 +114,28 @@ export async function helper(dev: string): Promise<string> {
     .slice(0, 16);
   const root = join(homedir(), 'Library', 'Caches', 'karagoz');
   const dir = join(root, key);
-  const bin = join(dir, 'ax');
+  return { root, dir, bin: join(dir, 'ax') };
+}
+
+// The helper binary, compiled on first use (K34).
+export async function helper(dev: string): Promise<string> {
+  const { root, dir, bin } = await helperPath(dev);
   try {
     await mkdir(dir, { recursive: true, mode: 0o700 });
   } catch (err) {
     if (!(err instanceof Error)) throw err;
     throw new KaragozError('HELPER_FAILED', err.message);
   }
-  for (const path of [root, dir]) {
-    const info = await lstat(path);
-    if (!info.isDirectory() || !owned(info)) {
-      throw new KaragozError('HELPER_FAILED', `${path} is not a directory owned by the current user; ${CACHE_HINT}`);
-    }
-  }
-  const existing = await lstat(bin).catch(() => undefined);
-  if (existing) {
-    if (!existing.isFile() || !owned(existing)) {
-      throw new KaragozError('HELPER_FAILED', `${bin} is not a file owned by the current user; ${CACHE_HINT}`);
-    }
-    return bin;
-  }
+  await owns(root, 'directory');
+  await owns(dir, 'directory');
+  if (await owns(bin, 'file')) return bin;
 
-  const compiler = join(dev, 'Toolchains', 'XcodeDefault.xctoolchain', 'usr', 'bin', 'swiftc');
+  const compiler = swiftc(dev);
   try {
-    await access(compiler, constants.X_OK);
+    await access(compiler.bin, constants.X_OK);
   } catch {
     // Not there or not runnable: either way this developer dir cannot compile the helper.
-    throw new KaragozError(
-      'HELPER_FAILED',
-      `swiftc not found at ${compiler}; install Xcode, the Command Line Tools are not enough`,
-    );
+    throw new KaragozError('HELPER_FAILED', compiler.missing);
   }
   const sdk = join(dev, 'Platforms', 'MacOSX.platform', 'Developer', 'SDKs', 'MacOSX.sdk');
   // A unique name and a rename: two first calls never run a half-written binary, and the slower one just replaces it.
@@ -119,7 +143,7 @@ export async function helper(dev: string): Promise<string> {
   const signal = cancellation.getStore();
   signal?.throwIfAborted();
   try {
-    await run(compiler, [...FLAGS, '-sdk', sdk, SOURCE, '-o', tmp], {
+    await run(compiler.bin, [...FLAGS, '-sdk', sdk, SOURCE, '-o', tmp], {
       timeout: COMPILE_TIMEOUT_MS,
       ...(signal && { signal }),
     });

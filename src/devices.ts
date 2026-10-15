@@ -9,7 +9,7 @@ type Listing<T> = { platform: Platform; rows: T[] } | { platform: Platform; erro
 type Candidate = { id: string; platform: Platform; state: string; name: string | null };
 
 // iOS simulators exist only on macOS (K18 3.1 note).
-const IS_MAC = process.platform === 'darwin';
+export const IS_MAC = process.platform === 'darwin';
 
 // A missing or broken tool becomes a per-platform failure instead of hiding the other platform's devices (K18 3.1
 // note). Anything else, a bug or a cancelled MCP call, still fails the command.
