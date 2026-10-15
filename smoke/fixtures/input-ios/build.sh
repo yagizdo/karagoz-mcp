@@ -1,7 +1,7 @@
 #!/bin/sh
-# Builds Probe.app into $1 from Probe.swift and Info.plist next to this script, for smoke 3.4. The selected Xcode's own
-# swiftc, not xcrun; the linker's ad-hoc signature is enough for a simulator. Missing tools fail with what is missing
-# and where it looked.
+# Builds Probe.app into $1 from Probe.swift and Info.plist next to this script, for the iOS smokes. The selected Xcode's
+# own swiftc, not xcrun; the linker's ad-hoc signature is enough for a simulator. Missing tools fail with what is
+# missing and where it looked.
 set -e
 out=$1
 [ -d "$out" ] || { echo "FAIL: build.sh needs an output directory"; exit 1; }

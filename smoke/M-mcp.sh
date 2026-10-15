@@ -4,7 +4,7 @@
 # supported protocol versions are echoed; tools/list carries the 13 tools, their annotations and flat schemas within
 # 6,000 characters; every result and error is the CLI's JSON line; key HOME, ui_tree and an inline screenshot work on
 # the emulator; a cancelled call, stdin close, SIGTERM and SIGINT kill the call's adb child at once and the server
-# keeps serving after a cancel; UiAutomation reads on one device take turns and a cancelled waiting read never runs;
+# keeps serving after a cancel; a cancelled logs call kills its streaming simctl; UiAutomation reads on one device take turns and a cancelled waiting read never runs;
 # a cached adb that vanishes is looked up again, stays in use when an earlier candidate reappears, and is the one
 # doctor names; stdout carries only JSON-RPC and every session exits 0 when stdin closes.
 # Precondition: an emulator is running with its screen on. The only input is key HOME. Fake adbs run with
@@ -15,8 +15,9 @@ cd "$(dirname "$0")/.."
 npm run --silent build
 
 tmp=$(mktemp -d)
-# set +e: errexit stays on inside the trap. sleep 97.31 and 97.41 are the fake adb and simctl hangs; the pkill is a safety net.
-trap 'set +e; pkill -f "sleep 97\.(31|41)"; rm -rf "$tmp"' EXIT
+# set +e: errexit stays on inside the trap. sleep 97.31, 97.41 and 97.42 are the fake adb and simctl hangs; the pkill is
+# a safety net.
+trap 'set +e; pkill -f "sleep 97\.(31|41|42)"; rm -rf "$tmp"' EXIT
 # Prints .error.code, or not-json. The envelope must be exactly one line (K5).
 code_of() { node -e '
   const out = require("fs").readFileSync(0, "utf8").trimEnd();
@@ -100,12 +101,18 @@ case "$*" in
 esac
 FAKE
 chmod +x "$tmp/sdk/platform-tools/adb"
-# A fake simctl for the same servers: no simulator, and a hang on demand.
+# A fake simctl for the same servers: no simulator, or one booted on demand whose log show never ends, and a hang on
+# demand.
 mkdir -p "$tmp/dev/usr/bin"
 cat > "$tmp/dev/usr/bin/simctl" <<'FAKE'
 #!/bin/sh
 [ -e "$FAKE/simctl-hang" ] && exec sleep 97.41
-echo '{"devices":{}}'
+[ "$1" = spawn ] && exec sleep 97.42
+if [ -e "$FAKE/simctl-sim" ]; then
+  echo '{"devices":{"com.apple.CoreSimulator.SimRuntime.iOS-27-0":[{"udid":"A1","name":"iPhone 17","state":"Booted","isAvailable":true}]}}'
+else
+  echo '{"devices":{}}'
+fi
 FAKE
 chmod +x "$tmp/dev/usr/bin/simctl"
 printf '%s' "<?xml version='1.0' encoding='UTF-8' standalone='yes' ?><hierarchy rotation=\"0\"><node class=\"android.widget.FrameLayout\" package=\"dev.karagoz.fake\" bounds=\"[0,0][100,100]\" /></hierarchy>" \
@@ -322,6 +329,19 @@ await sleep(500);
 if (faked.answered(hungIos)) fail('cancel simctl: the cancelled call was answered');
 if (faked.stderr.some((line) => line.startsWith('karagoz:'))) fail(`cancel simctl: stderr ${JSON.stringify(faked.stderr)}`);
 rmSync(simctlHang);
+
+// Cancel, streaming simctl: a cancelled logs call kills its log show, and nothing answers it.
+const simulator = `${tmp}/fake/simctl-sim`;
+const reading = () => running('sleep 97\\.42');
+writeFileSync(simulator, '');
+const hungLogs = faked.send('tools/call', { name: 'logs', arguments: { device: 'A1' } });
+if (!(await until(reading, 3000))) fail('cancel logs: the fake log show never started sleep 97.42');
+faked.notify('notifications/cancelled', { requestId: hungLogs, reason: 'smoke' });
+if (!(await until(() => !reading(), 2000))) fail('cancel logs: sleep 97.42 still running 2 s after notifications/cancelled');
+await sleep(500);
+if (faked.answered(hungLogs)) fail('cancel logs: the cancelled call was answered');
+if (faked.stderr.some((line) => line.startsWith('karagoz:'))) fail(`cancel logs: stderr ${JSON.stringify(faked.stderr)}`);
+rmSync(simulator);
 
 // Exit, fake adb: stdin close, SIGTERM and SIGINT each end the server with its code and leave no adb child.
 writeFileSync(hang, '');
