@@ -55,7 +55,7 @@ lazy=$(node -e '
 const fs = require("fs"), os = require("os"), path = require("path"), { spawnSync } = require("child_process");
 try {
   const dist = "dist", read = (f) => fs.readFileSync(path.join(dist, f), "utf8");
-  const holders = fs.readdirSync(dist).filter((f) => read(f).includes("StdioServerTransport = class"));
+  const holders = fs.readdirSync(dist).filter((f) => f.endsWith(".js") && read(f).includes("StdioServerTransport = class"));
   if (holders.length !== 1) throw new Error("server code in: " + (holders.join(", ") || "no file"));
   const server = holders[0], seen = new Set();
   const walk = (f) => { if (seen.has(f)) return; seen.add(f);

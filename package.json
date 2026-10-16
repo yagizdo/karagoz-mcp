@@ -3,7 +3,8 @@
   "private": true,
   "license": "MIT",
   "workspaces": [
-    "packages/karagoz"
+    "packages/karagoz",
+    "packages/ios-runner"
   ],
   "scripts": {
     "build": "npm run build -w karagoz",
