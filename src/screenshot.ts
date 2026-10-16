@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { resolveTarget } from './devices.js';
 import { capture as captureAndroid } from './drivers/android/screenshot.js';
-import { capture as captureIos } from './drivers/ios/screenshot.js';
+import { capture as captureIos, capturePhone } from './drivers/ios/screenshot.js';
 import { KaragozError } from './errors.js';
 
 export async function screenshot(device: string | undefined, out: string | undefined) {
@@ -12,8 +12,12 @@ export async function screenshot(device: string | undefined, out: string | undef
   if (target !== undefined && !target.toLowerCase().endsWith('.png')) {
     throw new KaragozError('INVALID_ARGS', `'${target}' is not a .png file`);
   }
-  const { id, platform } = await resolveTarget(device);
-  const { png, pixels, scale, safeArea, rotation } = await (platform === 'ios' ? captureIos(id) : captureAndroid(id));
+  // The first command that runs on an iPhone (K21 4.2 note).
+  const picked = await resolveTarget(device, { iphone: true });
+  const { id } = picked;
+  const capture =
+    picked.platform === 'android' ? captureAndroid : picked.kind === 'physical' ? capturePhone : captureIos;
+  const { png, pixels, scale, safeArea, rotation } = await capture(id);
   // ':' is invalid in Windows file names, and `adb connect` serials contain it (127.0.0.1:5555).
   const safeId = id.replace(/[^A-Za-z0-9._-]/g, '_');
   const stamp = new Date().toISOString().replace(/[-:.]/g, '');

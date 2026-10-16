@@ -1,5 +1,5 @@
 import { describe, entries, listDevices } from './drivers/android/devices.js';
-import { listPhones } from './drivers/ios/devicectl.js';
+import { listPhones, TRUST } from './drivers/ios/devicectl.js';
 import { listSimulators } from './drivers/ios/devices.js';
 import { KaragozError } from './errors.js';
 
@@ -132,21 +132,39 @@ async function find(device: string | undefined): Promise<Candidate> {
   return target;
 }
 
-function ready({ id, platform, state }: Candidate): string {
-  if (state === (platform === 'ios' ? 'Booted' : 'device')) return id;
-  const hint = state === 'unauthorized' ? ' Accept the USB debugging prompt on the device.' : '';
-  throw new KaragozError('DEVICE_NOT_READY', `device ${id} is not ready (state: ${state}).${hint}`);
+// What a person does on the device for a state that is not ready; adb, simctl and devicectl states do not overlap.
+const HINTS = new Map([
+  ['unauthorized', 'Accept the USB debugging prompt on the device.'],
+  ['unpaired', TRUST],
+  ['pairingInProgress', 'Finish pairing on the iPhone: tap Trust, then enter the passcode.'],
+]);
+
+// An iPhone is ready once paired; Developer Mode is not in the listing while its tunnel is idle, so the capture's own
+// failure reports it (K21 4.2 note).
+function ready(target: Candidate): string {
+  const usable = target.platform === 'android' ? 'device' : target.kind === 'simulator' ? 'Booted' : 'paired';
+  if (target.state === usable) return target.id;
+  const hint = HINTS.get(target.state);
+  throw new KaragozError(
+    'DEVICE_NOT_READY',
+    `device ${target.id} is not ready (state: ${target.state}).${hint ? ` ${hint}` : ''}`,
+  );
 }
 
 // Every later adb call passes -s <id> and every simctl call the UDID, so the tools' own defaults never apply (K21).
-export async function resolveTarget(device: string | undefined): Promise<{ id: string; platform: Platform }> {
+// Only a command that passes accept runs on an iPhone; the others get the permanent answer before any readiness check
+// (K21 4.1 and 4.2 notes).
+export async function resolveTarget(
+  device: string | undefined,
+  accept?: { iphone: true },
+): Promise<{ id: string; platform: 'android' } | { id: string; platform: 'ios'; kind: 'simulator' | 'physical' }> {
   const target = await find(device);
-  // No command runs on an iPhone yet; the permanent answer comes before any readiness check (K21 4.1 note).
-  if (target.platform === 'ios' && target.kind === 'physical') {
+  if (target.platform === 'android') return { id: ready(target), platform: 'android' };
+  if (target.kind === 'physical' && !accept) {
     throw new KaragozError(
       'NOT_SUPPORTED',
-      `device ${target.id} is an iPhone; karagoz lists iPhones but runs no command on one yet.`,
+      `device ${target.id} is an iPhone; karagoz runs only screenshot on one yet.`,
     );
   }
-  return { id: ready(target), platform: target.platform };
+  return { id: ready(target), platform: 'ios', kind: target.kind };
 }
