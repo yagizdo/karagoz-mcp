@@ -196,3 +196,90 @@ export async function captureScreen(udid: string, file: string): Promise<void> {
     throw err;
   }
 }
+
+// devicectl's JSON on stdout, or DEVICECTL_FAILED naming what it printed instead.
+function json(stdout: string): Record<string, unknown> {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(stdout);
+  } catch {
+    // Not JSON fails the same check as JSON without a result.
+  }
+  const result = isRecord(parsed) ? parsed.result : undefined;
+  if (!isRecord(result)) {
+    throw new KaragozError(
+      'DEVICECTL_FAILED',
+      `unexpected devicectl output: ${(stdout.split('\n')[0] ?? '').slice(0, 300)}`,
+    );
+  }
+  return result;
+}
+
+// The apps devicectl lists by default, the ones a developer installed, which is where karagoz's runner shows (K41).
+export async function apps(udid: string): Promise<{ id: string }[]> {
+  const result = json(
+    await devicectl(['device', 'info', 'apps', '--device', udid, '--json-output', '-', '-q'], PHONE_TIMEOUT_MS, udid),
+  );
+  const list = Array.isArray(result.apps) ? result.apps : [];
+  return list.flatMap((app: unknown) =>
+    isRecord(app) && typeof app.bundleIdentifier === 'string' ? [{ id: app.bundleIdentifier }] : [],
+  );
+}
+
+// Installing the runner sends a few MB over USB and installs its profile; measured in 4.3's phone run (K41).
+const INSTALL_TIMEOUT_MS = 120_000;
+
+export async function installApp(udid: string, path: string): Promise<void> {
+  try {
+    await devicectl(['device', 'install', 'app', '--device', udid, path, '-q'], INSTALL_TIMEOUT_MS, udid);
+  } catch (err) {
+    if (err instanceof KaragozError && err.code === 'DEVICECTL_FAILED') {
+      throw new KaragozError('INSTALL_FAILED', err.message);
+    }
+    throw err;
+  }
+}
+
+export async function uninstallApp(udid: string, id: string): Promise<void> {
+  try {
+    await devicectl(['device', 'uninstall', 'app', '--device', udid, id, '-q'], PHONE_TIMEOUT_MS, udid);
+  } catch (err) {
+    if (err instanceof KaragozError && err.code === 'DEVICECTL_FAILED') {
+      throw new KaragozError('UNINSTALL_FAILED', err.message);
+    }
+    throw err;
+  }
+}
+
+// Every string in a value, depth first.
+const strings = (value: unknown): string[] =>
+  typeof value === 'string'
+    ? [value]
+    : Array.isArray(value)
+      ? value.flatMap(strings)
+      : isRecord(value)
+        ? Object.values(value).flatMap(strings)
+        : [];
+
+// Provisioning profiles on the phone with their UUID and every application identifier (TEAMID.bundle.id) they carry.
+// ponytail: read by key name and value shape, not a fixed path; the JSON layout was first seen in 4.3's phone run.
+export async function profiles(udid: string): Promise<{ uuid: string; appIds: string[] }[]> {
+  const result = json(
+    await devicectl(
+      ['device', 'profile', 'list', '--device', udid, '--type', 'provisioning', '--json-output', '-', '-q'],
+      PHONE_TIMEOUT_MS,
+      udid,
+    ),
+  );
+  const list = Object.values(result).find(Array.isArray) ?? [];
+  return list.flatMap((profile: unknown) => {
+    if (!isRecord(profile)) return [];
+    const uuid = Object.entries(profile).find(([key]) => key.toLowerCase() === 'uuid')?.[1];
+    if (typeof uuid !== 'string') return [];
+    return [{ uuid, appIds: strings(profile).filter((text) => /^[A-Z0-9]{10}\.\S+$/.test(text)) }];
+  });
+}
+
+export async function removeProfile(udid: string, uuid: string): Promise<void> {
+  await devicectl(['device', 'profile', 'remove', '--device', udid, uuid, '-q'], PHONE_TIMEOUT_MS, udid);
+}

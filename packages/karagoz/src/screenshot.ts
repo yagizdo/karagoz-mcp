@@ -13,7 +13,7 @@ export async function screenshot(device: string | undefined, out: string | undef
     throw new KaragozError('INVALID_ARGS', `'${target}' is not a .png file`);
   }
   // The first command that runs on an iPhone (K21 4.2 note).
-  const picked = await resolveTarget(device, { iphone: true });
+  const picked = await resolveTarget(device, 'iphone');
   const { id } = picked;
   const capture =
     picked.platform === 'android' ? captureAndroid : picked.kind === 'physical' ? capturePhone : captureIos;

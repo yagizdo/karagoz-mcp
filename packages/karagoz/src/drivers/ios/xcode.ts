@@ -1,8 +1,14 @@
+import { execFile } from 'node:child_process';
 import { access, lstat, readFile, readlink } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
+import { promisify } from 'node:util';
+import { cancellation } from '../../cancellation.js';
 import { KaragozError } from '../../errors.js';
+import { isRecord } from './devices.js';
 import { developerDir } from './simctl.js';
+
+const run = promisify(execFile);
 
 const XCODE_SELECT = '/var/db/xcode_select_link';
 const DEFAULT_XCODE = '/Applications/Xcode.app/Contents/Developer';
@@ -65,4 +71,56 @@ export async function owns(path: string, kind: 'directory' | 'file'): Promise<bo
     throw new KaragozError('HELPER_FAILED', `${path} is not a ${kind} owned by the current user; ${CACHE_HINT}`);
   }
   return true;
+}
+
+// Converting one preference file takes milliseconds; the timeout only bounds a stuck plutil.
+const PLUTIL_TIMEOUT_MS = 5_000;
+
+export type Team = { id: string; name: string; free: boolean };
+
+// The development teams of the Apple accounts signed in to Xcode, from Xcode's preferences. plutil only reads and
+// converts the file; no Xcode process starts. A missing file or key is no team (K41).
+export async function teams(): Promise<Team[]> {
+  const prefs = join(homedir(), 'Library', 'Preferences', 'com.apple.dt.Xcode.plist');
+  const signal = cancellation.getStore();
+  signal?.throwIfAborted();
+  let stdout: string;
+  try {
+    ({ stdout } = await run(
+      '/usr/bin/plutil',
+      ['-extract', 'IDEProvisioningTeamByIdentifier', 'json', '-o', '-', prefs],
+      {
+        timeout: PLUTIL_TIMEOUT_MS,
+        ...(signal && { signal }),
+      },
+    ));
+  } catch (err) {
+    // The SDK sends no response for a cancelled call, so the abort passes through (K31).
+    if (signal?.aborted) throw err;
+    if (!(err instanceof Error)) throw err;
+    if ('killed' in err && err.killed) {
+      throw new KaragozError('HELPER_FAILED', `plutil did not read ${prefs} within ${PLUTIL_TIMEOUT_MS / 1000} s`);
+    }
+    // plutil exits 1 when the file or the key is missing: no account has signed in yet.
+    return [];
+  }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(stdout);
+  } catch {
+    // plutil printed something other than JSON; read as no team, which the callers explain.
+    return [];
+  }
+  const found = new Map<string, Team>();
+  for (const list of isRecord(parsed) ? Object.values(parsed) : []) {
+    for (const team of Array.isArray(list) ? list : []) {
+      if (!isRecord(team) || typeof team.teamID !== 'string' || found.has(team.teamID)) continue;
+      found.set(team.teamID, {
+        id: team.teamID,
+        name: typeof team.teamName === 'string' ? team.teamName : '',
+        free: team.isFreeProvisioningTeam === true,
+      });
+    }
+  }
+  return [...found.values()];
 }

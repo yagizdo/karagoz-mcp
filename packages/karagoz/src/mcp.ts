@@ -172,6 +172,28 @@ const TOOLS: Tool[] = [
     inputSchema: { type: 'object', properties: {} },
     annotations: { readOnlyHint: true, openWorldHint: false },
   },
+  {
+    name: 'install_runner',
+    title: "Install karagoz's iPhone runner",
+    description:
+      "Build karagoz's runner with your Apple team and install it on a paired iPhone over USB; ui_tree needs it there. Minutes the first time.",
+    inputSchema: {
+      type: 'object',
+      properties: {
+        device,
+        team: { type: 'string', description: 'Apple team ID; needed only when Xcode lists several.' },
+      },
+    },
+    // The build registers the iPhone and an App ID with Apple's developer service.
+    annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: true },
+  },
+  {
+    name: 'uninstall_runner',
+    title: "Remove karagoz's iPhone runner",
+    description: "Remove karagoz's runner and its provisioning profile from an iPhone.",
+    inputSchema: { type: 'object', properties: { device } },
+    annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: false },
+  },
 ];
 
 // Tool name to command name. A Map: the name is client input (ui_tree is the CLI's ui-tree).

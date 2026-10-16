@@ -1,8 +1,8 @@
 #!/bin/sh
-# Step M: `karagoz mcp` serves the 13 commands as MCP tools over stdio. The CLI lists mcp and checks its arguments;
+# Step M: `karagoz mcp` serves the 15 commands as MCP tools over stdio. The CLI lists mcp and checks its arguments;
 # the bundle holds no HTTP transport or bearer-auth code and reaches the server chunk only through import(); both
-# supported protocol versions are echoed; tools/list carries the 13 tools, their annotations and flat schemas within
-# 6,000 characters; every result and error is the CLI's JSON line; key HOME, ui_tree and an inline screenshot work on
+# supported protocol versions are echoed; tools/list carries the 15 tools, their annotations and flat schemas within
+# 7,000 characters; every result and error is the CLI's JSON line; key HOME, ui_tree and an inline screenshot work on
 # the emulator; a cancelled call, stdin close, SIGTERM and SIGINT kill the call's adb child at once and the server
 # keeps serving after a cancel; a cancelled logs call kills its streaming simctl; UiAutomation reads on one device take turns and a cancelled waiting read never runs;
 # a cached adb that vanishes is looked up again, stays in use when an earlier candidate reappears, and is the one
@@ -41,7 +41,7 @@ refuses() {
 }
 
 # 1. CLI.
-refuses NO_COMMAND "no command given. Commands: devices, screenshot, ui-tree, key, tap, swipe, text, install, launch, terminate, uninstall, logs, doctor, mcp"
+refuses NO_COMMAND "no command given. Commands: devices, screenshot, ui-tree, key, tap, swipe, text, install, launch, terminate, uninstall, logs, doctor, install-runner, uninstall-runner, mcp"
 refuses INVALID_ARGS "unexpected argument 'extra'" mcp extra
 refuses INVALID_ARGS "'mcp' does not take the option '--device'" mcp --device x
 
@@ -229,14 +229,16 @@ for (const [i, version] of versions.entries()) {
   }
 }
 
-// List.
+// List. The cap was 6,000 for 13 tools; the token table is measured again at the end of Kadran 4.
 const list = (await main.request('tools/list', {})).result;
-const names = ['devices', 'screenshot', 'ui_tree', 'tap', 'swipe', 'text', 'key', 'install', 'launch', 'terminate', 'uninstall', 'logs', 'doctor'];
+const names = ['devices', 'screenshot', 'ui_tree', 'tap', 'swipe', 'text', 'key', 'install', 'launch', 'terminate', 'uninstall', 'logs', 'doctor', 'install_runner', 'uninstall_runner'];
 if (JSON.stringify(list?.tools?.map((tool) => tool.name).sort()) !== JSON.stringify([...names].sort())) {
   fail(`list: names ${JSON.stringify(list?.tools?.map((tool) => tool.name))}`);
 }
 const readOnly = ['devices', 'ui_tree', 'logs', 'doctor'];
-const destructive = ['install', 'uninstall'];
+const destructive = ['install', 'uninstall', 'uninstall_runner'];
+// install_runner's build registers the iPhone and an App ID with Apple's developer service.
+const openWorld = ['install_runner'];
 const required = { swipe: ['x1', 'y1', 'x2', 'y2'], text: ['text'], key: ['key'], install: ['apk'], launch: ['package'], terminate: ['package'], uninstall: ['package'] };
 const keys = (value) => (value && typeof value === 'object' ? Object.entries(value).flatMap(([key, inner]) => [key, ...keys(inner)]) : []);
 for (const tool of list.tools) {
@@ -244,14 +246,14 @@ for (const tool of list.tools) {
   if ((hints.readOnlyHint === true) !== readOnly.includes(name)) fail(`list: ${name} readOnlyHint ${hints.readOnlyHint}`);
   const harmful = readOnly.includes(name) ? hints.destructiveHint === true : hints.destructiveHint !== destructive.includes(name);
   if (harmful) fail(`list: ${name} destructiveHint ${hints.destructiveHint}`);
-  if (hints.openWorldHint !== false) fail(`list: ${name} openWorldHint ${hints.openWorldHint}`);
+  if (hints.openWorldHint !== openWorld.includes(name)) fail(`list: ${name} openWorldHint ${hints.openWorldHint}`);
   if (typeof tool.title !== 'string' || !tool.title) fail(`list: ${name} has no title`);
   if (schema?.type !== 'object') fail(`list: ${name} inputSchema.type ${schema?.type}`);
   if (JSON.stringify(schema.required) !== JSON.stringify(required[name])) fail(`list: ${name} required ${JSON.stringify(schema.required)}`);
   const banned = keys(schema).filter((key) => ['oneOf', 'anyOf', 'allOf', 'pattern', 'minimum', 'maximum', 'format', 'default'].includes(key));
   if (banned.length) fail(`list: ${name} schema has ${banned.join(', ')}`);
 }
-if (JSON.stringify(list).length > 6000) fail(`list: ${JSON.stringify(list).length} characters, over 6000`);
+if (JSON.stringify(list).length > 7000) fail(`list: ${JSON.stringify(list).length} characters, over 7000`);
 
 // Parity. Fails unless the call fails with exactly the envelope want, and the server logged its message.
 async function refuses(tool, args, want) {
