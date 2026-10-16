@@ -1,6 +1,7 @@
 import { describe, entries, listDevices } from './drivers/android/devices.js';
 import { listPhones, TRUST } from './drivers/ios/devicectl.js';
 import { listSimulators } from './drivers/ios/devices.js';
+import { runnerStates } from './drivers/ios/runner.js';
 import { KaragozError } from './errors.js';
 
 type Platform = 'android' | 'ios';
@@ -34,7 +35,10 @@ export async function listAll() {
   const failed = listings.flatMap((listing) => ('error' in listing ? [listing] : []));
   const [first] = failed;
   if (first && failed.length === listings.length) throw first.error;
-  const devices = listings.flatMap((listing) => ('rows' in listing ? listing.rows : []));
+  const rows = listings.flatMap((listing) => ('rows' in listing ? listing.rows : []));
+  // iPhone rows gain runner, last, so every other row stays as it was (K18).
+  const states = await runnerStates(rows.filter(({ platform, kind }) => platform === 'ios' && kind === 'physical'));
+  const devices = rows.map((row) => (states.has(row.id) ? { ...row, runner: states.get(row.id) ?? null } : row));
   if (!failed.length) return { devices };
   return {
     devices,
@@ -152,18 +156,25 @@ function ready(target: Candidate): string {
 }
 
 // Every later adb call passes -s <id> and every simctl call the UDID, so the tools' own defaults never apply (K21).
-// Only a command that passes accept runs on an iPhone; the others get the permanent answer before any readiness check
-// (K21 4.1 and 4.2 notes).
+// Only a command that passes accept runs on an iPhone; 'iphone-only' (the runner's own commands) refuses everything
+// else. Both refusals are permanent answers, given before any readiness check (K21 4.1, 4.2 and 4.3 notes).
 export async function resolveTarget(
   device: string | undefined,
-  accept?: { iphone: true },
+  accept?: 'iphone' | 'iphone-only',
 ): Promise<{ id: string; platform: 'android' } | { id: string; platform: 'ios'; kind: 'simulator' | 'physical' }> {
   const target = await find(device);
-  if (target.platform === 'android') return { id: ready(target), platform: 'android' };
-  if (target.kind === 'physical' && !accept) {
+  const physical = target.platform === 'ios' && target.kind === 'physical';
+  if (accept === 'iphone-only' && !physical) {
     throw new KaragozError(
       'NOT_SUPPORTED',
-      `device ${target.id} is an iPhone; karagoz runs only screenshot on one yet.`,
+      `device ${target.id} is not an iPhone; karagoz's runner runs only on iPhones.`,
+    );
+  }
+  if (target.platform === 'android') return { id: ready(target), platform: 'android' };
+  if (physical && !accept) {
+    throw new KaragozError(
+      'NOT_SUPPORTED',
+      `device ${target.id} is an iPhone; karagoz runs only screenshot, ui-tree, install-runner and uninstall-runner on one yet.`,
     );
   }
   return { id: ready(target), platform: 'ios', kind: target.kind };

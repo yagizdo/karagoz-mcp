@@ -42,10 +42,10 @@ Research is never skipped. When an existing assumption conflicts with what the r
 @modelcontextprotocol/server/stdio
 ```
 
-The v1 subpaths do not exist in v2, and v2's root does not bundle the HTTP transports. `smoke/M-mcp.sh` checks that no HTTP transport or bearer-auth code reaches `dist/` (K14).
+The v1 subpaths do not exist in v2, and v2's root does not bundle the HTTP transports. `packages/karagoz/smoke/M-mcp.sh` checks that no HTTP transport or bearer-auth code reaches `dist/` (K14).
 
 ## Conventions
 
 Code, comments, commit messages and public documentation are in English. Commit messages follow Conventional Commits.
 
-Before calling a change done, run `npm run typecheck` and `npm run lint`; both must exit 0. `npm run format` fixes what the format check reports.
+The CLI and MCP server live in `packages/karagoz/`, with their smoke scripts in `packages/karagoz/smoke/`; npm scripts run from the repository root. Before calling a change done, run `npm run typecheck` and `npm run lint`; both must exit 0. `npm run format` fixes what the format check reports.

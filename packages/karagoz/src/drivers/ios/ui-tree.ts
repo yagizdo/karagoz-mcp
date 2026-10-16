@@ -1,16 +1,16 @@
 import { execFile } from 'node:child_process';
 import { createHash, randomUUID } from 'node:crypto';
-import { access, constants, lstat, mkdir, readFile, readlink, rename, rm } from 'node:fs/promises';
-import { homedir } from 'node:os';
+import { access, constants, readFile, rename, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import { cancellation } from '../../cancellation.js';
 import { KaragozError } from '../../errors.js';
-import { rotation } from './devicectl.js';
+import { displayOf, rotation } from './devicectl.js';
 import { isRecord } from './devices.js';
+import { tree } from './runner.js';
 import { panelScale } from './screenshot.js';
-import { developerDir } from './simctl.js';
+import { buildVersion, CACHE_HINT, CACHE_ROOT, ownedDir, owns, xcode } from './xcode.js';
 
 const run = promisify(execFile);
 
@@ -22,11 +22,8 @@ export const RUN_TIMEOUT_MS = 30_000;
 const MAX_BUFFER = 32 * 1024 * 1024;
 // Pinned so a toolchain that changes its default language mode cannot break the build.
 const FLAGS = ['-O', '-suppress-warnings', '-swift-version', '5'];
-const XCODE_SELECT = '/var/db/xcode_select_link';
-const DEFAULT_XCODE = '/Applications/Xcode.app/Contents/Developer';
 // The build copies the source next to the bundle's chunks, all flat in dist/.
 const SOURCE = fileURLToPath(new URL('ax-helper.swift', import.meta.url));
-export const CACHE_HINT = 'delete ~/Library/Caches/karagoz';
 
 export type IosNode = {
   role: string;
@@ -42,63 +39,12 @@ export type IosNode = {
 
 let source: Promise<string> | undefined;
 
-export const NO_XCODE = `no Xcode selected: set DEVELOPER_DIR or run xcode-select -s <Xcode.app> (${XCODE_SELECT} and ${DEFAULT_XCODE} are missing)`;
-
-// The developer dir the helper builds with, and which rule picked it; undefined when there is none. doctor reports the
-// same lookup the commands use (K30).
-export async function selected(): Promise<
-  { dev: string; source: 'DEVELOPER_DIR' | 'xcode-select' | 'default' } | undefined
-> {
-  const dev = developerDir();
-  if (dev) return { dev, source: 'DEVELOPER_DIR' };
-  try {
-    return { dev: await readlink(XCODE_SELECT), source: 'xcode-select' };
-  } catch {
-    // No link (never selected, or xcode-select -r): xcode-select's default search, which xcrun follows, takes over.
-  }
-  try {
-    await access(DEFAULT_XCODE);
-    return { dev: DEFAULT_XCODE, source: 'default' };
-  } catch {
-    // Neither is there: no Xcode is selected.
-    return undefined;
-  }
-}
-
-export async function xcode(): Promise<string> {
-  const found = await selected();
-  // The message says how to pick one.
-  if (!found) throw new KaragozError('HELPER_FAILED', NO_XCODE);
-  return found.dev;
-}
-
 export function swiftc(dev: string): { bin: string; missing: string } {
   const bin = join(dev, 'Toolchains', 'XcodeDefault.xctoolchain', 'usr', 'bin', 'swiftc');
   return {
     bin,
     missing: `swiftc not found at ${bin}; install or select an Xcode (xcode-select -s <Xcode.app> or DEVELOPER_DIR), the Command Line Tools are not enough`,
   };
-}
-
-// The cache sits in the user's home, but a directory or binary someone else owns there is refused, as screenshot
-// refuses a shared temp directory (src/screenshot.ts).
-const owned = (info: { uid: number }) => !process.getuid || info.uid === process.getuid();
-
-// true when the user's own directory or file is at path, false when nothing is there yet.
-export async function owns(path: string, kind: 'directory' | 'file'): Promise<boolean> {
-  let info;
-  try {
-    info = await lstat(path);
-  } catch (err) {
-    if (!(err instanceof Error)) throw err;
-    const code = 'code' in err ? String(err.code) : err.message;
-    if (code === 'ENOENT') return false;
-    throw new KaragozError('HELPER_FAILED', `cannot check ${path} (${code}); ${CACHE_HINT}`);
-  }
-  if (!(kind === 'directory' ? info.isDirectory() : info.isFile()) || !owned(info)) {
-    throw new KaragozError('HELPER_FAILED', `${path} is not a ${kind} owned by the current user; ${CACHE_HINT}`);
-  }
-  return true;
 }
 
 // Where the helper for this source, Xcode and architecture lives. The key is computed on every call, so an Xcode
@@ -109,28 +55,20 @@ export async function helperPath(dev: string): Promise<{ root: string; dir: stri
     throw new KaragozError('HELPER_FAILED', `cannot read ${SOURCE}; reinstall karagoz`);
   });
   // A missing version.plist leaves the build out of the key; the developer dir is still in it.
-  const plist = await readFile(join(dev, '..', 'version.plist'), 'utf8').catch(() => '');
-  const build = /<key>ProductBuildVersion<\/key>\s*<string>([^<]*)<\/string>/.exec(plist)?.[1] ?? '';
+  const build = await buildVersion(dev);
   const key = createHash('sha256')
     .update([text, dev, build, process.arch, FLAGS.join(' ')].join('\0'))
     .digest('hex')
     .slice(0, 16);
-  const root = join(homedir(), 'Library', 'Caches', 'karagoz');
-  const dir = join(root, key);
-  return { root, dir, bin: join(dir, 'ax') };
+  const dir = join(CACHE_ROOT, key);
+  return { root: CACHE_ROOT, dir, bin: join(dir, 'ax') };
 }
 
 // The helper binary, compiled on first use (K34).
 export async function helper(dev: string): Promise<string> {
   const { root, dir, bin } = await helperPath(dev);
-  try {
-    await mkdir(dir, { recursive: true, mode: 0o700 });
-  } catch (err) {
-    if (!(err instanceof Error)) throw err;
-    throw new KaragozError('HELPER_FAILED', err.message);
-  }
-  await owns(root, 'directory');
-  await owns(dir, 'directory');
+  await ownedDir(root);
+  await ownedDir(dir);
   if (await owns(bin, 'file')) return bin;
 
   const compiler = swiftc(dev);
@@ -252,4 +190,83 @@ export async function readTree(udid: string): Promise<{ rotation: number | null;
   const bin = await helper(dev);
   const [stdout, rotated] = await Promise.all([read(bin, dev, udid), rotation(udid)]);
   return { rotation: rotated, root: parse(stdout) };
+}
+
+// XCUIElement.ElementType raw values (Xcode 27.1's XCUIElementTypes.h) by name. XCTest's `other` is the simulator's
+// Group, its `toggle` the simulator's Switch (K34, K41).
+const TYPES =
+  'Any Group Application Group Window Sheet Drawer Alert Dialog Button RadioButton RadioGroup CheckBox DisclosureTriangle PopUpButton ComboBox MenuButton ToolbarButton Popover Keyboard Key NavigationBar TabBar TabGroup Toolbar StatusBar Table TableRow TableColumn Outline OutlineRow Browser CollectionView Slider PageIndicator ProgressIndicator ActivityIndicator SegmentedControl Picker PickerWheel Switch Switch Link Image Icon SearchField ScrollView ScrollBar StaticText TextField SecureTextField DatePicker TextView Menu MenuItem MenuBar MenuBarItem Map WebView IncrementArrow DecrementArrow Timeline RatingIndicator ValueIndicator SplitGroup Splitter RelevanceIndicator ColorWell HelpTag Matte DockItem Ruler RulerMarker Grid LevelIndicator Cell LayoutArea LayoutItem Handle Stepper Tab TouchBar StatusItem'.split(
+    ' ',
+  );
+const STATIC_TEXT = 48;
+// searchField, textField, secureTextField, textView: an empty one shows its placeholder as its value (K34).
+const TEXT_ENTRY = new Set([45, 49, 50, 52]);
+
+// One runner node to K24's skeleton with iOS names; frames are points, bounds are screenshot pixels (K34, K41).
+function phoneNode(raw: unknown, scale: number): IosNode {
+  if (!isRecord(raw) || typeof raw.type !== 'number') throw new Error('a node has no type');
+  const frame = Array.isArray(raw.frame)
+    ? raw.frame.filter((n: unknown): n is number => typeof n === 'number' && Number.isFinite(n))
+    : [];
+  if (frame.length !== 4) throw new Error('a node has no frame');
+  const [x = 0, y = 0, width = 0, height = 0] = frame;
+  if (raw.children !== undefined && !Array.isArray(raw.children)) throw new Error('children is not a list');
+  const children = Array.isArray(raw.children) ? raw.children.map((child: unknown) => phoneNode(child, scale)) : [];
+  const type = raw.type;
+  const role =
+    raw.heading === true && (type === STATIC_TEXT || type === 1) ? 'Heading' : (TYPES[type] ?? `Element${type}`);
+  const label = text(raw.label);
+  const identifier = text(raw.identifier);
+  const value = text(raw.value) ?? (TEXT_ENTRY.has(type) ? text(raw.placeholder) : undefined);
+  return {
+    role,
+    ...(label && { label }),
+    ...(identifier && { identifier }),
+    ...(value && { value }),
+    ...(raw.focused === true && { focused: true }),
+    ...(raw.selected === true && { selected: true }),
+    ...(raw.enabled === false && { enabled: false }),
+    bounds: [x, y, x + width, y + height].map((v) => round(v * scale)),
+    ...(children.length > 0 && { children }),
+  };
+}
+
+// A quarter turn of a subtree's bounds from the portrait panel (width x height pixels) into the screen's landscape.
+function turned(node: IosNode, rotation: 90 | 270, width: number, height: number): IosNode {
+  const [l = 0, t = 0, r = 0, b = 0] = node.bounds;
+  const children = node.children?.map((child) => turned(child, rotation, width, height));
+  return {
+    ...node,
+    bounds: rotation === 270 ? [height - b, l, height - t, r] : [t, width - r, b, width - l],
+    ...(children && { children }),
+  };
+}
+
+// In landscape XCTest reports the software keyboard in the portrait panel's coordinates while the app around it is
+// turned (measured at rotation 270, K41); a keyboard outside the screen is turned into it.
+// ponytail: rotation 90 turns the other way by symmetry, not measured; measure when a phone is held that way.
+function keyboardsTurned(node: IosNode, rotation: number | null, panel: { width: number; height: number }): IosNode {
+  if (rotation !== 90 && rotation !== 270) return node;
+  const [, , right = 0, bottom = 0] = node.bounds;
+  if (node.role === 'Keyboard' && (bottom > panel.width || right > panel.height)) {
+    return turned(node, rotation, panel.width, panel.height);
+  }
+  const children = node.children?.map((child) => keyboardsTurned(child, rotation, panel));
+  return children ? { ...node, children } : node;
+}
+
+// What is on a paired iPhone's screen, from karagoz's runner; scale and rotation from the display screenshot reads.
+// The runner's failure is reported first: it is the one a caller can act on (install-runner).
+export async function readPhoneTree(udid: string): Promise<{ rotation: number | null; root: IosNode }> {
+  const [raw, shown] = await Promise.allSettled([tree(udid), displayOf(udid)]);
+  if (raw.status === 'rejected') throw raw.reason;
+  if (shown.status === 'rejected') throw shown.reason;
+  const { scale, rotation, panel } = shown.value;
+  try {
+    const root = phoneNode(raw.value, panel ? panelScale(panel.width, panel.height, scale) : scale);
+    return { rotation, root: panel ? keyboardsTurned(root, rotation, panel) : root };
+  } catch (err) {
+    if (!(err instanceof Error)) throw err;
+    throw new KaragozError('CAPTURE_FAILED', `cannot parse the runner's tree: ${err.message}`);
+  }
 }

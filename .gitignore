@@ -17,3 +17,10 @@ dist/
 # Local working notes. Design journal, progress tracking, research.
 # Not part of the package.
 docs/local/
+
+# Copied from the repository root by prepack (npm takes them only from the package directory).
+packages/karagoz/README.md
+packages/karagoz/LICENSE
+
+# Xcode per-user state, if someone opens the runner project in Xcode.
+xcuserdata/

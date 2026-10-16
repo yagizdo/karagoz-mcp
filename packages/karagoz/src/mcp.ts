@@ -41,7 +41,7 @@ const TOOLS: Tool[] = [
     name: 'ui_tree',
     title: 'Read the UI tree',
     description:
-      "Return the focused window's accessibility tree as JSON. Node bounds [left, top, right, bottom] are the physical pixels tap and swipe take.",
+      "Return the focused window's accessibility tree as JSON. Node bounds [left, top, right, bottom] are the physical pixels tap and swipe take. On an iPhone it needs karagoz's runner: install it once with install_runner.",
     inputSchema: { type: 'object', properties: { device } },
     annotations: { readOnlyHint: true, openWorldHint: false },
   },
@@ -171,6 +171,28 @@ const TOOLS: Tool[] = [
       'Report which adb and Xcode tools karagoz uses, their versions, and how to fix one that is missing, old or broken.',
     inputSchema: { type: 'object', properties: {} },
     annotations: { readOnlyHint: true, openWorldHint: false },
+  },
+  {
+    name: 'install_runner',
+    title: "Install karagoz's iPhone runner",
+    description:
+      "Build karagoz's runner with your Apple team and install it on a paired iPhone over USB; ui_tree needs it there. Minutes the first time.",
+    inputSchema: {
+      type: 'object',
+      properties: {
+        device,
+        team: { type: 'string', description: 'Apple team ID; needed only when Xcode lists several.' },
+      },
+    },
+    // The build registers the iPhone and an App ID with Apple's developer service.
+    annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: true },
+  },
+  {
+    name: 'uninstall_runner',
+    title: "Remove karagoz's iPhone runner",
+    description: "Remove karagoz's runner and its provisioning profile from an iPhone.",
+    inputSchema: { type: 'object', properties: { device } },
+    annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: false },
   },
 ];
 

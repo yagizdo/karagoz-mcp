@@ -3,8 +3,9 @@
 # the simulators: id the UDID, kind physical, state devicectl's pairing state, name the model. Simulators, remembered
 # phones that are not attached, nearby unpaired devices and other Apple devices are dropped; Xcode 27's properties
 # dictionary and the older keys read the same; a missing, failing or hung devicectl is one ios errors entry. Targeted
-# commands but screenshot find an iPhone by UDID or model and refuse it with NOT_SUPPORTED (K18, K21 4.1 and 4.2 notes,
-# K39).
+# commands that do not run on an iPhone find one by UDID or model and refuse it with NOT_SUPPORTED. iPhone rows end in
+# runner: not installed for a paired phone whose app list has no runner, null for one that is not paired (K18, K21 4.1
+# and 4.2 notes, K39, K41).
 # Precondition: macOS with Xcode. No emulator is needed. Step 1 reads the real devicectl list only and compares zero
 # rows when no iPhone is attached. Fake adb, simctl and devicectl come through ANDROID_HOME and DEVELOPER_DIR under
 # env -i; the adb server on the default port is never touched.
@@ -34,6 +35,7 @@ cat > "$tmp/dev/usr/bin/devicectl" <<FAKE
 #!/bin/sh
 case "\$*" in
   "list devices --json-output - -q") exec /bin/sh "$tmp/devicectl.sh" ;;
+  "device info apps --device "*" --json-output - -q") echo '{"result":{"apps":[]}}' ;;
   *) exit 1 ;;
 esac
 FAKE
@@ -46,7 +48,7 @@ devdir=$tmp/dev
 kdev=
 kz() {
   env -i HOME="$tmp/home" PATH=/usr/bin:/bin ANDROID_HOME="$tmp/sdk" DEVELOPER_DIR="$devdir" KARAGOZ_DEVICE="$kdev" \
-    "$node_bin" dist/cli.js "$@" 2>/dev/null
+    USBMUXD_SOCKET_ADDRESS="UNIX:$tmp/no-usbmuxd" "$node_bin" dist/cli.js "$@" 2>/dev/null
 }
 
 # Xcode 27's shape. P1 also carries the deprecated keys, with a different model name: properties must win. Kept: P1-P4;
@@ -80,7 +82,7 @@ JSON
 ' "$tmp/phones27.json" > "$tmp/phones26.json"
 android='{"id":"fake-1","platform":"android","kind":"physical","state":"device","name":null}'
 sim='{"id":"A1","platform":"ios","kind":"simulator","state":"Booted","name":"iPhone 17 Pro"}'
-phones='{"id":"P1","platform":"ios","kind":"physical","state":"paired","name":"iPhone 14 Pro Max"},{"id":"P2","platform":"ios","kind":"physical","state":"paired","name":"iPhone 17 Pro"},{"id":"P3","platform":"ios","kind":"physical","state":"unpaired","name":null},{"id":"P4","platform":"ios","kind":"physical","state":"pairingInProgress","name":"iPad Air 11-inch (M3)"}'
+phones='{"id":"P1","platform":"ios","kind":"physical","state":"paired","name":"iPhone 14 Pro Max","runner":"not installed"},{"id":"P2","platform":"ios","kind":"physical","state":"paired","name":"iPhone 17 Pro","runner":"not installed"},{"id":"P3","platform":"ios","kind":"physical","state":"unpaired","name":null,"runner":null},{"id":"P4","platform":"ios","kind":"physical","state":"pairingInProgress","name":"iPad Air 11-inch (M3)","runner":null}'
 
 # 1. Real Mac: the iPhone rows are what the framework devicectl's own list gives under the same rules. env -i leaves
 # DEVELOPER_DIR unset, so karagoz runs the framework binary too; the fake adb lists nothing.
@@ -105,7 +107,10 @@ want=$("$framework" list devices --json-output - -q | "$node_bin" -e '
 got=$(echo "$out" | "$node_bin" -e '
   const r = JSON.parse(require("fs").readFileSync(0, "utf8"));
   if (r.errors?.some((e) => e.platform === "ios")) { console.log("ios error: " + JSON.stringify(r.errors)); process.exit(); }
-  console.log(JSON.stringify(r.devices.filter((d) => d.platform === "ios" && d.kind === "physical")));
+  const phones = r.devices.filter((d) => d.platform === "ios" && d.kind === "physical");
+  const odd = phones.find((d) => !["running", "installed", "not installed", null].includes(d.runner));
+  if (odd) { console.log("runner value: " + JSON.stringify(odd)); process.exit(); }
+  console.log(JSON.stringify(phones.map(({ runner, ...row }) => row)));
 ')
 [ "$got" = "$want" ] || fail "real Mac: iPhone rows $got, devicectl says $want"
 real=$(echo "$want" | "$node_bin" -e 'console.log(JSON.parse(require("fs").readFileSync(0, "utf8")).length)')
@@ -159,10 +164,10 @@ refuses() {
   is "$step" "$(printf '%s' "$out" | code_of)" "$code"
 }
 dc "/bin/cat '$tmp/phones27.json'"
-refuses "by UDID" NOT_SUPPORTED ui-tree --device P1
+refuses "by UDID" NOT_SUPPORTED key HOME --device P1
 is "by UDID text" "$(printf '%s' "$out" | field error.message)" \
-  "device P1 is an iPhone; karagoz runs only screenshot on one yet."
-refuses "by model" NOT_SUPPORTED ui-tree --device "iPhone 14 Pro Max"
+  "device P1 is an iPhone; karagoz runs only screenshot, ui-tree, install-runner and uninstall-runner on one yet."
+refuses "by model" NOT_SUPPORTED key HOME --device "iPhone 14 Pro Max"
 kdev=P3
 refuses "unpaired, from KARAGOZ_DEVICE" NOT_SUPPORTED key HOME
 kdev=
@@ -175,7 +180,7 @@ cat > "$tmp/one.json" <<'JSON'
 {"result":{"devices":[{"visibilityClass":"default","properties":{"hardware":{"udid":"P1","reality":"physical","platform":"iOS","marketingName":"iPhone 14 Pro Max"},"connection":{"pairingState":"paired","state":"connected","transportType":"wired"}}}]}}
 JSON
 dc "/bin/cat '$tmp/one.json'"
-refuses "bare, one iPhone" NOT_SUPPORTED ui-tree
+refuses "bare, one iPhone" NOT_SUPPORTED key HOME
 adb_lists 'fake-1\tdevice\n'
 refuses "bare, emulator and iPhone" DEVICE_AMBIGUOUS screenshot
 # A missing devicectl means no iPhones: the one emulator is the target.

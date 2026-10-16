@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { parseArgs, type ParseArgsOptionsConfig } from 'node:util';
 import pkg from '../package.json' with { type: 'json' };
+import { cancellation } from './cancellation.js';
 import { check, commands, envelope } from './commands.js';
 import { KaragozError } from './errors.js';
 
@@ -30,7 +31,20 @@ try {
       const command = Object.hasOwn(commands, name) ? commands[name] : undefined;
       if (!command) throw new KaragozError('UNKNOWN_COMMAND', `unknown command '${name}'`);
       const given = check(name, command, values, rest);
-      process.stdout.write(`${JSON.stringify(await command.run(given, rest))}\n`);
+      // Ctrl-C reaches only the terminal's process group, not the iPhone runner's detached start: the abort kills it,
+      // then the process exits as the signal would have (K41).
+      const controller = new AbortController();
+      for (const [signal, code] of [
+        ['SIGINT', 130],
+        ['SIGTERM', 143],
+      ] as const) {
+        process.once(signal, () => {
+          controller.abort();
+          process.exit(code);
+        });
+      }
+      const result = await cancellation.run(controller.signal, () => command.run(given, rest));
+      process.stdout.write(`${JSON.stringify(result)}\n`);
     }
   }
 } catch (err) {

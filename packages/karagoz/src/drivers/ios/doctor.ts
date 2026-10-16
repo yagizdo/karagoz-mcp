@@ -1,15 +1,20 @@
-import { access, constants, readFile, stat } from 'node:fs/promises';
+import { access, constants, readdir, readFile, stat } from 'node:fs/promises';
 import { join } from 'node:path';
 import { KaragozError } from '../../errors.js';
 import { devicectlPath } from './devicectl.js';
+import { runnerBuild, xctestrun } from './runner.js';
 import { binary, FRAMEWORK_PLIST } from './simctl.js';
-import { helperPath, NO_XCODE, owns, selected, swiftc } from './ui-tree.js';
+import { helperPath, swiftc } from './ui-tree.js';
+import { NO_XCODE, noTeam, owns, selected, teams, type Team } from './xcode.js';
 
-// doctor reads files only. simctl would start CoreSimulatorService and rewrite device_set.plist, and a shim under
-// DEVELOPER_DIR can start Xcode's first launch, which waits for a password (K30 3.7 note, K32).
+// doctor reads files, and runs nothing but plutil, which only converts Xcode's preference file. simctl would start
+// CoreSimulatorService and rewrite device_set.plist, and a shim under DEVELOPER_DIR can start Xcode's first launch, which
+// waits for a password (K30 3.7 note, K32, K41).
 
 type Entry = { status: 'ok' | 'missing' | 'failed'; path?: string; version?: string; message?: string };
 type Helper = { status: 'ok' | 'not built' | 'failed'; path?: string; message?: string };
+type Signing = { status: 'ok' | 'missing' | 'failed'; teams?: Team[]; message?: string };
+type RunnerBuild = { status: 'ok' | 'not built' | 'failed'; path?: string; teams?: string[]; message?: string };
 type Report = {
   xcode: {
     status: 'ok' | 'outdated' | 'failed' | 'missing';
@@ -22,6 +27,8 @@ type Report = {
     swiftc: Entry;
     devicectl: Entry;
     helper: Helper;
+    signing: Signing;
+    iosRunner: RunnerBuild;
   };
 };
 
@@ -99,17 +106,57 @@ async function helper(dev: string | undefined): Promise<Helper> {
   }
 }
 
+// The Apple development teams karagoz's iPhone runner can be built with (K41).
+async function signing(): Promise<Signing> {
+  let found: { signedIn: boolean; teams: Team[] };
+  try {
+    found = await teams();
+  } catch (err) {
+    if (!(err instanceof KaragozError)) throw err;
+    return { status: 'failed', message: err.message };
+  }
+  if (!found.teams.length)
+    return {
+      status: 'missing',
+      message: `${noTeam(found.signedIn)}, to build karagoz's iPhone runner with install-runner`,
+    };
+  return { status: 'ok', teams: found.teams };
+}
+
+// The runner builds this karagoz and Xcode have, one per team (install-runner makes them).
+async function iosRunner(dev: string | undefined): Promise<RunnerBuild> {
+  if (!dev) return { status: 'not built' };
+  let root: string | undefined;
+  try {
+    root = await runnerBuild(dev);
+    if (!(await owns(root, 'directory'))) return { status: 'not built', path: root };
+    const built: string[] = [];
+    for (const team of (await readdir(root)).sort()) {
+      if (await xctestrun(root, team)) built.push(team);
+    }
+    return built.length ? { status: 'ok', path: root, teams: built } : { status: 'not built', path: root };
+  } catch (err) {
+    if (!(err instanceof KaragozError)) throw err;
+    return { status: 'failed', ...(root !== undefined && { path: root }), message: err.message };
+  }
+}
+
 export async function doctor(): Promise<Report> {
   const found = await selected();
   const dev = found?.dev;
   const compiler = dev ? swiftc(dev) : undefined;
   const devicectl = devicectlPath();
-  const [plist, simctlEntry, swiftcEntry, devicectlEntry, helperEntry] = await Promise.all([
+  const [plist, simctlEntry, swiftcEntry, devicectlEntry, helperEntry, signingEntry, runnerEntry] = await Promise.all([
     dev ? text(join(dev, '..', 'version.plist')) : '',
     simctl(dev),
     compiler ? tool(compiler.bin, compiler.missing) : ({ status: 'missing', message: NO_XCODE } satisfies Entry),
-    tool(devicectl, `devicectl not found (tried ${devicectl}): rotation reads as null, taken as portrait`),
+    tool(
+      devicectl,
+      `devicectl not found (tried ${devicectl}): iPhones are not listed or reachable, and a simulator's rotation reads as null`,
+    ),
     helper(dev),
+    signing(),
+    iosRunner(dev),
   ]);
   const version = plistString(plist, 'CFBundleShortVersionString');
   const build = plistString(plist, 'ProductBuildVersion');
@@ -137,6 +184,8 @@ export async function doctor(): Promise<Report> {
       swiftc: swiftcEntry,
       devicectl: devicectlEntry,
       helper: helperEntry,
+      signing: signingEntry,
+      iosRunner: runnerEntry,
     },
   };
 }

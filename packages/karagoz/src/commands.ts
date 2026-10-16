@@ -3,6 +3,7 @@ import { doctor as adbDoctor } from './drivers/android/doctor.js';
 import { doctor as xcodeDoctor } from './drivers/ios/doctor.js';
 import { key, swipe, tap, text, type Target } from './input.js';
 import { logs } from './logs.js';
+import { installRunnerOn, uninstallRunnerFrom } from './runner.js';
 import { screenshot } from './screenshot.js';
 import { uiTree } from './ui-tree.js';
 import { IS_MAC, listAll } from './devices.js';
@@ -162,6 +163,16 @@ export const commands: Record<string, Command> = {
       const [adb, xcode] = await Promise.all([adbDoctor(), IS_MAC ? xcodeDoctor() : undefined]);
       return { ...adb, ...xcode };
     },
+  },
+  'install-runner': {
+    options: { device: { type: 'string' }, team: { type: 'string' } },
+    args: [],
+    run: ({ device, team }) => installRunnerOn(device, team),
+  },
+  'uninstall-runner': {
+    options: { device: { type: 'string' } },
+    args: [],
+    run: ({ device }) => uninstallRunnerFrom(device),
   },
 };
 

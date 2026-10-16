@@ -26,7 +26,7 @@ export function devicectlPath(): string {
 
 // The first verb on an idle iPhone brings its tunnel up (3.89 s measured) and may mount the developer disk image; 30 s is
 // what simctl gets (K32, K40).
-const PHONE_TIMEOUT_MS = 30_000;
+export const PHONE_TIMEOUT_MS = 30_000;
 
 export const TRUST =
   'Unlock the iPhone, tap Trust on "Trust This Computer?" and enter the passcode; if no prompt shows, unplug it and plug it in again.';
@@ -87,14 +87,7 @@ const group = (current: unknown, deprecated: unknown) =>
 // ponytail: iOS 16 and older phones show as unavailable without a UDID, so they are not listed (K39).
 export async function listPhones() {
   const out = await devicectl(['list', 'devices', '--json-output', '-', '-q'], TIMEOUT_MS);
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(out);
-  } catch {
-    // Output that is not JSON fails the shape check below with the same message as JSON of the wrong shape.
-  }
-  const result = isRecord(parsed) ? parsed.result : undefined;
-  const devices = isRecord(result) ? result.devices : undefined;
+  const { devices } = json(out);
   if (!Array.isArray(devices)) {
     throw new KaragozError(
       'DEVICECTL_FAILED',
@@ -159,9 +152,11 @@ export async function rotation(udid: string): Promise<number | null> {
   return rotationOf(primaryDisplay(stdout));
 }
 
-// An iPhone's point scale and interface orientation, from the display capture screenshot takes by default. Unlike a
-// simulator's rotation, the scale is required, so a failure is an error.
-export async function displayOf(udid: string): Promise<{ scale: number; rotation: number | null }> {
+// An iPhone's point scale, interface orientation and native panel size (portrait), from the display capture screenshot
+// takes by default. Unlike a simulator's rotation, the scale is required, so a failure is an error.
+export async function displayOf(
+  udid: string,
+): Promise<{ scale: number; rotation: number | null; panel: { width: number; height: number } | undefined }> {
   const stdout = await devicectl(
     ['device', 'info', 'displays', '--device', udid, '--json-output', '-', '-q'],
     PHONE_TIMEOUT_MS,
@@ -172,7 +167,11 @@ export async function displayOf(udid: string): Promise<{ scale: number; rotation
   if (typeof scale !== 'number' || !Number.isFinite(scale) || scale <= 0) {
     throw new KaragozError('CAPTURE_FAILED', "cannot read scale from 'devicectl device info displays'");
   }
-  return { scale, rotation: rotationOf(display) };
+  const size = display?.nativeSize;
+  const pair: unknown[] = Array.isArray(size) ? size : [];
+  const [width, height] = pair;
+  const panel = typeof width === 'number' && typeof height === 'number' ? { width, height } : undefined;
+  return { scale, rotation: rotationOf(display), panel };
 }
 
 // devicectl writes the PNG to a .png path in an existing directory; it refuses - (K40).
@@ -195,4 +194,80 @@ export async function captureScreen(udid: string, file: string): Promise<void> {
     }
     throw err;
   }
+}
+
+// devicectl's JSON on stdout, or DEVICECTL_FAILED naming what it printed instead.
+function json(stdout: string): Record<string, unknown> {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(stdout);
+  } catch {
+    // Not JSON fails the same check as JSON without a result.
+  }
+  const result = isRecord(parsed) ? parsed.result : undefined;
+  if (!isRecord(result)) {
+    throw new KaragozError(
+      'DEVICECTL_FAILED',
+      `unexpected devicectl output: ${(stdout.split('\n')[0] ?? '').slice(0, 300)}`,
+    );
+  }
+  return result;
+}
+
+// The apps devicectl lists by default, the ones a developer installed, which is where karagoz's runner shows (K41).
+export async function apps(udid: string): Promise<{ id: string }[]> {
+  const result = json(
+    await devicectl(['device', 'info', 'apps', '--device', udid, '--json-output', '-', '-q'], PHONE_TIMEOUT_MS, udid),
+  );
+  const list = Array.isArray(result.apps) ? result.apps : [];
+  return list.flatMap((app: unknown) =>
+    isRecord(app) && typeof app.bundleIdentifier === 'string' ? [{ id: app.bundleIdentifier }] : [],
+  );
+}
+
+// Installing the runner sends a few MB over USB and installs its profile; measured in 4.3's phone run (K41).
+const INSTALL_TIMEOUT_MS = 120_000;
+
+export async function installApp(udid: string, path: string): Promise<void> {
+  try {
+    await devicectl(['device', 'install', 'app', '--device', udid, path, '-q'], INSTALL_TIMEOUT_MS, udid);
+  } catch (err) {
+    if (err instanceof KaragozError && err.code === 'DEVICECTL_FAILED') {
+      throw new KaragozError('INSTALL_FAILED', err.message);
+    }
+    throw err;
+  }
+}
+
+export async function uninstallApp(udid: string, id: string): Promise<void> {
+  try {
+    await devicectl(['device', 'uninstall', 'app', '--device', udid, id, '-q'], PHONE_TIMEOUT_MS, udid);
+  } catch (err) {
+    if (err instanceof KaragozError && err.code === 'DEVICECTL_FAILED') {
+      throw new KaragozError('UNINSTALL_FAILED', err.message);
+    }
+    throw err;
+  }
+}
+
+// Provisioning profiles on the phone with their UUID and application identifier (TEAMID.bundle.id, or TEAMID.* for a
+// team wildcard), as devicectl 651.13.5 lists them (measured, K41).
+export async function profiles(udid: string): Promise<{ uuid: string; appId: string }[]> {
+  const result = json(
+    await devicectl(
+      ['device', 'profile', 'list', '--device', udid, '--type', 'provisioning', '--json-output', '-', '-q'],
+      PHONE_TIMEOUT_MS,
+      udid,
+    ),
+  );
+  const list = Array.isArray(result.provisioningProfiles) ? result.provisioningProfiles : [];
+  return list.flatMap((profile: unknown) =>
+    isRecord(profile) && typeof profile.uuid === 'string' && typeof profile.appIdentifier === 'string'
+      ? [{ uuid: profile.uuid, appId: profile.appIdentifier }]
+      : [],
+  );
+}
+
+export async function removeProfile(udid: string, uuid: string): Promise<void> {
+  await devicectl(['device', 'profile', 'remove', '--device', udid, uuid, '-q'], PHONE_TIMEOUT_MS, udid);
 }
