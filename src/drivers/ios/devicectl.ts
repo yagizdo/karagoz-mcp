@@ -8,7 +8,8 @@ import { developerDir } from './simctl.js';
 
 const run = promisify(execFile);
 
-// Measured at 0.06 s; the timeout only bounds a stuck CoreDevice service.
+// list devices measured at 0.06 s, a simulator's info displays 0.06-0.11 s; the timeout only bounds a stuck CoreDevice
+// service.
 const TIMEOUT_MS = 10_000;
 
 // list devices prints simulators too: 48 KB for one phone and four simulators, measured (K39).
@@ -23,21 +24,15 @@ export function devicectlPath(): string {
   return dev ? join(dev, 'usr', 'bin', 'devicectl') : FRAMEWORK;
 }
 
-// No --timeout (devicectl refuses values under 5 s) and no --omit-deprecated-fields-in-json (devicectl before 642
-// rejects it) (K39).
-async function listJson(): Promise<string> {
+// Every devicectl call. No --timeout (devicectl refuses values under 5 s) and no --omit-deprecated-fields-in-json
+// (devicectl before 642 rejects it) (K39).
+async function devicectl(args: string[], timeout: number): Promise<string> {
   const bin = devicectlPath();
   const signal = cancellation.getStore();
   // An aborted signal still spawns devicectl and kills it a tick later.
   signal?.throwIfAborted();
   try {
-    return (
-      await run(bin, ['list', 'devices', '--json-output', '-', '-q'], {
-        timeout: TIMEOUT_MS,
-        maxBuffer: MAX_BUFFER,
-        ...(signal && { signal }),
-      })
-    ).stdout;
+    return (await run(bin, args, { timeout, maxBuffer: MAX_BUFFER, ...(signal && { signal }) })).stdout;
   } catch (err) {
     if (!(err instanceof Error)) throw err;
     // The SDK sends no response for a cancelled call, so the abort passes through unmapped (K31).
@@ -53,7 +48,7 @@ async function listJson(): Promise<string> {
     if ('killed' in err && err.killed) {
       throw new KaragozError(
         'DEVICECTL_TIMEOUT',
-        `devicectl did not answer within ${TIMEOUT_MS / 1000}s. CoreDevice's service may still be starting or be stuck.`,
+        `devicectl did not answer within ${timeout / 1000}s. CoreDevice's service may still be starting or be stuck.`,
       );
     }
     const stderr = 'stderr' in err && typeof err.stderr === 'string' ? err.stderr.trim() : '';
@@ -69,7 +64,7 @@ const group = (current: unknown, deprecated: unknown) =>
 // pairing state, the one field that says "tap Trust"; name is the model, never the owner-set name (K18 4.1 note).
 // ponytail: iOS 16 and older phones show as unavailable without a UDID, so they are not listed (K39).
 export async function listPhones() {
-  const out = await listJson();
+  const out = await devicectl(['list', 'devices', '--json-output', '-', '-q'], TIMEOUT_MS);
   let parsed: unknown;
   try {
     parsed = JSON.parse(out);
@@ -109,28 +104,31 @@ const ROTATION = new Map([
   ['rot270', 90],
 ]);
 
-// The simulator's interface orientation. It is metadata, so any failure is null, meaning unknown, rather than an error
-// (K6 3.2 note); Xcode 26's devicectl does not read simulators.
-export async function rotation(udid: string): Promise<number | null> {
-  const bin = devicectlPath();
-  const signal = cancellation.getStore();
-  // An aborted signal still spawns devicectl and kills it a tick later.
-  signal?.throwIfAborted();
+// The display info displays marks primary, else the first; undefined when the output is not that JSON.
+function primaryDisplay(stdout: string): Record<string, unknown> | undefined {
   let parsed: unknown;
   try {
-    const { stdout } = await run(bin, ['device', 'info', 'displays', '--device', udid, '--json-output', '-', '-q'], {
-      timeout: TIMEOUT_MS,
-      ...(signal && { signal }),
-    });
     parsed = JSON.parse(stdout);
-  } catch (err) {
-    // The SDK sends no response for a cancelled call, so the abort passes through (K31); anything else is unknown.
-    if (signal?.aborted) throw err;
-    return null;
+  } catch {
+    // Not JSON reads as no display, which each caller already handles.
+    return undefined;
   }
   const result = isRecord(parsed) ? parsed.result : undefined;
   const displays = isRecord(result) && Array.isArray(result.displays) ? result.displays.filter(isRecord) : [];
-  const display = displays.find((d) => d.primary === true) ?? displays[0];
-  const orientation = display?.currentOrientation;
+  return displays.find((d) => d.primary === true) ?? displays[0];
+}
+
+// The simulator's interface orientation. It is metadata, so any failure is null, meaning unknown, rather than an error
+// (K6 3.2 note); Xcode 26's devicectl does not read simulators.
+export async function rotation(udid: string): Promise<number | null> {
+  let stdout: string;
+  try {
+    stdout = await devicectl(['device', 'info', 'displays', '--device', udid, '--json-output', '-', '-q'], TIMEOUT_MS);
+  } catch (err) {
+    // The SDK sends no response for a cancelled call, so the abort passes through (K31); anything else is unknown.
+    if (cancellation.getStore()?.aborted) throw err;
+    return null;
+  }
+  const orientation = primaryDisplay(stdout)?.currentOrientation;
   return typeof orientation === 'string' ? (ROTATION.get(orientation) ?? null) : null;
 }
