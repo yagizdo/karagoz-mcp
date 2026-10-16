@@ -1,5 +1,5 @@
 import { execFile } from 'node:child_process';
-import { access, lstat, readFile, readlink } from 'node:fs/promises';
+import { access, lstat, mkdir, readFile, readlink } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
@@ -71,6 +71,17 @@ export async function owns(path: string, kind: 'directory' | 'file'): Promise<bo
     throw new KaragozError('HELPER_FAILED', `${path} is not a ${kind} owned by the current user; ${CACHE_HINT}`);
   }
   return true;
+}
+
+// The user's own directory at path, created when missing.
+export async function ownedDir(path: string): Promise<void> {
+  try {
+    await mkdir(path, { recursive: true, mode: 0o700 });
+  } catch (err) {
+    if (!(err instanceof Error)) throw err;
+    throw new KaragozError('HELPER_FAILED', err.message);
+  }
+  await owns(path, 'directory');
 }
 
 // Converting one preference file takes milliseconds; the timeout only bounds a stuck plutil.

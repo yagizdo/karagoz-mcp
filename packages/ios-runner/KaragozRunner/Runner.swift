@@ -39,6 +39,8 @@ private func property(_ object: NSObject, _ name: String) -> Any? {
 
 final class Runner: XCTestCase {
   private var lastWork = Date()
+  // One /tree at a time, so the snapshot limit counts only this read's snapshot, not the ones queued before it on main.
+  private let snapshots = DispatchSemaphore(value: 1)
 
   @MainActor
   func testServe() throws {
@@ -112,6 +114,8 @@ final class Runner: XCTestCase {
   }
 
   private func tree(_ connection: Int32) {
+    snapshots.wait()
+    defer { snapshots.signal() }
     var answer: (Int, [String: Any]) = (500, [:])
     let done = DispatchSemaphore(value: 0)
     DispatchQueue.main.async {

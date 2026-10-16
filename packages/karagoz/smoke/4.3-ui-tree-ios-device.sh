@@ -69,7 +69,7 @@ case "\$*" in
   *test-without-building*)
     case "\$(/bin/cat "$fake/start")" in
       ok) "$node_bin" "$tmp/runner.js" "$fake" & exec /bin/sleep 97.43 ;;
-      hang) exec /bin/sleep 97.43 ;;
+      hang) /bin/sleep 97.43 & exec /bin/sleep 97.43 ;;
       *) /bin/cat "$fake/start-text"; exit 65 ;;
     esac
     ;;
@@ -170,8 +170,9 @@ out=$(k uninstall-runner --device P1) || fail "uninstall of nothing exited non-z
 is "uninstall of nothing" "$out" '{"device":"P1","apps":[],"profiles":[]}'
 
 
-# 5. ui-tree. A fake usbmuxd lists the phones in $fake/usb and forwards Connect to the fake runner's port, or answers
-# 3 (refused) when nothing listens; the fake runner answers /health and /tree as $fake/runner-mode says.
+# 5. ui-tree. A fake usbmuxd lists the phones in $fake/usb (serial[:connection type]) and forwards Connect to the fake
+# runner's port, or answers 3 (refused) when nothing listens and 2 (no such device) when $fake/gone exists; the fake
+# runner answers /health and /tree as $fake/runner-mode says.
 cat > "$tmp/usbmuxd.js" <<'JS'
 const net = require("net"), fs = require("fs");
 const [, , path, fake] = process.argv;
@@ -191,12 +192,16 @@ net.createServer((socket) => {
     socket.off("data", data);
     const xml = buffer.subarray(16, buffer.readUInt32LE(0)).toString();
     if (xml.includes("<string>ListDevices</string>")) {
-      const serials = fs.readFileSync(fake + "/usb", "utf8").split(/\s+/).filter(Boolean);
-      const list = serials.map((serial, i) => `<dict><key>DeviceID</key><integer>${i + 7}</integer><key>MessageType</key><string>Attached</string><key>Properties</key><dict><key>ConnectionType</key><string>USB</string><key>DeviceID</key><integer>${i + 7}</integer><key>SerialNumber</key><string>${serial}</string></dict></dict>`);
+      const entries = fs.readFileSync(fake + "/usb", "utf8").split(/\s+/).filter(Boolean);
+      const list = entries.map((entry, i) => {
+        const [serial, type = "USB"] = entry.split(":");
+        return `<dict><key>DeviceID</key><integer>${i + 7}</integer><key>MessageType</key><string>Attached</string><key>Properties</key><dict><key>ConnectionType</key><string>${type}</string><key>DeviceID</key><integer>${i + 7}</integer><key>SerialNumber</key><string>${serial}</string></dict></dict>`;
+      });
       return socket.end(frame(`<key>DeviceList</key><array>${list.join("")}</array>`));
     }
     const swapped = Number(/<key>PortNumber<\/key><integer>(\d+)<\/integer>/.exec(xml)[1]);
     fs.appendFileSync(fake + "/connects", `${((swapped & 0xff) << 8) | (swapped >> 8)}\n`);
+    if (fs.existsSync(fake + "/gone")) return socket.end(result(2));
     let port = 0;
     try { port = Number(fs.readFileSync(fake + "/runner-port", "utf8")); } catch {}
     if (!port) return socket.end(result(3));
@@ -284,9 +289,18 @@ refuses "runner hangs" CAPTURE_FAILED "did not answer within 30 s" ui-tree --dev
 [ $(($(date +%s) - t0)) -le 40 ] || fail "hang took $(($(date +%s) - t0)) s"
 rm "$fake/runner-mode"
 
-# Not attached by cable; then a stopped runner: not installed, or installed without a build here, never starts one.
+# Not attached by cable (no entry, a Wi-Fi entry only, or gone before Connect); usbmuxd's serial matches in any case.
+# Then a stopped runner: not installed, or installed without a build here, never starts one.
 : > "$fake/usb"
 refuses "not on USB" DEVICE_NOT_READY "USB" ui-tree --device P1
+echo P1:Network > "$fake/usb"
+refuses "Wi-Fi only" DEVICE_NOT_READY "USB" ui-tree --device P1
+echo p1 > "$fake/usb"
+out=$(k ui-tree --device P1) || fail "lowercase serial exited non-zero: $out"
+is "lowercase serial" "$out" "$want"
+: > "$fake/gone"
+refuses "gone before Connect" DEVICE_NOT_READY "USB" ui-tree --device P1
+rm "$fake/gone"
 echo P1 > "$fake/usb"
 stop_runner
 before=$(starts)
@@ -305,12 +319,48 @@ echo "The application could not be launched because its profile has not been exp
 refuses "untrusted developer" DEVICE_NOT_READY "VPN & Device Management" ui-tree --device P1
 echo "xcodebuild: error: Something unexpected happened." > "$fake/start-text"
 refuses "unknown start failure" HELPER_FAILED "Something unexpected happened. (log: " ui-tree --device P1
+for m in "The provisioning profile has expired.|RUNNER_NOT_INSTALLED|expired provisioning profile" \
+  "Developer Mode disabled.|DEVICE_NOT_READY|Developer Mode is off" \
+  "The device is locked.|DEVICE_NOT_READY|it is locked" \
+  "Enable automation mode failed.|DEVICE_NOT_READY|UI automation is off"; do
+  echo "${m%%|*}" > "$fake/start-text"
+  rest=${m#*|}
+  refuses "start: ${m%%|*}" "${rest%%|*}" "${rest#*|}" ui-tree --device P1
+done
 echo hang > "$fake/start"
 t0=$(date +%s)
 refuses "start never answers" DEVICE_NOT_READY "did not start within 60 s" ui-tree --device P1
 [ $(($(date +%s) - t0)) -le 75 ] || fail "start budget took $(($(date +%s) - t0)) s"
 sleep 1
 ! pgrep -f "sleep 97\.43" > /dev/null || fail "the hung xcodebuild was left running"
+# The MCP server exits right after aborting on SIGTERM, before any catch runs: the abort itself kills the start.
+mcp_term=$(env -i HOME="$tmp/home" PATH=/usr/bin:/bin TMPDIR="$tmp" ANDROID_HOME="$tmp/sdk" DEVELOPER_DIR="$dev" \
+  USBMUXD_SOCKET_ADDRESS="UNIX:$tmp/usbmuxd" "$node_bin" -e '
+  const { spawn, spawnSync } = require("child_process");
+  const server = spawn(process.execPath, ["dist/cli.js", "mcp"], { stdio: ["pipe", "pipe", "ignore"] });
+  const send = (m) => server.stdin.write(JSON.stringify({ jsonrpc: "2.0", ...m }) + "\n");
+  send({ id: 1, method: "initialize", params: { protocolVersion: "2025-11-25", capabilities: {}, clientInfo: { name: "smoke", version: "0" } } });
+  server.stdout.once("data", () => {
+    send({ method: "notifications/initialized" });
+    send({ id: 2, method: "tools/call", params: { name: "ui_tree", arguments: { device: "P1" } } });
+  });
+  const sleeping = () => spawnSync("/usr/bin/pgrep", ["-f", "sleep 97\\.43"]).status === 0;
+  const giveUp = setTimeout(() => { clearInterval(poll); console.log("no start"); server.kill("SIGKILL"); }, 15000);
+  const poll = setInterval(() => { if (sleeping()) { clearInterval(poll); clearTimeout(giveUp); server.kill("SIGTERM"); } }, 100);
+  server.on("exit", (code) => setTimeout(() => console.log(code, sleeping() ? "left" : "gone"), 1000));
+')
+is "MCP SIGTERM during a start" "$mcp_term" "143 gone"
+# The CLI too: the start has left its process group, so only the abort reaches it.
+env -i HOME="$tmp/home" PATH=/usr/bin:/bin TMPDIR="$tmp" ANDROID_HOME="$tmp/sdk" DEVELOPER_DIR="$dev" \
+  USBMUXD_SOCKET_ADDRESS="UNIX:$tmp/usbmuxd" "$node_bin" dist/cli.js ui-tree --device P1 > /dev/null 2>&1 &
+cli=$!
+i=0
+until pgrep -f "sleep 97\.43" > /dev/null; do i=$((i + 1)); [ $i -le 150 ] || fail "CLI start: no xcodebuild"; sleep 0.1; done
+code=0
+kill -TERM "$cli"
+wait "$cli" || code=$?
+sleep 1
+is "CLI SIGTERM during a start" "$code $(pgrep -f "sleep 97\.43" > /dev/null && echo left || echo gone)" "143 gone"
 
 # Two first calls at once start one runner.
 echo ok > "$fake/start"
@@ -340,7 +390,7 @@ teams 'ABCDE12345:Some Team:false' 'AAAAA11111:Me:true'
 is "doctor" "$(doctor_of)" "[{\"status\":\"ok\",\"teams\":[{\"id\":\"ABCDE12345\",\"name\":\"Some Team\",\"free\":false},{\"id\":\"AAAAA11111\",\"name\":\"Me\",\"free\":true}]},{\"status\":\"ok\",\"path\":\"$tmp/home/Library/Caches/karagoz/runner/KEY\",\"teams\":[\"ABCDE12345\",\"CCCCC33333\",\"DDDDD44444\"]}]"
 rm "$tmp/home/Library/Preferences/com.apple.dt.Xcode.plist"
 rm -rf "$tmp/home/Library/Caches/karagoz/runner"
-is "doctor, nothing yet" "$(doctor_of)" "[{\"status\":\"missing\",\"message\":\"Xcode lists no Apple account: sign in to Xcode > Settings > Accounts with your Apple ID, to build karagoz's iPhone runner\"},{\"status\":\"not built\",\"path\":\"$tmp/home/Library/Caches/karagoz/runner/KEY\"}]"
+is "doctor, nothing yet" "$(doctor_of)" "[{\"status\":\"missing\",\"message\":\"Xcode lists no Apple account: sign in to Xcode > Settings > Accounts with your Apple ID, to build karagoz's iPhone runner with install-runner\"},{\"status\":\"not built\",\"path\":\"$tmp/home/Library/Caches/karagoz/runner/KEY\"}]"
 
 # 7. A real paired iPhone with karagoz's runner: the tree's shape only, nothing from the screen is printed. Real tools,
 # the real HOME (where install-runner built the runner), a fake adb that lists nothing.
@@ -365,4 +415,4 @@ else
   case "$real_ok" in real*) ;; *) fail "real tree: $real_ok" ;; esac
 fi
 
-echo "ok: $real_ok, teams, build arguments, failures, targets, uninstall, mapping, mini, read failures, not on USB, not installed, start failures, start budget (60s), lock, devices, doctor, landscape keyboard"
+echo "ok: $real_ok, teams, build arguments, failures, targets, uninstall, mapping, mini, read failures, not on USB, Wi-Fi only, serial case, gone before Connect, not installed, start failures, start budget (60s), MCP and CLI SIGTERM during a start, lock, devices, doctor, landscape keyboard"

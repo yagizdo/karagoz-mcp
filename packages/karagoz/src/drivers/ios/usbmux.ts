@@ -174,7 +174,7 @@ function open(timeoutMs: number): Promise<Socket> {
 }
 
 // The usbmux device ids of the phones attached by cable, by UDID (usbmuxd's SerialNumber, compared case-insensitively).
-export async function attached(timeoutMs: number): Promise<Map<string, number>> {
+async function attached(timeoutMs: number): Promise<Map<string, number>> {
   const socket = await open(timeoutMs);
   try {
     const reply = await exchange(socket, message({ MessageType: 'ListDevices' }), timeoutMs);
@@ -191,7 +191,7 @@ export async function attached(timeoutMs: number): Promise<Map<string, number>> 
   }
 }
 
-export function notOnUsb(udid: string): KaragozError {
+function notOnUsb(udid: string): KaragozError {
   return new KaragozError(
     'DEVICE_NOT_READY',
     `device ${udid} is not ready: it is not connected by USB. karagoz reaches its runner over a USB cable; connect the iPhone with one.`,

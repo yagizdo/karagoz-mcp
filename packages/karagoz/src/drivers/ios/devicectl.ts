@@ -26,7 +26,7 @@ export function devicectlPath(): string {
 
 // The first verb on an idle iPhone brings its tunnel up (3.89 s measured) and may mount the developer disk image; 30 s is
 // what simctl gets (K32, K40).
-const PHONE_TIMEOUT_MS = 30_000;
+export const PHONE_TIMEOUT_MS = 30_000;
 
 export const TRUST =
   'Unlock the iPhone, tap Trust on "Trust This Computer?" and enter the passcode; if no prompt shows, unplug it and plug it in again.';
@@ -87,14 +87,7 @@ const group = (current: unknown, deprecated: unknown) =>
 // ponytail: iOS 16 and older phones show as unavailable without a UDID, so they are not listed (K39).
 export async function listPhones() {
   const out = await devicectl(['list', 'devices', '--json-output', '-', '-q'], TIMEOUT_MS);
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(out);
-  } catch {
-    // Output that is not JSON fails the shape check below with the same message as JSON of the wrong shape.
-  }
-  const result = isRecord(parsed) ? parsed.result : undefined;
-  const devices = isRecord(result) ? result.devices : undefined;
+  const { devices } = json(out);
   if (!Array.isArray(devices)) {
     throw new KaragozError(
       'DEVICECTL_FAILED',

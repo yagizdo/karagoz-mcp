@@ -1,6 +1,6 @@
 import { execFile } from 'node:child_process';
 import { createHash, randomUUID } from 'node:crypto';
-import { access, constants, mkdir, readFile, rename, rm } from 'node:fs/promises';
+import { access, constants, readFile, rename, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
@@ -10,7 +10,7 @@ import { displayOf, rotation } from './devicectl.js';
 import { isRecord } from './devices.js';
 import { tree } from './runner.js';
 import { panelScale } from './screenshot.js';
-import { buildVersion, CACHE_HINT, CACHE_ROOT, owns, xcode } from './xcode.js';
+import { buildVersion, CACHE_HINT, CACHE_ROOT, ownedDir, owns, xcode } from './xcode.js';
 
 const run = promisify(execFile);
 
@@ -67,14 +67,8 @@ export async function helperPath(dev: string): Promise<{ root: string; dir: stri
 // The helper binary, compiled on first use (K34).
 export async function helper(dev: string): Promise<string> {
   const { root, dir, bin } = await helperPath(dev);
-  try {
-    await mkdir(dir, { recursive: true, mode: 0o700 });
-  } catch (err) {
-    if (!(err instanceof Error)) throw err;
-    throw new KaragozError('HELPER_FAILED', err.message);
-  }
-  await owns(root, 'directory');
-  await owns(dir, 'directory');
+  await ownedDir(root);
+  await ownedDir(dir);
   if (await owns(bin, 'file')) return bin;
 
   const compiler = swiftc(dev);

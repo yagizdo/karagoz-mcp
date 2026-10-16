@@ -2,7 +2,7 @@ import { access, constants, readdir, readFile, stat } from 'node:fs/promises';
 import { join } from 'node:path';
 import { KaragozError } from '../../errors.js';
 import { devicectlPath } from './devicectl.js';
-import { runnerBuild } from './runner.js';
+import { runnerBuild, xctestrun } from './runner.js';
 import { binary, FRAMEWORK_PLIST } from './simctl.js';
 import { helperPath, swiftc } from './ui-tree.js';
 import { NO_XCODE, noTeam, owns, selected, teams, type Team } from './xcode.js';
@@ -116,7 +116,10 @@ async function signing(): Promise<Signing> {
     return { status: 'failed', message: err.message };
   }
   if (!found.teams.length)
-    return { status: 'missing', message: `${noTeam(found.signedIn)}, to build karagoz's iPhone runner` };
+    return {
+      status: 'missing',
+      message: `${noTeam(found.signedIn)}, to build karagoz's iPhone runner with install-runner`,
+    };
   return { status: 'ok', teams: found.teams };
 }
 
@@ -125,12 +128,11 @@ async function iosRunner(dev: string | undefined): Promise<RunnerBuild> {
   if (!dev) return { status: 'not built' };
   let root: string | undefined;
   try {
-    root = (await runnerBuild(dev)).root;
+    root = await runnerBuild(dev);
     if (!(await owns(root, 'directory'))) return { status: 'not built', path: root };
     const built: string[] = [];
     for (const team of (await readdir(root)).sort()) {
-      const products = await readdir(join(root, team, 'Build', 'Products')).catch(() => []);
-      if (products.some((file) => file.endsWith('.xctestrun'))) built.push(team);
+      if (await xctestrun(root, team)) built.push(team);
     }
     return built.length ? { status: 'ok', path: root, teams: built } : { status: 'not built', path: root };
   } catch (err) {

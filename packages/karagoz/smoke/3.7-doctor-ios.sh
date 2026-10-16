@@ -42,7 +42,7 @@ fw=$(/usr/bin/plutil -extract CFBundleVersion raw "$framework/Info.plist")
 newer=$(printf '%s' "$fw" | awk -F. -v OFS=. '{ $NF = $NF + 1; print }')
 helper_path=$tmp/home/Library/Caches/karagoz/KEY/ax
 # No Apple account under the fake HOME; the runner is never built here.
-signing_text="Xcode lists no Apple account: sign in to Xcode > Settings > Accounts with your Apple ID, to build karagoz's iPhone runner"
+signing_text="Xcode lists no Apple account: sign in to Xcode > Settings > Accounts with your Apple ID, to build karagoz's iPhone runner with install-runner"
 runner_path=$tmp/home/Library/Caches/karagoz/runner/KEY
 swiftc_text='the Command Line Tools are not enough'
 
