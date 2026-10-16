@@ -4,7 +4,8 @@ import { cancellation } from '../../cancellation.js';
 import { KaragozError } from '../../errors.js';
 import { rotation } from './devicectl.js';
 import { simctl } from './simctl.js';
-import { CACHE_HINT, helper, readTree, RUN_TIMEOUT_MS, xcode, type IosNode } from './ui-tree.js';
+import { helper, readTree, RUN_TIMEOUT_MS, type IosNode } from './ui-tree.js';
+import { CACHE_HINT, xcode } from './xcode.js';
 
 const run = promisify(execFile);
 

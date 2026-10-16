@@ -3,7 +3,8 @@ import { join } from 'node:path';
 import { KaragozError } from '../../errors.js';
 import { devicectlPath } from './devicectl.js';
 import { binary, FRAMEWORK_PLIST } from './simctl.js';
-import { helperPath, NO_XCODE, owns, selected, swiftc } from './ui-tree.js';
+import { helperPath, swiftc } from './ui-tree.js';
+import { NO_XCODE, owns, selected } from './xcode.js';
 
 // doctor reads files only. simctl would start CoreSimulatorService and rewrite device_set.plist, and a shim under
 // DEVELOPER_DIR can start Xcode's first launch, which waits for a password (K30 3.7 note, K32).

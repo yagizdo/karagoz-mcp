@@ -1,7 +1,6 @@
 import { execFile } from 'node:child_process';
 import { createHash, randomUUID } from 'node:crypto';
-import { access, constants, lstat, mkdir, readFile, readlink, rename, rm } from 'node:fs/promises';
-import { homedir } from 'node:os';
+import { access, constants, mkdir, readFile, rename, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
@@ -10,7 +9,7 @@ import { KaragozError } from '../../errors.js';
 import { rotation } from './devicectl.js';
 import { isRecord } from './devices.js';
 import { panelScale } from './screenshot.js';
-import { developerDir } from './simctl.js';
+import { buildVersion, CACHE_HINT, CACHE_ROOT, owns, xcode } from './xcode.js';
 
 const run = promisify(execFile);
 
@@ -22,11 +21,8 @@ export const RUN_TIMEOUT_MS = 30_000;
 const MAX_BUFFER = 32 * 1024 * 1024;
 // Pinned so a toolchain that changes its default language mode cannot break the build.
 const FLAGS = ['-O', '-suppress-warnings', '-swift-version', '5'];
-const XCODE_SELECT = '/var/db/xcode_select_link';
-const DEFAULT_XCODE = '/Applications/Xcode.app/Contents/Developer';
 // The build copies the source next to the bundle's chunks, all flat in dist/.
 const SOURCE = fileURLToPath(new URL('ax-helper.swift', import.meta.url));
-export const CACHE_HINT = 'delete ~/Library/Caches/karagoz';
 
 export type IosNode = {
   role: string;
@@ -42,63 +38,12 @@ export type IosNode = {
 
 let source: Promise<string> | undefined;
 
-export const NO_XCODE = `no Xcode selected: set DEVELOPER_DIR or run xcode-select -s <Xcode.app> (${XCODE_SELECT} and ${DEFAULT_XCODE} are missing)`;
-
-// The developer dir the helper builds with, and which rule picked it; undefined when there is none. doctor reports the
-// same lookup the commands use (K30).
-export async function selected(): Promise<
-  { dev: string; source: 'DEVELOPER_DIR' | 'xcode-select' | 'default' } | undefined
-> {
-  const dev = developerDir();
-  if (dev) return { dev, source: 'DEVELOPER_DIR' };
-  try {
-    return { dev: await readlink(XCODE_SELECT), source: 'xcode-select' };
-  } catch {
-    // No link (never selected, or xcode-select -r): xcode-select's default search, which xcrun follows, takes over.
-  }
-  try {
-    await access(DEFAULT_XCODE);
-    return { dev: DEFAULT_XCODE, source: 'default' };
-  } catch {
-    // Neither is there: no Xcode is selected.
-    return undefined;
-  }
-}
-
-export async function xcode(): Promise<string> {
-  const found = await selected();
-  // The message says how to pick one.
-  if (!found) throw new KaragozError('HELPER_FAILED', NO_XCODE);
-  return found.dev;
-}
-
 export function swiftc(dev: string): { bin: string; missing: string } {
   const bin = join(dev, 'Toolchains', 'XcodeDefault.xctoolchain', 'usr', 'bin', 'swiftc');
   return {
     bin,
     missing: `swiftc not found at ${bin}; install or select an Xcode (xcode-select -s <Xcode.app> or DEVELOPER_DIR), the Command Line Tools are not enough`,
   };
-}
-
-// The cache sits in the user's home, but a directory or binary someone else owns there is refused, as screenshot
-// refuses a shared temp directory (src/screenshot.ts).
-const owned = (info: { uid: number }) => !process.getuid || info.uid === process.getuid();
-
-// true when the user's own directory or file is at path, false when nothing is there yet.
-export async function owns(path: string, kind: 'directory' | 'file'): Promise<boolean> {
-  let info;
-  try {
-    info = await lstat(path);
-  } catch (err) {
-    if (!(err instanceof Error)) throw err;
-    const code = 'code' in err ? String(err.code) : err.message;
-    if (code === 'ENOENT') return false;
-    throw new KaragozError('HELPER_FAILED', `cannot check ${path} (${code}); ${CACHE_HINT}`);
-  }
-  if (!(kind === 'directory' ? info.isDirectory() : info.isFile()) || !owned(info)) {
-    throw new KaragozError('HELPER_FAILED', `${path} is not a ${kind} owned by the current user; ${CACHE_HINT}`);
-  }
-  return true;
 }
 
 // Where the helper for this source, Xcode and architecture lives. The key is computed on every call, so an Xcode
@@ -109,15 +54,13 @@ export async function helperPath(dev: string): Promise<{ root: string; dir: stri
     throw new KaragozError('HELPER_FAILED', `cannot read ${SOURCE}; reinstall karagoz`);
   });
   // A missing version.plist leaves the build out of the key; the developer dir is still in it.
-  const plist = await readFile(join(dev, '..', 'version.plist'), 'utf8').catch(() => '');
-  const build = /<key>ProductBuildVersion<\/key>\s*<string>([^<]*)<\/string>/.exec(plist)?.[1] ?? '';
+  const build = await buildVersion(dev);
   const key = createHash('sha256')
     .update([text, dev, build, process.arch, FLAGS.join(' ')].join('\0'))
     .digest('hex')
     .slice(0, 16);
-  const root = join(homedir(), 'Library', 'Caches', 'karagoz');
-  const dir = join(root, key);
-  return { root, dir, bin: join(dir, 'ax') };
+  const dir = join(CACHE_ROOT, key);
+  return { root: CACHE_ROOT, dir, bin: join(dir, 'ax') };
 }
 
 // The helper binary, compiled on first use (K34).
