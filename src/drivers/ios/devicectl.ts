@@ -140,6 +140,11 @@ function primaryDisplay(stdout: string): Record<string, unknown> | undefined {
   return displays.find((d) => d.primary === true) ?? displays[0];
 }
 
+function rotationOf(display: Record<string, unknown> | undefined): number | null {
+  const orientation = display?.currentOrientation;
+  return typeof orientation === 'string' ? (ROTATION.get(orientation) ?? null) : null;
+}
+
 // The simulator's interface orientation. It is metadata, so any failure is null, meaning unknown, rather than an error
 // (K6 3.2 note); Xcode 26's devicectl does not read simulators.
 export async function rotation(udid: string): Promise<number | null> {
@@ -151,8 +156,7 @@ export async function rotation(udid: string): Promise<number | null> {
     if (cancellation.getStore()?.aborted) throw err;
     return null;
   }
-  const orientation = primaryDisplay(stdout)?.currentOrientation;
-  return typeof orientation === 'string' ? (ROTATION.get(orientation) ?? null) : null;
+  return rotationOf(primaryDisplay(stdout));
 }
 
 // An iPhone's point scale and interface orientation, from the display capture screenshot takes by default. Unlike a
@@ -168,8 +172,7 @@ export async function displayOf(udid: string): Promise<{ scale: number; rotation
   if (typeof scale !== 'number' || !Number.isFinite(scale) || scale <= 0) {
     throw new KaragozError('CAPTURE_FAILED', "cannot read scale from 'devicectl device info displays'");
   }
-  const orientation = display?.currentOrientation;
-  return { scale, rotation: typeof orientation === 'string' ? (ROTATION.get(orientation) ?? null) : null };
+  return { scale, rotation: rotationOf(display) };
 }
 
 // devicectl writes the PNG to a .png path in an existing directory; it refuses - (K40).
