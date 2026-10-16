@@ -5,7 +5,7 @@ import { devicectlPath } from './devicectl.js';
 import { runnerBuild } from './runner.js';
 import { binary, FRAMEWORK_PLIST } from './simctl.js';
 import { helperPath, swiftc } from './ui-tree.js';
-import { NO_XCODE, owns, selected, teams, type Team } from './xcode.js';
+import { NO_XCODE, noTeam, owns, selected, teams, type Team } from './xcode.js';
 
 // doctor reads files, and runs nothing but plutil, which only converts Xcode's preference file. simctl would start
 // CoreSimulatorService and rewrite device_set.plist, and a shim under DEVELOPER_DIR can start Xcode's first launch, which
@@ -108,20 +108,16 @@ async function helper(dev: string | undefined): Promise<Helper> {
 
 // The Apple development teams karagoz's iPhone runner can be built with (K41).
 async function signing(): Promise<Signing> {
-  let found: Team[];
+  let found: { signedIn: boolean; teams: Team[] };
   try {
     found = await teams();
   } catch (err) {
     if (!(err instanceof KaragozError)) throw err;
     return { status: 'failed', message: err.message };
   }
-  if (!found.length) {
-    return {
-      status: 'missing',
-      message: "no Apple account in Xcode: sign in to Xcode > Settings > Accounts to build karagoz's iPhone runner",
-    };
-  }
-  return { status: 'ok', teams: found };
+  if (!found.teams.length)
+    return { status: 'missing', message: `${noTeam(found.signedIn)}, to build karagoz's iPhone runner` };
+  return { status: 'ok', teams: found.teams };
 }
 
 // The runner builds this karagoz and Xcode have, one per team (install-runner makes them).

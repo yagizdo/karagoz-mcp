@@ -257,19 +257,9 @@ export async function uninstallApp(udid: string, id: string): Promise<void> {
   }
 }
 
-// Every string in a value, depth first.
-const strings = (value: unknown): string[] =>
-  typeof value === 'string'
-    ? [value]
-    : Array.isArray(value)
-      ? value.flatMap(strings)
-      : isRecord(value)
-        ? Object.values(value).flatMap(strings)
-        : [];
-
-// Provisioning profiles on the phone with their UUID and every application identifier (TEAMID.bundle.id) they carry.
-// ponytail: read by key name and value shape, not a fixed path; the JSON layout was first seen in 4.3's phone run.
-export async function profiles(udid: string): Promise<{ uuid: string; appIds: string[] }[]> {
+// Provisioning profiles on the phone with their UUID and application identifier (TEAMID.bundle.id, or TEAMID.* for a
+// team wildcard), as devicectl 651.13.5 lists them (measured, K41).
+export async function profiles(udid: string): Promise<{ uuid: string; appId: string }[]> {
   const result = json(
     await devicectl(
       ['device', 'profile', 'list', '--device', udid, '--type', 'provisioning', '--json-output', '-', '-q'],
@@ -277,13 +267,12 @@ export async function profiles(udid: string): Promise<{ uuid: string; appIds: st
       udid,
     ),
   );
-  const list = Object.values(result).find(Array.isArray) ?? [];
-  return list.flatMap((profile: unknown) => {
-    if (!isRecord(profile)) return [];
-    const uuid = Object.entries(profile).find(([key]) => key.toLowerCase() === 'uuid')?.[1];
-    if (typeof uuid !== 'string') return [];
-    return [{ uuid, appIds: strings(profile).filter((text) => /^[A-Z0-9]{10}\.\S+$/.test(text)) }];
-  });
+  const list = Array.isArray(result.provisioningProfiles) ? result.provisioningProfiles : [];
+  return list.flatMap((profile: unknown) =>
+    isRecord(profile) && typeof profile.uuid === 'string' && typeof profile.appIdentifier === 'string'
+      ? [{ uuid: profile.uuid, appId: profile.appIdentifier }]
+      : [],
+  );
 }
 
 export async function removeProfile(udid: string, uuid: string): Promise<void> {

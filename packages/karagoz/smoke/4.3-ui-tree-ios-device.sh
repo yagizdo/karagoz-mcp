@@ -80,7 +80,7 @@ printf 'List of devices attached\n\n' > "$fake/adb-devices"
 echo '{"devices":{}}' > "$fake/sims.json"
 printf 'echo %s\n' "'{\"result\":{\"apps\":[]}}'" > "$fake/apps"
 : > "$fake/install"
-echo '{"result":{"profiles":[]}}' > "$fake/profiles.json"
+echo '{"result":{"configurationProfiles":[],"provisioningProfiles":[]}}' > "$fake/profiles.json"
 phone() { printf '{"visibilityClass":"default","properties":{"hardware":{"udid":"%s","reality":"physical","platform":"iOS","marketingName":"iPhone 14 Pro Max"},"connection":{"pairingState":"%s","transportType":"wired","tunnelState":"disconnected"}}}' "$1" "$2"; }
 echo "{\"result\":{\"devices\":[$(phone P1 paired),$(phone P2 unpaired)]}}" > "$fake/list.json"
 # teams <account>=<id>:<name>:<free>...: Xcode's IDEProvisioningTeamByIdentifier as an XML plist.
@@ -94,6 +94,10 @@ teams() {
     echo '</array></dict></dict></plist>'
   } > "$tmp/home/Library/Preferences/com.apple.dt.Xcode.plist"
 }
+# An Apple account signed in to Xcode that has not saved its teams yet: what Xcode writes at sign-in (measured).
+account_only() {
+  echo '<?xml version="1.0" encoding="UTF-8"?><plist version="1.0"><dict><key>DVTDeveloperAccountManagerAppleIDLists</key><dict><key>IDE.Identifiers.Prod</key><array><dict><key>identifier</key><string>someone</string></dict></array></dict></dict></plist>' > "$tmp/home/Library/Preferences/com.apple.dt.Xcode.plist"
+}
 k() { env -i HOME="$tmp/home" PATH=/usr/bin:/bin TMPDIR="$tmp" ANDROID_HOME="$tmp/sdk" DEVELOPER_DIR="$dev" USBMUXD_SOCKET_ADDRESS="UNIX:$tmp/usbmuxd" "$node_bin" dist/cli.js "$@" 2>/dev/null; }
 refuses() {
   step=$1 code=$2 text=$3
@@ -103,9 +107,11 @@ refuses() {
   [ "$text" = - ] || case "$(printf '%s' "$out" | message_of)" in *"$text"*) ;; *) fail "$step text: $out" ;; esac
 }
 
-# 1. Teams. None listed: the message says where to sign in. One: it builds and installs. Two free: refused with both.
+# 1. Teams. No account: the message says where to sign in; an account whose teams Xcode has not saved: how to make it. One: it builds and installs. Two free: refused with both.
 # One paid and one free: the paid. A malformed --team is refused; a well-formed one is used even when Xcode lists none.
-refuses "no team" HELPER_FAILED "Xcode > Settings > Accounts" install-runner --device P1
+refuses "no account" HELPER_FAILED "sign in to Xcode > Settings > Accounts" install-runner --device P1
+account_only
+refuses "account, no team yet" HELPER_FAILED "Signing & Capabilities tab in Xcode once, or pass --team" install-runner --device P1
 [ ! -e "$fake/xcodebuild" ] || fail "no team: xcodebuild ran"
 teams 'ABCDE12345:Some Team:false'
 out=$(k install-runner --device P1) || fail "one team exited non-zero: $out"
@@ -149,17 +155,17 @@ echo '{"devices":{}}' > "$fake/sims.json"
 # 4. Uninstall: every runner app goes, and only the profiles for karagoz's runner ids; a team wildcard stays.
 printf 'echo %s\n' "'{\"result\":{\"apps\":[{\"bundleIdentifier\":\"com.karagozmcp.runner.abcde12345.xctrunner\"},{\"bundleIdentifier\":\"com.example.app\"},{\"bundleIdentifier\":\"com.karagozmcp.runner.ccccc33333.xctrunner\"}]}}'" > "$fake/apps"
 cat > "$fake/profiles.json" <<'JSON'
-{"result":{"profiles":[
-{"uuid":"11111111-1111-1111-1111-111111111111","name":"iOS Team Provisioning Profile: com.karagozmcp.runner.abcde12345.xctrunner","entitlements":{"application-identifier":"ABCDE12345.com.karagozmcp.runner.abcde12345.xctrunner"}},
-{"uuid":"22222222-2222-2222-2222-222222222222","name":"iOS Team Provisioning Profile: *","entitlements":{"application-identifier":"ABCDE12345.*"}},
-{"uuid":"33333333-3333-3333-3333-333333333333","name":"Another app","entitlements":{"application-identifier":"ABCDE12345.com.example.app"}}]}}
+{"result":{"configurationProfiles":[],"provisioningProfiles":[
+{"uuid":"11111111-1111-1111-1111-111111111111","name":"iOS Team Provisioning Profile: com.karagozmcp.runner.abcde12345.xctrunner","appIdentifier":"ABCDE12345.com.karagozmcp.runner.abcde12345.xctrunner","hasExpired":false},
+{"uuid":"22222222-2222-2222-2222-222222222222","name":"iOS Team Provisioning Profile: *","appIdentifier":"ABCDE12345.*","hasExpired":false},
+{"uuid":"33333333-3333-3333-3333-333333333333","name":"Another app","appIdentifier":"ABCDE12345.com.example.app","hasExpired":false}]}}
 JSON
 out=$(k uninstall-runner --device P1) || fail "uninstall exited non-zero: $out"
 is "uninstall" "$out" '{"device":"P1","apps":["com.karagozmcp.runner.abcde12345.xctrunner","com.karagozmcp.runner.ccccc33333.xctrunner"],"profiles":["11111111-1111-1111-1111-111111111111"]}'
 is "uninstalled apps" "$(/usr/bin/tr '\n' ' ' < "$fake/uninstalls")" "com.karagozmcp.runner.abcde12345.xctrunner com.karagozmcp.runner.ccccc33333.xctrunner "
 is "removed profiles" "$(/bin/cat "$fake/removed")" 11111111-1111-1111-1111-111111111111
 printf 'echo %s\n' "'{\"result\":{\"apps\":[]}}'" > "$fake/apps"
-echo '{"result":{"profiles":[]}}' > "$fake/profiles.json"
+echo '{"result":{"configurationProfiles":[],"provisioningProfiles":[]}}' > "$fake/profiles.json"
 out=$(k uninstall-runner --device P1) || fail "uninstall of nothing exited non-zero: $out"
 is "uninstall of nothing" "$out" '{"device":"P1","apps":[],"profiles":[]}'
 
@@ -254,6 +260,16 @@ is "warm read: no second start" "$(starts)" $((before + 1))
 display rot90 1080,2340
 out=$(k ui-tree --device P1) || fail "mini exited non-zero: $out"
 is "mini and rotation" "$(printf '%s' "$out" | "$node_bin" -e 'const r = JSON.parse(require("fs").readFileSync(0, "utf8")); console.log(r.rotation, JSON.stringify(r.root.bounds))')" "270 [0,0,1238.4,2684.16]"
+# In landscape the keyboard comes in the portrait panel's points (measured); it is turned into the screen.
+cp "$fake/tree.json" "$tmp/tree.portrait.json"
+cat > "$fake/tree.json" <<'JSON'
+{"root":{"type":2,"label":"Probe","frame":[0,0,932,430],"children":[{"type":4,"frame":[0,0,932,430],"children":[
+{"type":19,"frame":[266,117,162,698],"children":[{"type":20,"label":"q","frame":[266,117,40,60]}]}]}]}}
+JSON
+display rot90 1290,2796
+out=$(k ui-tree --device P1) || fail "landscape keyboard exited non-zero: $out"
+is "landscape keyboard" "$out" '{"device":"P1","rotation":270,"root":{"role":"Application","label":"Probe","bounds":[0,0,2796,1290],"children":[{"role":"Window","bounds":[0,0,2796,1290],"children":[{"role":"Keyboard","bounds":[351,798,2445,1284],"children":[{"role":"Key","label":"q","bounds":[2265,798,2445,918]}]}]}]}}'
+cp "$tmp/tree.portrait.json" "$fake/tree.json"
 display rot0 1290,2796
 
 # Read failures from a running runner.
@@ -324,7 +340,7 @@ teams 'ABCDE12345:Some Team:false' 'AAAAA11111:Me:true'
 is "doctor" "$(doctor_of)" "[{\"status\":\"ok\",\"teams\":[{\"id\":\"ABCDE12345\",\"name\":\"Some Team\",\"free\":false},{\"id\":\"AAAAA11111\",\"name\":\"Me\",\"free\":true}]},{\"status\":\"ok\",\"path\":\"$tmp/home/Library/Caches/karagoz/runner/KEY\",\"teams\":[\"ABCDE12345\",\"CCCCC33333\",\"DDDDD44444\"]}]"
 rm "$tmp/home/Library/Preferences/com.apple.dt.Xcode.plist"
 rm -rf "$tmp/home/Library/Caches/karagoz/runner"
-is "doctor, nothing yet" "$(doctor_of)" "[{\"status\":\"missing\",\"message\":\"no Apple account in Xcode: sign in to Xcode > Settings > Accounts to build karagoz's iPhone runner\"},{\"status\":\"not built\",\"path\":\"$tmp/home/Library/Caches/karagoz/runner/KEY\"}]"
+is "doctor, nothing yet" "$(doctor_of)" "[{\"status\":\"missing\",\"message\":\"Xcode lists no Apple account: sign in to Xcode > Settings > Accounts with your Apple ID, to build karagoz's iPhone runner\"},{\"status\":\"not built\",\"path\":\"$tmp/home/Library/Caches/karagoz/runner/KEY\"}]"
 
 # 7. A real paired iPhone with karagoz's runner: the tree's shape only, nothing from the screen is printed. Real tools,
 # the real HOME (where install-runner built the runner), a fake adb that lists nothing.
@@ -349,4 +365,4 @@ else
   case "$real_ok" in real*) ;; *) fail "real tree: $real_ok" ;; esac
 fi
 
-echo "ok: $real_ok, teams, build arguments, failures, targets, uninstall, mapping, mini, read failures, not on USB, not installed, start failures, start budget (60s), lock, devices, doctor"
+echo "ok: $real_ok, teams, build arguments, failures, targets, uninstall, mapping, mini, read failures, not on USB, not installed, start failures, start budget (60s), lock, devices, doctor, landscape keyboard"

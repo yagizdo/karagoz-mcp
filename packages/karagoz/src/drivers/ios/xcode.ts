@@ -78,22 +78,18 @@ const PLUTIL_TIMEOUT_MS = 5_000;
 
 export type Team = { id: string; name: string; free: boolean };
 
-// The development teams of the Apple accounts signed in to Xcode, from Xcode's preferences. plutil only reads and
-// converts the file; no Xcode process starts. A missing file or key is no team (K41).
-export async function teams(): Promise<Team[]> {
+// One key of Xcode's preferences as JSON, undefined when the file or key is missing. plutil only reads and converts the
+// file; no Xcode process starts (K41).
+async function preference(key: string): Promise<unknown> {
   const prefs = join(homedir(), 'Library', 'Preferences', 'com.apple.dt.Xcode.plist');
   const signal = cancellation.getStore();
   signal?.throwIfAborted();
   let stdout: string;
   try {
-    ({ stdout } = await run(
-      '/usr/bin/plutil',
-      ['-extract', 'IDEProvisioningTeamByIdentifier', 'json', '-o', '-', prefs],
-      {
-        timeout: PLUTIL_TIMEOUT_MS,
-        ...(signal && { signal }),
-      },
-    ));
+    ({ stdout } = await run('/usr/bin/plutil', ['-extract', key, 'json', '-o', '-', prefs], {
+      timeout: PLUTIL_TIMEOUT_MS,
+      ...(signal && { signal }),
+    }));
   } catch (err) {
     // The SDK sends no response for a cancelled call, so the abort passes through (K31).
     if (signal?.aborted) throw err;
@@ -101,18 +97,26 @@ export async function teams(): Promise<Team[]> {
     if ('killed' in err && err.killed) {
       throw new KaragozError('HELPER_FAILED', `plutil did not read ${prefs} within ${PLUTIL_TIMEOUT_MS / 1000} s`);
     }
-    // plutil exits 1 when the file or the key is missing: no account has signed in yet.
-    return [];
+    // plutil exits 1 when the file or the key is missing.
+    return undefined;
   }
-  let parsed: unknown;
   try {
-    parsed = JSON.parse(stdout);
+    return JSON.parse(stdout);
   } catch {
-    // plutil printed something other than JSON; read as no team, which the callers explain.
-    return [];
+    // plutil printed something other than JSON: read as missing, which the callers explain.
+    return undefined;
   }
+}
+
+// The development teams of the Apple accounts signed in to Xcode. Xcode writes them only once it has shown a team list,
+// such as a project's Signing & Capabilities tab, not at sign-in (measured, K41).
+export async function teams(): Promise<{ signedIn: boolean; teams: Team[] }> {
+  const [byAccount, accounts] = await Promise.all([
+    preference('IDEProvisioningTeamByIdentifier'),
+    preference('DVTDeveloperAccountManagerAppleIDLists'),
+  ]);
   const found = new Map<string, Team>();
-  for (const list of isRecord(parsed) ? Object.values(parsed) : []) {
+  for (const list of isRecord(byAccount) ? Object.values(byAccount) : []) {
     for (const team of Array.isArray(list) ? list : []) {
       if (!isRecord(team) || typeof team.teamID !== 'string' || found.has(team.teamID)) continue;
       found.set(team.teamID, {
@@ -122,5 +126,13 @@ export async function teams(): Promise<Team[]> {
       });
     }
   }
-  return [...found.values()];
+  const signedIn = isRecord(accounts) && Object.values(accounts).some((ids) => Array.isArray(ids) && ids.length > 0);
+  return { signedIn: signedIn || found.size > 0, teams: [...found.values()] };
+}
+
+// What to tell someone whose Xcode lists no team, by whether an account is signed in.
+export function noTeam(signedIn: boolean): string {
+  return signedIn
+    ? "Xcode has your Apple account but has not saved its teams yet: open any project's Signing & Capabilities tab in Xcode once, or pass --team <Team ID>"
+    : 'Xcode lists no Apple account: sign in to Xcode > Settings > Accounts with your Apple ID';
 }

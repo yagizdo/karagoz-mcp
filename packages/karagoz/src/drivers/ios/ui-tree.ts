@@ -237,18 +237,40 @@ function phoneNode(raw: unknown, scale: number): IosNode {
   };
 }
 
+// A quarter turn of a subtree's bounds from the portrait panel (width x height pixels) into the screen's landscape.
+function turned(node: IosNode, rotation: 90 | 270, width: number, height: number): IosNode {
+  const [l = 0, t = 0, r = 0, b = 0] = node.bounds;
+  const children = node.children?.map((child) => turned(child, rotation, width, height));
+  return {
+    ...node,
+    bounds: rotation === 270 ? [height - b, l, height - t, r] : [t, width - r, b, width - l],
+    ...(children && { children }),
+  };
+}
+
+// In landscape XCTest reports the software keyboard in the portrait panel's coordinates while the app around it is
+// turned (measured at rotation 270, K41); a keyboard outside the screen is turned into it.
+// ponytail: rotation 90 turns the other way by symmetry, not measured; measure when a phone is held that way.
+function keyboardsTurned(node: IosNode, rotation: number | null, panel: { width: number; height: number }): IosNode {
+  if (rotation !== 90 && rotation !== 270) return node;
+  const [, , right = 0, bottom = 0] = node.bounds;
+  if (node.role === 'Keyboard' && (bottom > panel.width || right > panel.height)) {
+    return turned(node, rotation, panel.width, panel.height);
+  }
+  const children = node.children?.map((child) => keyboardsTurned(child, rotation, panel));
+  return children ? { ...node, children } : node;
+}
+
 // What is on a paired iPhone's screen, from karagoz's runner; scale and rotation from the display screenshot reads.
 // The runner's failure is reported first: it is the one a caller can act on (install-runner).
 export async function readPhoneTree(udid: string): Promise<{ rotation: number | null; root: IosNode }> {
   const [raw, shown] = await Promise.allSettled([tree(udid), displayOf(udid)]);
   if (raw.status === 'rejected') throw raw.reason;
   if (shown.status === 'rejected') throw shown.reason;
-  const { scale, rotation: turned, panel } = shown.value;
+  const { scale, rotation, panel } = shown.value;
   try {
-    return {
-      rotation: turned,
-      root: phoneNode(raw.value, panel ? panelScale(panel.width, panel.height, scale) : scale),
-    };
+    const root = phoneNode(raw.value, panel ? panelScale(panel.width, panel.height, scale) : scale);
+    return { rotation, root: panel ? keyboardsTurned(root, rotation, panel) : root };
   } catch (err) {
     if (!(err instanceof Error)) throw err;
     throw new KaragozError('CAPTURE_FAILED', `cannot parse the runner's tree: ${err.message}`);

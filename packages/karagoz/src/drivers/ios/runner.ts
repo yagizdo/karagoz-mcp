@@ -12,7 +12,7 @@ import { KaragozError, type ErrorCode } from '../../errors.js';
 import { apps, installApp, profiles, removeProfile, uninstallApp } from './devicectl.js';
 import { isRecord } from './devices.js';
 import { connect } from './usbmux.js';
-import { buildVersion, CACHE_HINT, CACHE_ROOT, owns, teams, xcode } from './xcode.js';
+import { buildVersion, CACHE_HINT, CACHE_ROOT, noTeam, owns, teams, xcode } from './xcode.js';
 
 const run = promisify(execFile);
 
@@ -76,14 +76,9 @@ async function chooseTeam(wanted: string | undefined): Promise<string> {
     }
     return wanted;
   }
-  const all = await teams();
+  const { signedIn, teams: all } = await teams();
   const [only, ...others] = all;
-  if (!only) {
-    throw new KaragozError(
-      'HELPER_FAILED',
-      'Xcode lists no Apple development team: sign in to Xcode > Settings > Accounts with your Apple ID, then run install-runner again (or pass --team <ID>)',
-    );
-  }
+  if (!only) throw new KaragozError('HELPER_FAILED', `${noTeam(signedIn)}, then run install-runner again.`);
   if (!others.length) return only.id;
   const paid = all.filter((team) => !team.free);
   const [onlyPaid] = paid;
@@ -174,14 +169,15 @@ export async function installRunner(udid: string, wanted: string | undefined) {
   return { device: udid, bundleId: id + APP_SUFFIX, team };
 }
 
-// Removes every karagoz runner and the provisioning profiles made for them; a team wildcard profile is never touched.
+// Removes every karagoz runner and the provisioning profiles made for its ids. Automatic signing on a paid team used the
+// team wildcard profile (measured), which other apps share: it is never touched (K41).
 export async function uninstallRunner(udid: string) {
   const installed = (await apps(udid)).map(({ id }) => id).filter((id) => teamOf(id) !== undefined);
   for (const id of installed) await uninstallApp(udid, id);
   const ours = new RegExp(`^[A-Z0-9]{10}\\.${ID_PREFIX.replace(/\./g, '\\.')}`);
   const removed: string[] = [];
   for (const profile of await profiles(udid)) {
-    if (!profile.appIds.some((appId) => ours.test(appId))) continue;
+    if (!ours.test(profile.appId)) continue;
     await removeProfile(udid, profile.uuid);
     removed.push(profile.uuid);
   }
