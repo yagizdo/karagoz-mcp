@@ -58,7 +58,7 @@ Website: [karagozmcp.com](https://karagozmcp.com/?utm_source=github&utm_medium=r
 | [`doctor`](#doctor) | done | done | done | planned |
 | [MCP server](#mcp-server) | done | done | done | |
 
-"Done" means tested against a live emulator: macOS, an API 36 image (Android 16), 1080x2400 at 420 dpi. In the iOS simulator column it means the step's smoke passes on macOS: `smoke/3.1-devices-ios.sh` for `devices`, `smoke/3.2-screenshot-ios.sh` for `screenshot`, `smoke/3.3-ui-tree-ios.sh` for `ui-tree`, `smoke/3.4-input-ios.sh` for `tap`, `swipe`, `text` and `key`, `smoke/3.5-app-lifecycle-ios.sh` for `install`, `launch`, `terminate` and `uninstall`, `smoke/3.6-logs-ios.sh` for `logs`. `devices`, `screenshot` and `ui-tree` were tested on a physical Samsung phone (Android 14) over USB, and `tap`, `swipe`, `text`, `key`, `install`, `launch`, `terminate`, `uninstall` and `logs` on an Infinix phone (Android 12) over USB. No other command has been run on one yet. `doctor` touches no device; its row means tested on the same Mac with fake and real `adb` binaries, and, in the iOS simulator column, with fake and real Xcode setups (`smoke/3.7-doctor-ios.sh`). For the MCP server, done means `smoke/M-mcp.sh` passes against the live emulator and Claude Code and Codex called its tools; in the Android device column it means its tools returned results from a phone over USB, and in the iOS simulator column, its tools returned results from a booted simulator. Windows and Linux have not been run.
+"Done" means tested against a live emulator: macOS, an API 36 image (Android 16), 1080x2400 at 420 dpi. In the iOS simulator column it means the step's smoke passes on macOS: `packages/karagoz/smoke/3.1-devices-ios.sh` for `devices`, `packages/karagoz/smoke/3.2-screenshot-ios.sh` for `screenshot`, `packages/karagoz/smoke/3.3-ui-tree-ios.sh` for `ui-tree`, `packages/karagoz/smoke/3.4-input-ios.sh` for `tap`, `swipe`, `text` and `key`, `packages/karagoz/smoke/3.5-app-lifecycle-ios.sh` for `install`, `launch`, `terminate` and `uninstall`, `packages/karagoz/smoke/3.6-logs-ios.sh` for `logs`. `devices`, `screenshot` and `ui-tree` were tested on a physical Samsung phone (Android 14) over USB, and `tap`, `swipe`, `text`, `key`, `install`, `launch`, `terminate`, `uninstall` and `logs` on an Infinix phone (Android 12) over USB. No other command has been run on one yet. `doctor` touches no device; its row means tested on the same Mac with fake and real `adb` binaries, and, in the iOS simulator column, with fake and real Xcode setups (`packages/karagoz/smoke/3.7-doctor-ios.sh`). For the MCP server, done means `packages/karagoz/smoke/M-mcp.sh` passes against the live emulator and Claude Code and Codex called its tools; in the Android device column it means its tools returned results from a phone over USB, and in the iOS simulator column, its tools returned results from a booted simulator. Windows and Linux have not been run.
 
 ## Requirements
 
@@ -76,7 +76,7 @@ Website: [karagozmcp.com](https://karagozmcp.com/?utm_source=github&utm_medium=r
   ```
 
 - **A running emulator** (`emulator -avd <name>`), or for `devices`, `screenshot`, `ui-tree`, `tap`, `swipe`, `text`, `key`, `install`, `launch`, `terminate`, `uninstall` and `logs`, a phone with USB debugging on, in state `device`, or for `devices`, `screenshot`, `ui-tree`, `tap`, `swipe`, `text`, `key`, `install`, `launch`, `terminate`, `uninstall` and `logs` on macOS, a booted iOS simulator (`open -a Simulator`; on Xcode 27, `xcrun simctl boot <name>`), or for `devices` and `screenshot` on macOS, an iPhone connected to the Mac (for `screenshot`, paired with the Mac and with Developer Mode on: Settings > Privacy & Security > Developer Mode). karagoz installs nothing on a device by itself; `install` installs only the app you pass it. A phone that adb cannot see is missing from the list: on Windows without the phone maker's USB driver, on a Mac laptop where "Allow accessory to connect" was refused, or in fastboot mode.
-- For `smoke/1.5-app-lifecycle.sh`, and for `smoke/2.5-app-lifecycle-physical.sh` when a phone is attached: a JDK and Android SDK build-tools with one platform. Both smokes build their own test APK, `dev.karagoz.smoke`, and remove it at the end. See [Development](#development).
+- For `packages/karagoz/smoke/1.5-app-lifecycle.sh`, and for `packages/karagoz/smoke/2.5-app-lifecycle-physical.sh` when a phone is attached: a JDK and Android SDK build-tools with one platform. Both smokes build their own test APK, `dev.karagoz.smoke`, and remove it at the end. See [Development](#development).
 - For `ui-tree` and `tap --text` / `--id`: the screen is on, and no other UiAutomation client is connected (Appium, Maestro, `uiautomator events`). For input to reach apps, the screen is also unlocked: on a lock screen `text` and `key` type into the PIN field, and a wrong PIN counts as a failed unlock attempt; with the screen off, taps are dropped and keys still arrive. Both exit `0`.
 - **Xcode, opened once**, for iOS simulators in `devices`, `screenshot`, `ui-tree`, `tap`, `swipe`, `text`, `key`, `install`, `launch`, `terminate`, `uninstall` and `logs` (macOS only). karagoz runs CoreSimulator's own `simctl` (`/Library/Developer/PrivateFrameworks/CoreSimulator.framework/Versions/A/Resources/bin/simctl`), or `$DEVELOPER_DIR/usr/bin/simctl` when `DEVELOPER_DIR` is set. The Command Line Tools alone have no `simctl`, and no `swiftc` for the helper below. For iPhones in `devices`, Xcode 15 or newer: karagoz runs CoreDevice's own `devicectl` (`/Library/Developer/PrivateFrameworks/CoreDevice.framework/Versions/A/Resources/bin/devicectl`), or `$DEVELOPER_DIR/usr/bin/devicectl` when `DEVELOPER_DIR` is set; the Command Line Tools alone have none. For `screenshot` on an iPhone, Xcode 27 or newer, opened once: Xcode 26's `devicectl` has no `device capture screenshot`. On macOS every command that targets a device runs `simctl` and `devicectl` too, to list simulators and iPhones ([Device selection](#device-selection)).
 - The first `ui-tree`, `tap`, `swipe`, `text` or `key` on a simulator compiles a small helper with the selected Xcode's `swiftc` (`DEVELOPER_DIR`, else the `xcode-select` one, else `/Applications/Xcode.app`) into `~/Library/Caches/karagoz/`. That takes a few seconds, happens again after an Xcode update, and the directory is safe to delete.
@@ -90,11 +90,11 @@ Not on npm yet. From source:
 git clone https://github.com/yagizdo/karagoz-mcp.git
 cd karagoz-mcp
 npm install
-npm run build          # writes dist/: cli.js and two chunks
-node dist/cli.js devices
+npm run build          # writes packages/karagoz/dist/: cli.js and two chunks
+node packages/karagoz/dist/cli.js devices
 ```
 
-`npm link` puts `karagoz` on your `PATH`. The examples below use `karagoz`.
+`npm link`, run in `packages/karagoz`, puts `karagoz` on your `PATH`. The examples below use `karagoz`.
 
 ## Quick start
 
@@ -1061,14 +1061,14 @@ Starts an MCP server for an AI agent on stdin and stdout. It opens no port: the 
 
 ### Registration
 
-karagoz is not on npm yet, so every example runs the built file by its absolute path. After the first release, `npx -y karagoz mcp` replaces `node /abs/path/karagoz-mcp/dist/cli.js mcp`.
+karagoz is not on npm yet, so every example runs the built file by its absolute path. After the first release, `npx -y karagoz mcp` replaces `node /abs/path/karagoz-mcp/packages/karagoz/dist/cli.js mcp`.
 
 Claude Code and Codex were run against this server. The Claude Desktop, Cursor and VS Code entries follow their documentation and were not run.
 
 **Claude Code**
 
 ```sh
-claude mcp add karagoz -- node /abs/path/karagoz-mcp/dist/cli.js mcp
+claude mcp add karagoz -- node /abs/path/karagoz-mcp/packages/karagoz/dist/cli.js mcp
 ```
 
 The server starts in the directory `claude` started in, with the shell's environment. A call still running after 2 minutes becomes a background task.
@@ -1076,7 +1076,7 @@ The server starts in the directory `claude` started in, with the shell's environ
 **Claude Desktop**, in `~/Library/Application Support/Claude/claude_desktop_config.json` on macOS or `%APPDATA%\Claude\claude_desktop_config.json` on Windows; quit and restart Desktop after editing:
 
 ```json
-{"mcpServers":{"karagoz":{"command":"node","args":["/abs/path/karagoz-mcp/dist/cli.js","mcp"],"env":{"ANDROID_HOME":"/Users/me/Library/Android/sdk"}}}}
+{"mcpServers":{"karagoz":{"command":"node","args":["/abs/path/karagoz-mcp/packages/karagoz/dist/cli.js","mcp"],"env":{"ANDROID_HOME":"/Users/me/Library/Android/sdk"}}}}
 ```
 
 Desktop starts servers with part of your environment and possibly `/` as the working directory, so set `ANDROID_HOME` in `env` when `adb` is not on the `PATH` it passes, and use absolute paths.
@@ -1084,23 +1084,23 @@ Desktop starts servers with part of your environment and possibly `/` as the wor
 **Cursor**, in `.cursor/mcp.json` in the project or `~/.cursor/mcp.json`:
 
 ```json
-{"mcpServers":{"karagoz":{"type":"stdio","command":"node","args":["/abs/path/karagoz-mcp/dist/cli.js","mcp"]}}}
+{"mcpServers":{"karagoz":{"type":"stdio","command":"node","args":["/abs/path/karagoz-mcp/packages/karagoz/dist/cli.js","mcp"]}}}
 ```
 
 **VS Code**, in `.vscode/mcp.json` in the workspace:
 
 ```json
-{"servers":{"karagoz":{"type":"stdio","command":"node","args":["/abs/path/karagoz-mcp/dist/cli.js","mcp"]}}}
+{"servers":{"karagoz":{"type":"stdio","command":"node","args":["/abs/path/karagoz-mcp/packages/karagoz/dist/cli.js","mcp"]}}}
 ```
 
-or from the command line: `code --add-mcp '{"name":"karagoz","command":"node","args":["/abs/path/karagoz-mcp/dist/cli.js","mcp"]}'`.
+or from the command line: `code --add-mcp '{"name":"karagoz","command":"node","args":["/abs/path/karagoz-mcp/packages/karagoz/dist/cli.js","mcp"]}'`.
 
 **Codex**, in `~/.codex/config.toml`:
 
 ```toml
 [mcp_servers.karagoz]
 command = "node"
-args = ["/abs/path/karagoz-mcp/dist/cli.js", "mcp"]
+args = ["/abs/path/karagoz-mcp/packages/karagoz/dist/cli.js", "mcp"]
 env_vars = ["ANDROID_HOME", "ANDROID_SDK_ROOT", "KARAGOZ_DEVICE", "ANDROID_SERIAL", "DEVELOPER_DIR"]
 tool_timeout_sec = 600
 ```
@@ -1185,23 +1185,23 @@ karagoz is the primitive layer. Each command does one thing and exits.
 ## Development
 
 ```sh
-npm run build       # empty dist/, then bundle to dist/cli.js and two chunks
+npm run build       # empty packages/karagoz/dist/, then bundle to dist/cli.js and two chunks
 npm run typecheck
 npm run lint        # oxlint and the Prettier check; npm run format fixes formatting
 ```
 
-Each step has one smoke script in `smoke/`. Each builds first and needs a running emulator, `smoke/M-mcp.sh` included, except `smoke/0b-version.sh`, `smoke/1.7-doctor.sh`, `smoke/2.2-screenshot-physical.sh`, `smoke/2.3-ui-tree-physical.sh`, `smoke/2.4-input-physical.sh`, `smoke/2.5-app-lifecycle-physical.sh`, `smoke/2.6-logs-physical.sh`, `smoke/3.1-devices-ios.sh`, `smoke/3.2-screenshot-ios.sh`, `smoke/3.3-ui-tree-ios.sh`, `smoke/3.4-input-ios.sh`, `smoke/3.5-app-lifecycle-ios.sh`, `smoke/3.6-logs-ios.sh`, `smoke/4.1-devices-ios-device.sh` and `smoke/4.2-screenshot-ios-device.sh`: 1.7 uses fake `adb` scripts only and never runs the real adb, 3.1 uses fake `adb` and `simctl` scripts and reads the real simulator list, 3.2 uses fake `adb`, `simctl` and `devicectl` scripts and captures a booted simulator when one runs (else its real step prints `SKIP`), 3.3 adds a fake `swiftc` and reads a booted simulator's tree the same way, 3.4, 3.5 and 3.6 build a test app from `smoke/fixtures/input-ios/` and drive, install and remove it as `dev.karagoz.probe` on a booted simulator (3.6 reads its log back), 4.1 uses fake `adb`, `simctl` and `devicectl` scripts and reads the real iPhone list, 4.2 uses the same fakes and captures a paired iPhone when one is attached (else its real step prints `SKIP`), all eight macOS only (they print `SKIP` elsewhere), and 2.2, 2.3, 2.4, 2.5 and 2.6 need a phone only for their phone step, which they skip when none is listed. The header of each script lists its preconditions:
+Each step has one smoke script in `packages/karagoz/smoke/`. Each builds first and needs a running emulator, `packages/karagoz/smoke/M-mcp.sh` included, except `packages/karagoz/smoke/0b-version.sh`, `packages/karagoz/smoke/1.7-doctor.sh`, `packages/karagoz/smoke/2.2-screenshot-physical.sh`, `packages/karagoz/smoke/2.3-ui-tree-physical.sh`, `packages/karagoz/smoke/2.4-input-physical.sh`, `packages/karagoz/smoke/2.5-app-lifecycle-physical.sh`, `packages/karagoz/smoke/2.6-logs-physical.sh`, `packages/karagoz/smoke/3.1-devices-ios.sh`, `packages/karagoz/smoke/3.2-screenshot-ios.sh`, `packages/karagoz/smoke/3.3-ui-tree-ios.sh`, `packages/karagoz/smoke/3.4-input-ios.sh`, `packages/karagoz/smoke/3.5-app-lifecycle-ios.sh`, `packages/karagoz/smoke/3.6-logs-ios.sh`, `packages/karagoz/smoke/4.1-devices-ios-device.sh` and `packages/karagoz/smoke/4.2-screenshot-ios-device.sh`: 1.7 uses fake `adb` scripts only and never runs the real adb, 3.1 uses fake `adb` and `simctl` scripts and reads the real simulator list, 3.2 uses fake `adb`, `simctl` and `devicectl` scripts and captures a booted simulator when one runs (else its real step prints `SKIP`), 3.3 adds a fake `swiftc` and reads a booted simulator's tree the same way, 3.4, 3.5 and 3.6 build a test app from `packages/karagoz/smoke/fixtures/input-ios/` and drive, install and remove it as `dev.karagoz.probe` on a booted simulator (3.6 reads its log back), 4.1 uses fake `adb`, `simctl` and `devicectl` scripts and reads the real iPhone list, 4.2 uses the same fakes and captures a paired iPhone when one is attached (else its real step prints `SKIP`), all eight macOS only (they print `SKIP` elsewhere), and 2.2, 2.3, 2.4, 2.5 and 2.6 need a phone only for their phone step, which they skip when none is listed. The header of each script lists its preconditions:
 
 ```sh
-sh smoke/1.4-input.sh
+sh packages/karagoz/smoke/1.4-input.sh
 ```
 
-`smoke/1.5-app-lifecycle.sh` also builds a test APK on every run, and `smoke/2.5-app-lifecycle-physical.sh` when a phone is attached, with `smoke/fixtures/app-lifecycle/build.sh` from the manifest in that folder, and installs and removes it as `dev.karagoz.smoke`. No APK is kept in the repository. They need a JDK (`java` and `keytool` on `PATH`) and, from the Android SDK, build-tools with `aapt2` and `apksigner` plus one platform. The SDK is the first of `$ANDROID_HOME`, `$ANDROID_SDK_ROOT`, `~/Library/Android/sdk` and `~/Android/Sdk` that has both `build-tools/` and `platforms/`. When something is missing the smoke fails and says what, rather than skipping.
+`packages/karagoz/smoke/1.5-app-lifecycle.sh` also builds a test APK on every run, and `packages/karagoz/smoke/2.5-app-lifecycle-physical.sh` when a phone is attached, with `packages/karagoz/smoke/fixtures/app-lifecycle/build.sh` from the manifest in that folder, and installs and removes it as `dev.karagoz.smoke`. No APK is kept in the repository. They need a JDK (`java` and `keytool` on `PATH`) and, from the Android SDK, build-tools with `aapt2` and `apksigner` plus one platform. The SDK is the first of `$ANDROID_HOME`, `$ANDROID_SDK_ROOT`, `~/Library/Android/sdk` and `~/Android/Sdk` that has both `build-tools/` and `platforms/`. When something is missing the smoke fails and says what, rather than skipping.
 
 The full check, with the emulator running:
 
 ```sh
-npm run typecheck && npm run lint && for s in smoke/*.sh; do sh "$s" || exit 1; done
+npm run typecheck && npm run lint && for s in packages/karagoz/smoke/*.sh; do sh "$s" || exit 1; done
 ```
 
 ## Name
