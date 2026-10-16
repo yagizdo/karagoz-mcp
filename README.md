@@ -343,7 +343,7 @@ An iPhone 14 Pro Max (macOS, Xcode 27), without `--out`, UDID masked:
 | `safeArea` | `{top, right, bottom, left}` or `null` | Pixels of this PNG covered by the status bar, navigation bar, caption bar or display cutout. A hidden bar counts as 0. The keyboard and gesture areas are not included. `null` on iOS: only the app itself can read its safe area, and neither the simulator nor `devicectl` exposes another source. |
 | `rotation` | `0`, `90`, `180`, `270` or `null` | Screen rotation in degrees. On iOS with Xcode 27, the interface orientation from `devicectl`, in Android's meaning: turned counter-clockwise (landscape left) is `90`. `null` on Xcode 26 and earlier, or when `devicectl` fails. |
 
-On iOS the PNG is exactly what simctl or devicectl wrote; karagoz does not rotate or re-encode it. An iPhone's PNG has 16 bits per channel and a Display P3 color profile, about 1 to 5 MB, and follows the interface orientation. With Xcode 27 it follows the interface orientation. With Xcode 26 it is the panel in portrait, and a landscape app's UI is drawn sideways in it. The corners are square, not rounded, and the Dynamic Island area is black pixels.
+On iOS the PNG is exactly what simctl or devicectl wrote; karagoz does not rotate or re-encode it. A simulator's PNG follows the interface orientation with Xcode 27; with Xcode 26 it is the panel in portrait, and a landscape app's UI is drawn sideways in it. Its corners are square, not rounded, and the Dynamic Island area is black pixels. An iPhone's PNG has 16 bits per channel and a Display P3 color profile, about 1 to 5 MB, and follows the interface orientation.
 
 **File location**
 
