@@ -6,8 +6,9 @@ import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import { cancellation } from '../../cancellation.js';
 import { KaragozError } from '../../errors.js';
-import { rotation } from './devicectl.js';
+import { displayOf, rotation } from './devicectl.js';
 import { isRecord } from './devices.js';
+import { tree } from './runner.js';
 import { panelScale } from './screenshot.js';
 import { buildVersion, CACHE_HINT, CACHE_ROOT, owns, xcode } from './xcode.js';
 
@@ -195,4 +196,61 @@ export async function readTree(udid: string): Promise<{ rotation: number | null;
   const bin = await helper(dev);
   const [stdout, rotated] = await Promise.all([read(bin, dev, udid), rotation(udid)]);
   return { rotation: rotated, root: parse(stdout) };
+}
+
+// XCUIElement.ElementType raw values (Xcode 27.1's XCUIElementTypes.h) by name. XCTest's `other` is the simulator's
+// Group, its `toggle` the simulator's Switch (K34, K41).
+const TYPES =
+  'Any Group Application Group Window Sheet Drawer Alert Dialog Button RadioButton RadioGroup CheckBox DisclosureTriangle PopUpButton ComboBox MenuButton ToolbarButton Popover Keyboard Key NavigationBar TabBar TabGroup Toolbar StatusBar Table TableRow TableColumn Outline OutlineRow Browser CollectionView Slider PageIndicator ProgressIndicator ActivityIndicator SegmentedControl Picker PickerWheel Switch Switch Link Image Icon SearchField ScrollView ScrollBar StaticText TextField SecureTextField DatePicker TextView Menu MenuItem MenuBar MenuBarItem Map WebView IncrementArrow DecrementArrow Timeline RatingIndicator ValueIndicator SplitGroup Splitter RelevanceIndicator ColorWell HelpTag Matte DockItem Ruler RulerMarker Grid LevelIndicator Cell LayoutArea LayoutItem Handle Stepper Tab TouchBar StatusItem'.split(
+    ' ',
+  );
+const STATIC_TEXT = 48;
+// searchField, textField, secureTextField, textView: an empty one shows its placeholder as its value (K34).
+const TEXT_ENTRY = new Set([45, 49, 50, 52]);
+
+// One runner node to K24's skeleton with iOS names; frames are points, bounds are screenshot pixels (K34, K41).
+function phoneNode(raw: unknown, scale: number): IosNode {
+  if (!isRecord(raw) || typeof raw.type !== 'number') throw new Error('a node has no type');
+  const frame = Array.isArray(raw.frame)
+    ? raw.frame.filter((n: unknown): n is number => typeof n === 'number' && Number.isFinite(n))
+    : [];
+  if (frame.length !== 4) throw new Error('a node has no frame');
+  const [x = 0, y = 0, width = 0, height = 0] = frame;
+  if (raw.children !== undefined && !Array.isArray(raw.children)) throw new Error('children is not a list');
+  const children = Array.isArray(raw.children) ? raw.children.map((child: unknown) => phoneNode(child, scale)) : [];
+  const type = raw.type;
+  const role =
+    raw.heading === true && (type === STATIC_TEXT || type === 1) ? 'Heading' : (TYPES[type] ?? `Element${type}`);
+  const label = text(raw.label);
+  const identifier = text(raw.identifier);
+  const value = text(raw.value) ?? (TEXT_ENTRY.has(type) ? text(raw.placeholder) : undefined);
+  return {
+    role,
+    ...(label && { label }),
+    ...(identifier && { identifier }),
+    ...(value && { value }),
+    ...(raw.focused === true && { focused: true }),
+    ...(raw.selected === true && { selected: true }),
+    ...(raw.enabled === false && { enabled: false }),
+    bounds: [x, y, x + width, y + height].map((v) => round(v * scale)),
+    ...(children.length > 0 && { children }),
+  };
+}
+
+// What is on a paired iPhone's screen, from karagoz's runner; scale and rotation from the display screenshot reads.
+// The runner's failure is reported first: it is the one a caller can act on (install-runner).
+export async function readPhoneTree(udid: string): Promise<{ rotation: number | null; root: IosNode }> {
+  const [raw, shown] = await Promise.allSettled([tree(udid), displayOf(udid)]);
+  if (raw.status === 'rejected') throw raw.reason;
+  if (shown.status === 'rejected') throw shown.reason;
+  const { scale, rotation: turned, panel } = shown.value;
+  try {
+    return {
+      rotation: turned,
+      root: phoneNode(raw.value, panel ? panelScale(panel.width, panel.height, scale) : scale),
+    };
+  } catch (err) {
+    if (!(err instanceof Error)) throw err;
+    throw new KaragozError('CAPTURE_FAILED', `cannot parse the runner's tree: ${err.message}`);
+  }
 }

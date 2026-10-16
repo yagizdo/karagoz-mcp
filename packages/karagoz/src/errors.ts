@@ -29,6 +29,7 @@ export type ErrorCode =
   | 'APP_NOT_FOUND'
   | 'APP_NOT_LAUNCHABLE'
   | 'HELPER_FAILED'
+  | 'RUNNER_NOT_INSTALLED'
   | 'NOT_SUPPORTED'
   | 'INTERNAL';
 

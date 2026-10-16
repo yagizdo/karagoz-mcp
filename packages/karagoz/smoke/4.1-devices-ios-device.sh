@@ -3,8 +3,8 @@
 # the simulators: id the UDID, kind physical, state devicectl's pairing state, name the model. Simulators, remembered
 # phones that are not attached, nearby unpaired devices and other Apple devices are dropped; Xcode 27's properties
 # dictionary and the older keys read the same; a missing, failing or hung devicectl is one ios errors entry. Targeted
-# commands but screenshot find an iPhone by UDID or model and refuse it with NOT_SUPPORTED (K18, K21 4.1 and 4.2 notes,
-# K39).
+# commands that do not run on an iPhone find one by UDID or model and refuse it with NOT_SUPPORTED (K18, K21 4.1 and
+# 4.2 notes, K39).
 # Precondition: macOS with Xcode. No emulator is needed. Step 1 reads the real devicectl list only and compares zero
 # rows when no iPhone is attached. Fake adb, simctl and devicectl come through ANDROID_HOME and DEVELOPER_DIR under
 # env -i; the adb server on the default port is never touched.
@@ -159,10 +159,10 @@ refuses() {
   is "$step" "$(printf '%s' "$out" | code_of)" "$code"
 }
 dc "/bin/cat '$tmp/phones27.json'"
-refuses "by UDID" NOT_SUPPORTED ui-tree --device P1
+refuses "by UDID" NOT_SUPPORTED key HOME --device P1
 is "by UDID text" "$(printf '%s' "$out" | field error.message)" \
-  "device P1 is an iPhone; karagoz runs only screenshot, install-runner and uninstall-runner on one yet."
-refuses "by model" NOT_SUPPORTED ui-tree --device "iPhone 14 Pro Max"
+  "device P1 is an iPhone; karagoz runs only screenshot, ui-tree, install-runner and uninstall-runner on one yet."
+refuses "by model" NOT_SUPPORTED key HOME --device "iPhone 14 Pro Max"
 kdev=P3
 refuses "unpaired, from KARAGOZ_DEVICE" NOT_SUPPORTED key HOME
 kdev=
@@ -175,7 +175,7 @@ cat > "$tmp/one.json" <<'JSON'
 {"result":{"devices":[{"visibilityClass":"default","properties":{"hardware":{"udid":"P1","reality":"physical","platform":"iOS","marketingName":"iPhone 14 Pro Max"},"connection":{"pairingState":"paired","state":"connected","transportType":"wired"}}}]}}
 JSON
 dc "/bin/cat '$tmp/one.json'"
-refuses "bare, one iPhone" NOT_SUPPORTED ui-tree
+refuses "bare, one iPhone" NOT_SUPPORTED key HOME
 adb_lists 'fake-1\tdevice\n'
 refuses "bare, emulator and iPhone" DEVICE_AMBIGUOUS screenshot
 # A missing devicectl means no iPhones: the one emulator is the target.

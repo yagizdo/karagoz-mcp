@@ -170,7 +170,7 @@ export async function resolveTarget(
   if (physical && !accept) {
     throw new KaragozError(
       'NOT_SUPPORTED',
-      `device ${target.id} is an iPhone; karagoz runs only screenshot, install-runner and uninstall-runner on one yet.`,
+      `device ${target.id} is an iPhone; karagoz runs only screenshot, ui-tree, install-runner and uninstall-runner on one yet.`,
     );
   }
   return { id: ready(target), platform: 'ios', kind: target.kind };

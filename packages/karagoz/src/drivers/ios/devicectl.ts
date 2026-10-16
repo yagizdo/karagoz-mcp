@@ -159,9 +159,11 @@ export async function rotation(udid: string): Promise<number | null> {
   return rotationOf(primaryDisplay(stdout));
 }
 
-// An iPhone's point scale and interface orientation, from the display capture screenshot takes by default. Unlike a
-// simulator's rotation, the scale is required, so a failure is an error.
-export async function displayOf(udid: string): Promise<{ scale: number; rotation: number | null }> {
+// An iPhone's point scale, interface orientation and native panel size (portrait), from the display capture screenshot
+// takes by default. Unlike a simulator's rotation, the scale is required, so a failure is an error.
+export async function displayOf(
+  udid: string,
+): Promise<{ scale: number; rotation: number | null; panel: { width: number; height: number } | undefined }> {
   const stdout = await devicectl(
     ['device', 'info', 'displays', '--device', udid, '--json-output', '-', '-q'],
     PHONE_TIMEOUT_MS,
@@ -172,7 +174,11 @@ export async function displayOf(udid: string): Promise<{ scale: number; rotation
   if (typeof scale !== 'number' || !Number.isFinite(scale) || scale <= 0) {
     throw new KaragozError('CAPTURE_FAILED', "cannot read scale from 'devicectl device info displays'");
   }
-  return { scale, rotation: rotationOf(display) };
+  const size = display?.nativeSize;
+  const pair: unknown[] = Array.isArray(size) ? size : [];
+  const [width, height] = pair;
+  const panel = typeof width === 'number' && typeof height === 'number' ? { width, height } : undefined;
+  return { scale, rotation: rotationOf(display), panel };
 }
 
 // devicectl writes the PNG to a .png path in an existing directory; it refuses - (K40).
