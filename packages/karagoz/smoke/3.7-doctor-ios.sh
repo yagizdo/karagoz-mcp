@@ -23,7 +23,7 @@ doc() {
     const out = require("fs").readFileSync(0, "utf8").trimEnd();
     if (out.includes("\n")) { console.log("not-one-line"); process.exit(); }
     const o = JSON.parse(out);
-    console.log(o.xcode ? JSON.stringify(o.xcode).replace(/karagoz\/[0-9a-f]{16}\//g, "karagoz/KEY/") : "no xcode key");
+    console.log(o.xcode ? JSON.stringify(o.xcode).replace(/karagoz\/[0-9a-f]{16}\//g, "karagoz/KEY/").replace(/runner\/[0-9a-f]{16}/g, "runner/KEY") : "no xcode key");
     console.log(o.xcode?.helper?.path ?? "");
     console.log(JSON.stringify(o.adb));
   ') || fail "doctor $* printed no JSON: $out"
@@ -41,6 +41,9 @@ coredevice=/Library/Developer/PrivateFrameworks/CoreDevice.framework/Versions/A/
 fw=$(/usr/bin/plutil -extract CFBundleVersion raw "$framework/Info.plist")
 newer=$(printf '%s' "$fw" | awk -F. -v OFS=. '{ $NF = $NF + 1; print }')
 helper_path=$tmp/home/Library/Caches/karagoz/KEY/ax
+# No Apple account under the fake HOME; the runner is never built here.
+signing_text="no Apple account in Xcode: sign in to Xcode > Settings > Accounts to build karagoz's iPhone runner"
+runner_path=$tmp/home/Library/Caches/karagoz/runner/KEY
 swiftc_text='the Command Line Tools are not enough'
 
 # Every fake tool only records its argv: doctor must start none of them.
@@ -66,6 +69,8 @@ entries() {
   swc="{\"status\":\"ok\",\"path\":\"$1/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc\"}"
   dctl="{\"status\":\"ok\",\"path\":\"$1/usr/bin/devicectl\"}"
   hlp="{\"status\":\"not built\",\"path\":\"$helper_path\"}"
+  sgn="{\"status\":\"missing\",\"message\":\"$signing_text\"}"
+  rnr="{\"status\":\"not built\",\"path\":\"$runner_path\"}"
 }
 # top <status> <developer dir> <version> <build> [<message>]: the xcode object under DEVELOPER_DIR with those entries.
 top() {
@@ -73,10 +78,10 @@ top() {
   [ -z "$3" ] || v=",\"version\":\"$3\",\"build\":\"$4\""
   m=
   [ -z "$5" ] || m=",\"message\":\"$5\""
-  printf '{"status":"%s","source":"DEVELOPER_DIR","path":"%s"%s%s,"simctl":%s,"swiftc":%s,"devicectl":%s,"helper":%s}' \
-    "$1" "$2" "$v" "$m" "$sim" "$swc" "$dctl" "$hlp"
+  printf '{"status":"%s","source":"DEVELOPER_DIR","path":"%s"%s%s,"simctl":%s,"swiftc":%s,"devicectl":%s,"helper":%s,"signing":%s,"iosRunner":%s}' \
+    "$1" "$2" "$v" "$m" "$sim" "$swc" "$dctl" "$hlp" "$sgn" "$rnr"
 }
-devicectl_text() { echo "devicectl not found (tried $1): rotation reads as null, taken as portrait"; }
+devicectl_text() { echo "devicectl not found (tried $1): iPhones are not listed or reachable, and a simulator's rotation reads as null"; }
 
 # a. This Mac, DEVELOPER_DIR unset, against reads that do not go through karagoz.
 doc
@@ -171,7 +176,7 @@ doc DEVELOPER_DIR="$tmp/Xi.app"
 is 'not executable' "$(top failed "$d" 27.0 27A1 "$text")"
 ok="$ok, not executable"
 
-# j. devicectl missing: rotation would read as null.
+# j. devicectl missing: no iPhones, and rotation would read as null.
 fake "$tmp/Xj.app" 27.0 27A1 "$fw"
 d=$tmp/Xj.app/Contents/Developer
 rm "$d/usr/bin/devicectl"
@@ -208,6 +213,7 @@ rm -rf "$tmp/home/Library/Caches/karagoz"
 : > "$tmp/home/Library/Caches/karagoz"
 text="$tmp/home/Library/Caches/karagoz is not a directory owned by the current user; delete ~/Library/Caches/karagoz"
 hlp="{\"status\":\"failed\",\"path\":\"$helper_path\",\"message\":\"$text\"}"
+rnr="{\"status\":\"failed\",\"path\":\"$runner_path\",\"message\":\"cannot check $runner_path (ENOTDIR); delete ~/Library/Caches/karagoz\"}"
 doc DEVELOPER_DIR="$tmp/X27.app"
 is 'helper failed' "$(top failed "$d" 27.0 27A1 "$text")"
 ok="$ok, helper"

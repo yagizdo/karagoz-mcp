@@ -1,6 +1,7 @@
 import { describe, entries, listDevices } from './drivers/android/devices.js';
 import { listPhones, TRUST } from './drivers/ios/devicectl.js';
 import { listSimulators } from './drivers/ios/devices.js';
+import { runnerStates } from './drivers/ios/runner.js';
 import { KaragozError } from './errors.js';
 
 type Platform = 'android' | 'ios';
@@ -34,7 +35,10 @@ export async function listAll() {
   const failed = listings.flatMap((listing) => ('error' in listing ? [listing] : []));
   const [first] = failed;
   if (first && failed.length === listings.length) throw first.error;
-  const devices = listings.flatMap((listing) => ('rows' in listing ? listing.rows : []));
+  const rows = listings.flatMap((listing) => ('rows' in listing ? listing.rows : []));
+  // iPhone rows gain runner, last, so every other row stays as it was (K18).
+  const states = await runnerStates(rows.filter(({ platform, kind }) => platform === 'ios' && kind === 'physical'));
+  const devices = rows.map((row) => (states.has(row.id) ? { ...row, runner: states.get(row.id) ?? null } : row));
   if (!failed.length) return { devices };
   return {
     devices,

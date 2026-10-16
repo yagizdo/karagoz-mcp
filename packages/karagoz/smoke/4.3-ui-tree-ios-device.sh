@@ -7,7 +7,8 @@
 # read failure to its code (K41).
 # Precondition: macOS. Fake adb, simctl, devicectl and xcodebuild come through ANDROID_HOME and DEVELOPER_DIR under
 # env -i, Xcode's preferences through a fake HOME, usbmuxd through USBMUXD_SOCKET_ADDRESS (a fake daemon forwarding to
-# a fake runner); no device and no real Xcode build are touched.
+# a fake runner). The real step reads a paired iPhone's tree when `karagoz devices` lists one whose runner is installed,
+# else it prints SKIP; its tree is never printed.
 set -e
 cd "$(dirname "$0")/.."
 [ "$(uname -s)" = Darwin ] || { echo "SKIP: iPhones need macOS"; echo "ok: skipped"; exit 0; }
@@ -307,4 +308,45 @@ is "concurrent: same tree" "$(/bin/cat "$tmp/second")" "$want"
 refuses "other commands" NOT_SUPPORTED "runs only screenshot, ui-tree, install-runner and uninstall-runner" key HOME --device P1
 stop_runner
 
-echo "ok: teams, build arguments, failures, targets, uninstall, mapping, mini, read failures, not on USB, not installed, start failures, start budget (60s), lock"
+# 6. devices: iPhone rows end in runner. doctor: signing from Xcode's teams, iosRunner from the builds section 1 made.
+runner_of() { k devices | "$node_bin" -e 'const r = JSON.parse(require("fs").readFileSync(0, "utf8")); console.log(r.devices.filter((d) => d.kind === "physical").map((d) => d.id + "=" + d.runner).join(" "))'; }
+k ui-tree --device P1 > /dev/null || fail "ui-tree before devices failed"
+is "devices, running" "$(runner_of)" "P1=running P2=null"
+stop_runner
+is "devices, installed" "$(runner_of)" "P1=installed P2=null"
+printf 'echo %s\n' "'{\"result\":{\"apps\":[]}}'" > "$fake/apps"
+is "devices, not installed" "$(runner_of)" "P1=not installed P2=null"
+printf 'exit 1\n' > "$fake/apps"
+is "devices, devicectl failing" "$(runner_of)" "P1=null P2=null"
+runner_installed abcde12345
+doctor_of() { k doctor | "$node_bin" -e 'const x = JSON.parse(require("fs").readFileSync(0, "utf8")).xcode; console.log(JSON.stringify([x.signing, x.iosRunner]).replace(/runner\/[0-9a-f]{16}/g, "runner/KEY"))'; }
+teams 'ABCDE12345:Some Team:false' 'AAAAA11111:Me:true'
+is "doctor" "$(doctor_of)" "[{\"status\":\"ok\",\"teams\":[{\"id\":\"ABCDE12345\",\"name\":\"Some Team\",\"free\":false},{\"id\":\"AAAAA11111\",\"name\":\"Me\",\"free\":true}]},{\"status\":\"ok\",\"path\":\"$tmp/home/Library/Caches/karagoz/runner/KEY\",\"teams\":[\"ABCDE12345\",\"CCCCC33333\",\"DDDDD44444\"]}]"
+rm "$tmp/home/Library/Preferences/com.apple.dt.Xcode.plist"
+rm -rf "$tmp/home/Library/Caches/karagoz/runner"
+is "doctor, nothing yet" "$(doctor_of)" "[{\"status\":\"missing\",\"message\":\"no Apple account in Xcode: sign in to Xcode > Settings > Accounts to build karagoz's iPhone runner\"},{\"status\":\"not built\",\"path\":\"$tmp/home/Library/Caches/karagoz/runner/KEY\"}]"
+
+# 7. A real paired iPhone with karagoz's runner: the tree's shape only, nothing from the screen is printed. Real tools,
+# the real HOME (where install-runner built the runner), a fake adb that lists nothing.
+real() { env -i HOME="$HOME" PATH=/usr/bin:/bin TMPDIR="$tmp" ANDROID_HOME="$tmp/sdk" "$node_bin" dist/cli.js "$@" 2>/dev/null; }
+phone=$(real devices | "$node_bin" -e '
+  const r = JSON.parse(require("fs").readFileSync(0, "utf8"));
+  console.log(r.devices.find((d) => d.kind === "physical" && d.state === "paired" && (d.runner === "running" || d.runner === "installed"))?.id ?? "");
+')
+if [ -z "$phone" ]; then
+  echo "SKIP: no paired iPhone with karagoz's runner"
+  real_ok="real skipped"
+else
+  out=$(real ui-tree --device "$phone") || fail "real ui-tree exited non-zero: $(printf '%s' "$out" | code_of)"
+  real_ok=$(printf '%s' "$out" | "$node_bin" -e '
+    const r = JSON.parse(require("fs").readFileSync(0, "utf8"));
+    let nodes = 0, bad = 0;
+    const walk = (n) => { nodes++; if (!Array.isArray(n.bounds) || n.bounds.length !== 4 || !n.bounds.every(Number.isFinite) || typeof n.role !== "string") bad++; (n.children ?? []).forEach(walk); };
+    walk(r.root);
+    const rotation = r.rotation === null || [0, 90, 180, 270].includes(r.rotation);
+    console.log(r.root.role === "Application" && rotation && !bad ? `real ${nodes} nodes, rotation ${r.rotation}` : `bad: root ${r.root.role}, rotation ${r.rotation}, ${bad} bad nodes`);
+  ')
+  case "$real_ok" in real*) ;; *) fail "real tree: $real_ok" ;; esac
+fi
+
+echo "ok: $real_ok, teams, build arguments, failures, targets, uninstall, mapping, mini, read failures, not on USB, not installed, start failures, start budget (60s), lock, devices, doctor"

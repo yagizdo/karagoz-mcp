@@ -462,3 +462,30 @@ export async function tree(udid: string): Promise<unknown> {
   }
   throw new KaragozError('CAPTURE_FAILED', error);
 }
+
+export type RunnerState = 'running' | 'installed' | 'not installed' | null;
+
+// running when the runner answers; else installed or not from devicectl's app list; null for an unpaired phone or when
+// devicectl cannot tell. Never a KaragozError: devices prints the other phones and platforms whatever happens here.
+async function runnerState(udid: string, paired: boolean): Promise<RunnerState> {
+  if (!paired) return null;
+  const signal = cancellation.getStore();
+  try {
+    if ((await health(udid)) === 'up') return 'running';
+  } catch (err) {
+    if (signal?.aborted) throw err;
+    // Not on USB or usbmuxd unreachable: the runner can still be installed, which devicectl tells.
+  }
+  try {
+    return (await apps(udid)).some(({ id }) => teamOf(id) !== undefined) ? 'installed' : 'not installed';
+  } catch (err) {
+    if (signal?.aborted) throw err;
+    return null;
+  }
+}
+
+// The runner's state on each attached iPhone, for devices only: resolving a target never pays for it (K41).
+export async function runnerStates(phones: { id: string; state: string }[]): Promise<Map<string, RunnerState>> {
+  const states = await Promise.all(phones.map(({ id, state }) => runnerState(id, state === 'paired')));
+  return new Map(phones.map(({ id }, i) => [id, states[i] ?? null]));
+}
