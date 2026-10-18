@@ -74,6 +74,7 @@ case "\$*" in
     case "\$(/bin/cat "$fake/start")" in
       ok) "$node_bin" "$fixtures/runner.cjs" "$fake" "\$xr" & exec /bin/sleep 97.43 ;;
       hang) /bin/sleep 97.43 & exec /bin/sleep 97.43 ;;
+      wait) /bin/cat "$fake/start-text"; exec /bin/sleep 97.43 ;;
       *) /bin/cat "$fake/start-text"; exit 65 ;;
     esac
     ;;
@@ -304,6 +305,16 @@ for m in "The provisioning profile has expired.|RUNNER_NOT_INSTALLED|expired pro
   rest=${m#*|}
   refuses "start: ${m%%|*}" "${rest%%|*}" "${rest#*|}" ui-tree --device P1
 done
+# A locked iPhone: xcodebuild says so and waits for it without exiting (measured); the start ends at once.
+echo wait > "$fake/start"
+printf '%s\n' 'Run Destination Preflight: The destination is not ready.' \
+  'Error Domain=com.apple.dt.deviceprep Code=-3 "Unlock iPhone to Continue" UserInfo={NSLocalizedRecoverySuggestion=Xcode cannot launch KaragozRunner on iPhone because the device is locked.}' \
+  'Run Destination Preflight: Waiting for the destination to become ready.' > "$fake/start-text"
+t0=$(date +%s)
+refuses "start on a locked iPhone" DEVICE_NOT_READY "it is locked" ui-tree --device P1
+[ $(($(date +%s) - t0)) -le 10 ] || fail "the locked start took $(($(date +%s) - t0)) s"
+sleep 1
+! pgrep -f "sleep 97\.43" > /dev/null || fail "the waiting xcodebuild was left running"
 echo hang > "$fake/start"
 t0=$(date +%s)
 refuses "start never answers" DEVICE_NOT_READY "did not start within 60 s" ui-tree --device P1
@@ -392,4 +403,4 @@ else
   case "$real_ok" in real*) ;; *) fail "real tree: $real_ok" ;; esac
 fi
 
-echo "ok: $real_ok, teams, build arguments, failures, targets, uninstall, mapping, mini, read failures, not on USB, Wi-Fi only, serial case, gone before Connect, not installed, start failures, start budget (60s), MCP and CLI SIGTERM during a start, lock, devices, doctor, landscape keyboard, secret, signatures, older runner, stranger, squatter, mute listener, port taken"
+echo "ok: $real_ok, teams, build arguments, failures, targets, uninstall, mapping, mini, read failures, not on USB, Wi-Fi only, serial case, gone before Connect, not installed, start failures, start budget (60s), MCP and CLI SIGTERM during a start, lock, devices, doctor, landscape keyboard, secret, signatures, older runner, stranger, squatter, mute listener, port taken, locked start"

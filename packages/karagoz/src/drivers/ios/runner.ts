@@ -511,7 +511,14 @@ async function start(udid: string, dev: string): Promise<void> {
   const deadline = Date.now() + START_BUDGET_MS;
   try {
     for (;;) {
-      if (ended.exited) throw startFailure(udid, log, await readFile(log, 'utf8').catch(() => ''));
+      const output = await readFile(log, 'utf8').catch(() => '');
+      if (ended.exited) throw startFailure(udid, log, output);
+      // xcodebuild waits, without exiting, for a phone that is not ready and says why (a locked iPhone, measured, K42):
+      // a reason startFailure knows ends the start now instead of at the budget.
+      if (output.includes('Waiting for the destination to become ready')) {
+        const failure = startFailure(udid, log, output);
+        if (failure.code !== 'HELPER_FAILED') throw failure;
+      }
       const state = await health(udid);
       if (state === 'up') return;
       if (state !== 'down') throw refusal(udid, state);
