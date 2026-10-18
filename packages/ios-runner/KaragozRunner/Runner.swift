@@ -1,14 +1,20 @@
+import CryptoKit
 import Foundation
 import XCTest
 
-// The host side (packages/karagoz/src/drivers/ios/runner.ts) mirrors the port and the protocol number (K41).
+// The host side (packages/karagoz/src/drivers/ios/runner.ts) mirrors the port, the protocol number, the two headers and
+// the text each HMAC-SHA256 covers: "karagoz-req\n<nonce>\n<METHOD> <path>\n<body>" for a request,
+// "karagoz-res\n<nonce>\n<status>\n<body>" for its answer (K41, K42).
 private let port: UInt16 = 27753
-private let protocolVersion = 1
+private let protocolVersion = 2
+private let nonceHeader = "x-karagoz-nonce"
+private let macHeader = "x-karagoz-mac"
 // No /tree for this long ends the test, and xcodebuild exits with it: the runner stops itself, no daemon (K3).
 private let idleSeconds: TimeInterval = 600
 // XCTest cannot cancel a snapshot, and a blocked main thread serves nothing more, so the runner answers and exits.
 private let snapshotSeconds: Double = 20
-private let maxRequestBytes = 8192
+// A long text is the largest request; 1 MiB is minutes of typing.
+private let maxRequestBytes = 1 << 20
 // UIAccessibilityTraitHeader; the simulator's tree calls these nodes AXHeading (K34).
 private let headerTrait: UInt64 = 0x10000
 
@@ -22,6 +28,26 @@ private struct Failure: Error, CustomStringConvertible {
 }
 
 private func selector(_ name: String) -> Selector { NSSelectorFromString(name) }
+
+// Lowercase hex to bytes; nil for anything else.
+private func hexBytes(_ text: String) -> [UInt8]? {
+  let digits = Array(text.utf8)
+  guard digits.count % 2 == 0 else { return nil }
+  var bytes: [UInt8] = []
+  for i in stride(from: 0, to: digits.count, by: 2) {
+    guard let high = nibble(digits[i]), let low = nibble(digits[i + 1]) else { return nil }
+    bytes.append(high << 4 | low)
+  }
+  return bytes
+}
+
+private func nibble(_ digit: UInt8) -> UInt8? {
+  switch digit {
+  case 48...57: return digit - 48
+  case 97...102: return digit - 87
+  default: return nil
+  }
+}
 
 // A zero-argument private getter, called only after the object says it answers it.
 private func call(_ object: NSObject, _ name: String) throws -> NSObject {
@@ -39,11 +65,18 @@ private func property(_ object: NSObject, _ name: String) -> Any? {
 
 final class Runner: XCTestCase {
   private var lastWork = Date()
+  // This start's secret; set before the listener opens, read by every connection.
+  private var key: SymmetricKey?
   // One /tree at a time, so the snapshot limit counts only this read's snapshot, not the ones queued before it on main.
   private let snapshots = DispatchSemaphore(value: 1)
 
   @MainActor
   func testServe() throws {
+    // From the .xctestrun copy karagoz started this test with; never logged (K42).
+    guard let secret = ProcessInfo.processInfo.environment["KARAGOZ_TOKEN"], let bytes = hexBytes(secret),
+      bytes.count == 32
+    else { throw Failure("KARAGOZ_TOKEN is missing or malformed") }
+    key = SymmetricKey(data: bytes)
     let (listener, accepts) = try open()
     NSLog("karagoz runner listening on 127.0.0.1:%d", Int(port))
     // A timer keeps a source on the main run loop, so each run(mode:before:) waits instead of returning at once.
@@ -86,7 +119,7 @@ final class Runner: XCTestCase {
     return (listener, accepts)
   }
 
-  // One HTTP/1.0 request per connection.
+  // One HTTP/1.0 request per connection; nothing is routed before its MAC checks out (K42).
   private func serve(_ connection: Int32) {
     defer { close(connection) }
     var off: Int32 = 1
@@ -94,26 +127,60 @@ final class Runner: XCTestCase {
     var wait = timeval(tv_sec: 5, tv_usec: 0)
     setsockopt(connection, SOL_SOCKET, SO_RCVTIMEO, &wait, socklen_t(MemoryLayout<timeval>.size))
     var request = Data()
-    var buffer = [UInt8](repeating: 0, count: 1024)
-    while request.count < maxRequestBytes, request.range(of: Data("\r\n\r\n".utf8)) == nil {
+    var buffer = [UInt8](repeating: 0, count: 16384)
+    func more() -> Bool {
       let count = read(connection, &buffer, buffer.count)
-      if count <= 0 { break }
-      request.append(buffer, count: count)
+      if count > 0 { request.append(buffer, count: count) }
+      return count > 0
     }
-    let line = String(decoding: request.prefix { $0 != 13 && $0 != 10 }, as: UTF8.self)
-    let parts = line.split(separator: " ")
-    let path = parts.count >= 2 && parts[0] == "GET" ? String(parts[1]) : ""
-    switch path {
-    case "/health":
-      respond(connection, 200, ["protocol": protocolVersion])
-    case "/tree":
-      tree(connection)
+    let terminator = Data("\r\n\r\n".utf8)
+    var end = request.range(of: terminator)
+    while end == nil, request.count < maxRequestBytes, more() { end = request.range(of: terminator) }
+    guard let end else { return respond(connection, 400, ["error": "no request head", "kind": "route"], nonce: nil) }
+    let lines = String(decoding: request[..<end.lowerBound], as: UTF8.self).components(separatedBy: "\r\n")
+    var fields: [String: String] = [:]
+    for line in lines.dropFirst() {
+      guard let colon = line.firstIndex(of: ":") else { continue }
+      let name = line[..<colon].trimmingCharacters(in: .whitespaces).lowercased()
+      let value = line[line.index(after: colon)...].trimmingCharacters(in: .whitespaces)
+      if let seen = fields[name], seen != value {
+        return respond(connection, 400, ["error": "\(name) given twice", "kind": "route"], nonce: nil)
+      }
+      fields[name] = value
+    }
+    let parts = (lines.first ?? "").split(separator: " ")
+    let length = fields["content-length"] ?? "0"
+    guard parts.count >= 2, !length.isEmpty, length.utf8.allSatisfy({ $0 >= 48 && $0 <= 57 }), let count = Int(length),
+      end.upperBound + count <= maxRequestBytes
+    else { return respond(connection, 400, ["error": "bad request line or Content-Length", "kind": "route"], nonce: nil) }
+    while request.count < end.upperBound + count, more() {}
+    guard request.count == end.upperBound + count else {
+      return respond(connection, 400, ["error": "the body is not Content-Length long", "kind": "route"], nonce: nil)
+    }
+    let method = String(parts[0])
+    let path = String(parts[1])
+    let nonce = fields[nonceHeader] ?? ""
+    let body = request.subdata(in: end.upperBound..<request.count)
+    guard signed("karagoz-req\n\(nonce)\n\(method) \(path)\n", body, fields[macHeader]) else {
+      return respond(connection, 401, ["error": "unauthorized", "kind": "auth"], nonce: nil)
+    }
+    switch (method, path) {
+    case ("GET", "/health"):
+      respond(connection, 200, ["protocol": protocolVersion], nonce: nonce)
+    case ("GET", "/tree"):
+      tree(connection, nonce)
     default:
-      respond(connection, 404, ["error": "no route \(path)", "kind": "route"])
+      respond(connection, 404, ["error": "no route \(method) \(path)", "kind": "route"], nonce: nonce)
     }
   }
 
-  private func tree(_ connection: Int32) {
+  // A request's MAC under this start's secret, compared in constant time by CryptoKit.
+  private func signed(_ prefix: String, _ body: Data, _ given: String?) -> Bool {
+    guard let key, let given, let mac = hexBytes(given), mac.count == 32 else { return false }
+    return HMAC<SHA256>.isValidAuthenticationCode(mac, authenticating: Data(prefix.utf8) + body, using: key)
+  }
+
+  private func tree(_ connection: Int32, _ nonce: String) {
     snapshots.wait()
     defer { snapshots.signal() }
     var answer: (Int, [String: Any]) = (500, [:])
@@ -125,10 +192,10 @@ final class Runner: XCTestCase {
     if done.wait(timeout: .now() + snapshotSeconds) == .timedOut {
       respond(connection, 500, [
         "error": "the snapshot did not finish within \(Int(snapshotSeconds)) s", "kind": "snapshot",
-      ])
+      ], nonce: nonce)
       exit(1)
     }
-    respond(connection, answer.0, answer.1)
+    respond(connection, answer.0, answer.1, nonce: nonce)
   }
 
   @MainActor
@@ -209,11 +276,16 @@ final class Runner: XCTestCase {
     return out
   }
 
-  private func respond(_ connection: Int32, _ status: Int, _ body: [String: Any]) {
+  // Signed with this start's secret for a request that was; a refusal (nonce nil) goes out unsigned (K42).
+  private func respond(_ connection: Int32, _ status: Int, _ body: [String: Any], nonce: String?) {
     let json = (try? JSONSerialization.data(withJSONObject: body)) ?? Data(#"{"error":"unencodable","kind":"snapshot"}"#.utf8)
-    let reason = status == 200 ? "OK" : status == 404 ? "Not Found" : "Internal Server Error"
-    let head = "HTTP/1.0 \(status) \(reason)\r\nContent-Type: application/json\r\nContent-Length: \(json.count)\r\nConnection: close\r\n\r\n"
-    let bytes = Data(head.utf8) + json
+    let reasons = [200: "OK", 400: "Bad Request", 401: "Unauthorized", 404: "Not Found"]
+    var head = "HTTP/1.0 \(status) \(reasons[status] ?? "Internal Server Error")\r\nContent-Type: application/json\r\nContent-Length: \(json.count)\r\nConnection: close\r\n"
+    if let nonce, let key {
+      let mac = HMAC<SHA256>.authenticationCode(for: Data("karagoz-res\n\(nonce)\n\(status)\n".utf8) + json, using: key)
+      head += "X-Karagoz-Mac: \(mac.map { String(format: "%02x", $0) }.joined())\r\n"
+    }
+    let bytes = Data((head + "\r\n").utf8) + json
     bytes.withUnsafeBytes { raw in
       var sent = 0
       while sent < raw.count {

@@ -1,7 +1,7 @@
 import { execFile, spawn } from 'node:child_process';
-import { createHash } from 'node:crypto';
+import { createHash, createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
 import { closeSync, constants, openSync } from 'node:fs';
-import { copyFile, mkdir, open, readdir, readFile, writeFile, type FileHandle } from 'node:fs/promises';
+import { copyFile, mkdir, open, readdir, readFile, rename, rm, writeFile, type FileHandle } from 'node:fs/promises';
 import type { Socket } from 'node:net';
 import { dirname, join } from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
@@ -67,10 +67,13 @@ export async function runnerBuild(dev: string): Promise<string> {
   return join(CACHE_ROOT, 'runner', key);
 }
 
-// The .xctestrun the team's build left under root, undefined when there is none.
+// The .xctestrun the team's build left under root, undefined when there is none. Xcode names it KaragozRunner_<sdk>;
+// the session copies start() writes beside it are not builds (K42).
 export async function xctestrun(root: string, team: string): Promise<string | undefined> {
   const products = join(root, team, 'Build', 'Products');
-  const file = (await readdir(products).catch(() => [])).find((name) => name.endsWith('.xctestrun'));
+  const file = (await readdir(products).catch(() => [])).find(
+    (name) => name.startsWith('KaragozRunner_') && name.endsWith('.xctestrun'),
+  );
   return file && join(products, file);
 }
 
@@ -189,9 +192,15 @@ export async function uninstallRunner(udid: string) {
   });
 }
 
-// Mirrored in packages/ios-runner/KaragozRunner/Runner.swift; a runner answering another protocol is reinstalled (K41).
+// Mirrored in packages/ios-runner/KaragozRunner/Runner.swift: the port, the protocol, the two headers, and the text each
+// HMAC-SHA256 covers, 'karagoz-req\n<nonce>\n<METHOD> <path>\n<body>' for a request and
+// 'karagoz-res\n<nonce>\n<status>\n<body>' for its answer. Every request and answer is signed with the secret of the
+// runner's start, which never travels (K42).
 const PORT = 27753;
-const PROTOCOL = 1;
+const PROTOCOL = 2;
+const NONCE_HEADER = 'X-Karagoz-Nonce';
+const MAC_HEADER = 'X-Karagoz-Mac';
+const SECRET = /^[0-9a-f]{64}$/;
 // From xcodebuild's start to the runner's first answer; prior art budgets 45-60 s, 4.3's phone run measured it (K41).
 const START_BUDGET_MS = 60_000;
 // How long a call waits for a phone's lock: the holder's devicectl app list, its start budget, and slack for the health
@@ -206,6 +215,9 @@ const POLL_MS = 500;
 // crashed or not, so a lock file needs no staleness rule (K41).
 const O_EXLOCK = 0x20;
 
+// Where this Mac keeps the secret of the runner it last started on a phone; every karagoz process of this user reads it.
+const secretPath = (udid: string) => join(CACHE_ROOT, 'runner', `${udid}.token`);
+
 function notInstalled(udid: string, reason: string): KaragozError {
   return new KaragozError(
     'RUNNER_NOT_INSTALLED',
@@ -213,9 +225,45 @@ function notInstalled(udid: string, reason: string): KaragozError {
   );
 }
 
-// One HTTP/1.0 request on a usbmux stream; the runner closes the connection after its answer.
-function get(socket: Socket, path: string, timeoutMs: number): Promise<{ status: number; body: string }> {
+function stranger(udid: string): KaragozError {
+  return new KaragozError(
+    'DEVICE_NOT_READY',
+    `device ${udid} is not ready: something else on the iPhone answers on karagoz's port ${PORT} without this Mac's key for karagoz's runner: another app, or a runner another Mac user started (it stops within 10 minutes). Restart the iPhone if it stays.`,
+  );
+}
+
+const mac = (key: Buffer, prefix: string, body: Buffer) =>
+  createHmac('sha256', key).update(prefix).update(body).digest('hex');
+
+// The secret's bytes, undefined when this Mac has none for the phone: nothing can be signed then (K42).
+async function secretOf(udid: string): Promise<Buffer | undefined> {
+  const text = await readFile(secretPath(udid), 'utf8').catch(() => '');
+  return SECRET.test(text) ? Buffer.from(text, 'hex') : undefined;
+}
+
+type Answer = { status: number; body: string; signed: boolean };
+
+// One HTTP/1.0 request on a usbmux stream; the runner closes the connection after its answer. signed: the answer
+// carries a valid MAC for this request's nonce, which needs the secret (K42).
+function exchange(
+  socket: Socket,
+  key: Buffer | undefined,
+  method: 'GET' | 'POST',
+  path: string,
+  body: string,
+  timeoutMs: number,
+  failure: ErrorCode,
+): Promise<Answer> {
   const signal = cancellation.getStore();
+  const nonce = randomBytes(16).toString('hex');
+  const payload = Buffer.from(body);
+  const head = [
+    `${method} ${path} HTTP/1.0`,
+    'Host: karagoz',
+    `Content-Length: ${payload.length}`,
+    `${NONCE_HEADER}: ${nonce}`,
+  ];
+  if (key) head.push(`${MAC_HEADER}: ${mac(key, `karagoz-req\n${nonce}\n${method} ${path}\n`, payload)}`);
   return new Promise((resolve, reject) => {
     const chunks: Buffer[] = [];
     const finish = (settle: () => void) => {
@@ -226,9 +274,7 @@ function get(socket: Socket, path: string, timeoutMs: number): Promise<{ status:
     };
     const timer = setTimeout(
       () =>
-        finish(() =>
-          reject(new KaragozError('CAPTURE_FAILED', `karagoz's runner did not answer within ${timeoutMs / 1000} s`)),
-        ),
+        finish(() => reject(new KaragozError(failure, `karagoz's runner did not answer within ${timeoutMs / 1000} s`))),
       timeoutMs,
     );
     // The SDK sends no response for a cancelled call, so the abort passes through (K31).
@@ -237,40 +283,77 @@ function get(socket: Socket, path: string, timeoutMs: number): Promise<{ status:
     socket.on('data', (chunk: Buffer) => chunks.push(chunk));
     socket.once('error', () => undefined);
     socket.once('close', () => {
-      const text = Buffer.concat(chunks).toString('utf8');
-      const split = text.indexOf('\r\n\r\n');
-      const status = /^HTTP\/1\.[01] (\d{3}) /.exec(text)?.[1];
-      finish(() =>
-        split < 0 || status === undefined
-          ? reject(new KaragozError('CAPTURE_FAILED', "karagoz's runner closed the connection before it answered"))
-          : resolve({ status: Number(status), body: text.slice(split + 4) }),
-      );
+      const all = Buffer.concat(chunks);
+      const split = all.indexOf('\r\n\r\n');
+      // Head fields are ASCII; the MAC covers the body's bytes, so it is checked before any UTF-8 decoding.
+      const fields = split < 0 ? '' : all.subarray(0, split).toString('latin1');
+      const status = /^HTTP\/1\.[01] (\d{3}) /.exec(fields)?.[1];
+      const rest = all.subarray(split + 4);
+      const length = /^content-length:[ \t]*(\d+)[ \t]*\r?$/im.exec(fields)?.[1];
+      if (split < 0 || status === undefined || (length !== undefined && Number(length) !== rest.length)) {
+        return finish(() =>
+          reject(new KaragozError(failure, "karagoz's runner closed the connection before it answered")),
+        );
+      }
+      const given = /^x-karagoz-mac:[ \t]*([0-9a-f]{64})[ \t]*\r?$/im.exec(fields)?.[1];
+      const signed =
+        key !== undefined &&
+        given !== undefined &&
+        timingSafeEqual(
+          Buffer.from(given, 'hex'),
+          Buffer.from(mac(key, `karagoz-res\n${nonce}\n${status}\n`, rest), 'hex'),
+        );
+      finish(() => resolve({ status: Number(status), body: rest.toString('utf8'), signed }));
     });
-    socket.write(`GET ${path} HTTP/1.0\r\nHost: karagoz\r\n\r\n`);
+    socket.write(Buffer.concat([Buffer.from(`${head.join('\r\n')}\r\n\r\n`), payload]));
     socket.resume();
   });
 }
 
-// up: this karagoz's runner answers; down: nothing listens or it does not answer; other: a runner of another protocol.
-async function health(udid: string): Promise<'up' | 'down' | 'other'> {
+// A signed request to the phone's runner, which ensure() has found answering.
+async function request(
+  udid: string,
+  method: 'GET' | 'POST',
+  path: string,
+  body: string,
+  timeoutMs: number,
+  failure: ErrorCode,
+): Promise<Answer> {
+  const key = await secretOf(udid);
+  const socket = await connect(udid, PORT, HEALTH_TIMEOUT_MS);
+  if (socket === 'refused') throw new KaragozError(failure, "karagoz's runner stopped before it answered");
+  return exchange(socket, key, method, path, body, timeoutMs, failure);
+}
+
+type Health = 'up' | 'down' | 'old' | 'stranger';
+
+// up: this Mac's runner answers, signed; down: nothing listens; old: a 4.3 runner, which signs nothing; stranger:
+// anything else listening there, or no secret here to tell. A listener that accepts and does not answer is a stranger
+// too: the runner answers /health off its main thread, and starting another would replace the secret of a live one.
+async function health(udid: string): Promise<Health> {
   const socket = await connect(udid, PORT, HEALTH_TIMEOUT_MS);
   if (socket === 'refused') return 'down';
-  let body: string;
+  let answer: Answer;
   try {
-    ({ body } = await get(socket, '/health', HEALTH_TIMEOUT_MS));
+    answer = await exchange(socket, await secretOf(udid), 'GET', '/health', '', HEALTH_TIMEOUT_MS, 'CAPTURE_FAILED');
   } catch (err) {
     if (cancellation.getStore()?.aborted) throw err;
-    // A runner that accepts and does not answer is treated as gone; starting another reports why it cannot.
-    return 'down';
+    return 'stranger';
   }
   let parsed: unknown;
   try {
-    parsed = JSON.parse(body);
+    parsed = JSON.parse(answer.body);
   } catch {
-    // Not the runner's JSON: something else listens on the port.
-    return 'other';
+    // Not JSON: not a runner of karagoz's.
+    return 'stranger';
   }
-  return isRecord(parsed) && parsed.protocol === PROTOCOL ? 'up' : 'other';
+  // Checked before the secret: a Mac coming from 4.3 has none, and its runner is still the older one.
+  if (!answer.signed) return isRecord(parsed) && parsed.protocol === 1 ? 'old' : 'stranger';
+  return isRecord(parsed) && parsed.protocol === PROTOCOL ? 'up' : 'stranger';
+}
+
+function refusal(udid: string, state: 'old' | 'stranger'): KaragozError {
+  return state === 'old' ? notInstalled(udid, 'is an older version') : stranger(udid);
 }
 
 // The .xctestrun of the installed runner's team, built by this karagoz and Xcode. The check keeps test-without-building,
@@ -294,6 +377,12 @@ async function installedBuild(udid: string, dev: string): Promise<string> {
 function startFailure(udid: string, log: string, output: string): KaragozError {
   const lower = output.toLowerCase();
   const states: [string[], ErrorCode, string][] = [
+    // Runner.swift's own text when the port is taken (K42).
+    [
+      ['cannot listen on'],
+      'DEVICE_NOT_READY',
+      `another app on the iPhone holds karagoz's port ${PORT}. Restart the iPhone, then try again`,
+    ],
     [['0xe8008012'], 'RUNNER_NOT_INSTALLED', 'was signed for other phones'],
     [['has expired', 'profile expired'], 'RUNNER_NOT_INSTALLED', 'has an expired provisioning profile'],
     [
@@ -328,11 +417,51 @@ function startFailure(udid: string, log: string, output: string): KaragozError {
   );
 }
 
+// A fresh 0600 file in place of path: writeFile's mode applies only to a file it creates, so a new name and a rename.
+async function writePrivate(path: string, data: string): Promise<void> {
+  const tmp = `${path}.${process.pid}.${randomBytes(4).toString('hex')}.tmp`;
+  try {
+    await writeFile(tmp, data, { mode: 0o600, flag: 'wx' });
+    await rename(tmp, path);
+  } catch (err) {
+    await rm(tmp, { force: true });
+    throw new KaragozError(
+      'HELPER_FAILED',
+      `cannot write ${path} (${err instanceof Error ? err.message : String(err)}); ${CACHE_HINT}`,
+    );
+  }
+}
+
+// A new secret for this start: in its file for later karagoz processes, and in a copy of the build's .xctestrun next to
+// it (its paths are relative to that folder), whose EnvironmentVariables reach the runner on the phone without the
+// secret on any command line or in Xcode's logs (measured, K42).
+async function keyed(udid: string, build: string): Promise<string> {
+  const plist = await readFile(build, 'utf8').catch(() => '');
+  const sections = [...plist.matchAll(/<key>EnvironmentVariables<\/key>\s*<dict>/g)];
+  const [only] = sections;
+  if (!only || sections.length > 1) {
+    throw new KaragozError(
+      'HELPER_FAILED',
+      `cannot add karagoz's key to ${build}: this Xcode writes .xctestrun files karagoz does not know; update karagoz`,
+    );
+  }
+  const secret = randomBytes(32).toString('hex');
+  const at = only.index + only[0].length;
+  const session = join(dirname(build), `session-${udid}.xctestrun`);
+  await writePrivate(
+    session,
+    `${plist.slice(0, at)}<key>KARAGOZ_TOKEN</key><string>${secret}</string>${plist.slice(at)}`,
+  );
+  await writePrivate(secretPath(udid), secret);
+  return session;
+}
+
 // Starts the runner with xcodebuild test-without-building, detached: it outlives this call and ends with the runner's
 // idle stop. Only the start budget bounds this call; a start nobody waits for is killed with its process group (K41).
 async function start(udid: string, dev: string): Promise<void> {
-  const xctestrun = await installedBuild(udid, dev);
+  const build = await installedBuild(udid, dev);
   await ownedDir(join(CACHE_ROOT, 'runner'));
+  const xctestrun = await keyed(udid, build);
   const signal = cancellation.getStore();
   // The kill below listens for an abort from here on; a call aborted before starts nothing.
   signal?.throwIfAborted();
@@ -385,7 +514,7 @@ async function start(udid: string, dev: string): Promise<void> {
       if (ended.exited) throw startFailure(udid, log, await readFile(log, 'utf8').catch(() => ''));
       const state = await health(udid);
       if (state === 'up') return;
-      if (state === 'other') throw notInstalled(udid, "answering on its port is not this karagoz's");
+      if (state !== 'down') throw refusal(udid, state);
       if (Date.now() > deadline) {
         throw new KaragozError(
           'DEVICE_NOT_READY',
@@ -439,12 +568,12 @@ async function locked<T>(name: string, waitMs: number, work: () => Promise<T>): 
 async function ensure(udid: string): Promise<void> {
   const state = await health(udid);
   if (state === 'up') return;
-  if (state === 'other') throw notInstalled(udid, "answering on its port is not this karagoz's");
+  if (state !== 'down') throw refusal(udid, state);
   const dev = await xcode();
   await locked(udid, PHONE_LOCK_MS, async () => {
     const again = await health(udid);
     if (again === 'up') return;
-    if (again === 'other') throw notInstalled(udid, "answering on its port is not this karagoz's");
+    if (again !== 'down') throw refusal(udid, again);
     await start(udid, dev);
   });
 }
@@ -452,9 +581,8 @@ async function ensure(udid: string): Promise<void> {
 // The raw snapshot of what is on the iPhone's screen, from the runner (K41).
 export async function tree(udid: string): Promise<unknown> {
   await ensure(udid);
-  const socket = await connect(udid, PORT, HEALTH_TIMEOUT_MS);
-  if (socket === 'refused') throw new KaragozError('CAPTURE_FAILED', "karagoz's runner stopped before it answered");
-  const { status, body } = await get(socket, '/tree', READ_TIMEOUT_MS);
+  const { status, body, signed } = await request(udid, 'GET', '/tree', '', READ_TIMEOUT_MS, 'CAPTURE_FAILED');
+  if (!signed) throw stranger(udid);
   let parsed: unknown;
   try {
     parsed = JSON.parse(body);
