@@ -348,7 +348,7 @@ wait $first || fail "first concurrent call failed: $(/bin/cat "$tmp/first")"
 wait $second || fail "second concurrent call failed: $(/bin/cat "$tmp/second")"
 is "concurrent: one start" "$(starts)" $((before + 1))
 is "concurrent: same tree" "$(/bin/cat "$tmp/second")" "$want"
-refuses "other commands" NOT_SUPPORTED "runs only screenshot, ui-tree, tap, swipe, install-runner and uninstall-runner" key HOME --device P1
+refuses "other commands" NOT_SUPPORTED "runs only screenshot, ui-tree, tap, swipe, text, key, install-runner and uninstall-runner" launch com.example --device P1
 stop_runner
 
 # 6. devices: iPhone rows end in runner. doctor: signing from Xcode's teams, iosRunner from the builds section 1 made.

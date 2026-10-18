@@ -77,6 +77,37 @@ const KEYBOARD = new Map<string, number>([
   ['META_RIGHT', 231],
 ]);
 
+// An iPhone's runner presses the hardware buttons, and types the keys that make a character through its text path, with
+// XCTest's own characters for delete and escape (K42).
+const PHONE_BUTTONS = new Map([
+  ['HOME', 'home'],
+  ['POWER', 'lock'],
+  ['VOLUME_UP', 'volumeUp'],
+  ['VOLUME_DOWN', 'volumeDown'],
+]);
+// ponytail: keys that type no character (arrows, F-keys, page and line keys, forward delete, modifiers) have no iPhone
+// route: XCTest's typeKey goes through the hardware-keyboard path and was never shown to work on a phone (K42).
+const PHONE_CHARACTERS = new Map<string, string>([
+  ...Array.from('ABCDEFGHIJKLMNOPQRSTUVWXYZ', (name): [string, string] => [name, name.toLowerCase()]),
+  ...Array.from('0123456789', (name): [string, string] => [name, name]),
+  ['SPACE', ' '],
+  ['ENTER', '\n'],
+  ['TAB', '\t'],
+  ['DEL', '\u007f'],
+  ['ESCAPE', '\u001b'],
+  ['MINUS', '-'],
+  ['EQUALS', '='],
+  ['LEFT_BRACKET', '['],
+  ['RIGHT_BRACKET', ']'],
+  ['BACKSLASH', '\\'],
+  ['SEMICOLON', ';'],
+  ['APOSTROPHE', "'"],
+  ['GRAVE', '`'],
+  ['COMMA', ','],
+  ['PERIOD', '.'],
+  ['SLASH', '/'],
+]);
+
 // The portrait panel in the tree's pixels, the size dtuhidd's ratios divide (K35).
 async function panelSide(udid: string, side: 'WIDTH' | 'HEIGHT'): Promise<number> {
   const text = (await simctl(['getenv', udid, `SIMULATOR_MAINSCREEN_${side}`])).trim();
@@ -319,8 +350,8 @@ const restore = (udid: string) =>
 // wait in arrival order (K35). Another process typing at the same time still races.
 const turns = new Map<string, Promise<void>>();
 
-// Typed into whatever has focus; with none, nothing is typed and the call still succeeds, as on Android (K35).
-export async function text(udid: string, value: string) {
+// Any Unicode types on iOS but control characters other than newline and tab (K35); where names the target.
+function typable(value: string, where: string) {
   const control = new Set(Array.from(value).filter((char) => /\p{Cc}/u.test(char) && char !== '\n' && char !== '\t'));
   if (control.size) {
     const named = Array.from(
@@ -329,9 +360,14 @@ export async function text(udid: string, value: string) {
     );
     throw new KaragozError(
       'TEXT_UNSUPPORTED',
-      `cannot type ${named.join(', ')} on an iOS simulator: control characters other than newline and tab; nothing was typed`,
+      `cannot type ${named.join(', ')} on ${where}: control characters other than newline and tab; nothing was typed`,
     );
   }
+}
+
+// Typed into whatever has focus; with none, nothing is typed and the call still succeeds, as on Android (K35).
+export async function text(udid: string, value: string) {
+  typable(value, 'an iOS simulator');
   const signal = cancellation.getStore();
   const turn = (turns.get(udid) ?? Promise.resolve()).then(() => {
     signal?.throwIfAborted();
@@ -360,6 +396,31 @@ async function typeText(udid: string, value: string) {
   }
   if (wasOn) await restore(udid);
   return { device: udid, text: value };
+}
+
+// The runner types into whatever has focus; with none, nothing is typed and the call still succeeds (K35, K42).
+export async function textPhone(udid: string, value: string) {
+  typable(value, 'an iPhone');
+  const typing = Math.ceil((Array.from(value).length / TYPE_SPEED) * 1000);
+  await input(udid, '/text', { text: value, speed: TYPE_SPEED }, typing);
+  return { device: udid, text: value };
+}
+
+// The name check runs before the runner starts: a key an iPhone lacks is wrong for this target and stays wrong (K42).
+export async function keyPhone(udid: string, name: string, code: number) {
+  const button = PHONE_BUTTONS.get(name);
+  const character = PHONE_CHARACTERS.get(name);
+  if (button === undefined && character === undefined) {
+    const hint = name === 'BACK' ? "; tap the app's back button or swipe from the left edge" : '';
+    throw new KaragozError(
+      'INVALID_ARGS',
+      `'${name}' has no iPhone key; an iPhone takes HOME, POWER, VOLUME_UP, VOLUME_DOWN and keys that type a character (letters, digits, SPACE, ENTER, TAB, DEL, ESCAPE, punctuation)${hint}`,
+    );
+  }
+  await (button === undefined
+    ? input(udid, '/text', { text: character, speed: TYPE_SPEED }, 0)
+    : input(udid, '/button', { button }, 0));
+  return { device: udid, key: `KEYCODE_${name}`, code };
 }
 
 // The name check runs before anything compiles: an iOS-less key is wrong for this target and stays wrong (K35).

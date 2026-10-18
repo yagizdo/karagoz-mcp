@@ -1,8 +1,9 @@
 #!/bin/sh
-# Step 4.4: `tap` (by coordinates and by --text/--id) and `swipe` on a paired iPhone go to karagoz's runner as signed
-# requests in the portrait panel's points with the interface orientation, converted from the tree's pixels for every
-# rotation and the mini; element taps match the tree and refuse a target under the software keyboard; every runner
-# failure maps to its code (K42).
+# Step 4.4: `tap` (by coordinates and by --text/--id), `swipe`, `text` and `key` on a paired iPhone go to karagoz's
+# runner as signed requests: points in the portrait panel with the interface orientation, converted from the tree's
+# pixels for every rotation and the mini; element taps match the tree and refuse a target under the software keyboard;
+# any Unicode text but control characters; the hardware buttons and the keys that type a character, other names refused
+# before anything is sent; every runner failure maps to its code (K42).
 # Precondition: macOS. Fake adb, simctl, devicectl and xcodebuild come through ANDROID_HOME and DEVELOPER_DIR under
 # env -i, Xcode's preferences through a fake HOME, usbmuxd through USBMUXD_SOCKET_ADDRESS (the fakes in
 # smoke/fixtures/runner/).
@@ -153,7 +154,32 @@ k tap --text q --device P1 > /dev/null || fail "tapping a key of the keyboard fa
 is "keyboard key" "$(sent)" '/tap {"x":30,"y":635,"orientation":1}'
 ok="$ok, element taps, direction marks, ambiguous, not found, keyboard cover, keyboard key"
 
-# 3. The runner's failures; a tap and a ui-tree at the same time are both answered.
+# 3. text and key. Any Unicode with newline and tab; other control characters, and keys an iPhone has no counterpart
+# for, are refused before anything reaches the runner.
+typed=$(printf 'çğ \360\237\230\200\n\tx')
+out=$(k text "$typed" --device P1) || fail "text exited non-zero: $out"
+is "text" "$out" '{"device":"P1","text":"çğ 😀\n\tx"}'
+is "text sent" "$(sent)" '/text {"text":"çğ 😀\n\tx","speed":120}'
+before=$(inputs)
+refuses "control character" TEXT_UNSUPPORTED "cannot type 'U+0001' on an iPhone" text "$(printf 'a\001')" --device P1
+for name in DPAD_UP F1 PAGE_DOWN SHIFT_LEFT; do refuses "key $name" INVALID_ARGS "'$name' has no iPhone key" key $name --device P1; done
+refuses "key BACK" INVALID_ARGS "swipe from the left edge" key BACK --device P1
+is "refused text and keys: nothing sent" "$(inputs)" "$before"
+for case in HOME:3:home POWER:26:lock VOLUME_UP:24:volumeUp VOLUME_DOWN:25:volumeDown; do
+  name=${case%%:*} rest=${case#*:}
+  out=$(k key "$name" --device P1) || fail "key $name exited non-zero: $out"
+  is "key $name" "$out" "{\"device\":\"P1\",\"key\":\"KEYCODE_$name\",\"code\":${rest%%:*}}"
+  is "key $name sent" "$(sent)" "/button {\"button\":\"${rest#*:}\"}"
+done
+for case in A:a 7:0 SPACE:' ' TAB:'\t' ENTER:'\n' ESCAPE:'\u001b' MINUS:-; do
+  k key "${case%%:*}" --device P1 > /dev/null || fail "key ${case%%:*} failed"
+  is "key ${case%%:*} sent" "$(sent)" "/text {\"text\":\"${case#*:}\",\"speed\":120}"
+done
+k key DEL --device P1 > /dev/null || fail "key DEL failed"
+is "key DEL sent" "$(sent)" "$(printf '/text {"text":"\177","speed":120}')"
+ok="$ok, text, control characters, iPhone-less keys, buttons, keys that type"
+
+# 4. The runner's failures; a tap and a ui-tree at the same time are both answered.
 for m in event:"did not take the event" xctest:"Failed to synthesize event" private:"update karagoz" close:"closed the connection"; do
   echo "${m%%:*}" > "$fake/runner-mode"
   refuses "runner ${m%%:*}" HELPER_FAILED "${m#*:}" tap 645 1398 --device P1
