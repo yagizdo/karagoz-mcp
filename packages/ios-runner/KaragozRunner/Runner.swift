@@ -334,12 +334,13 @@ final class Runner: XCTestCase {
     return (200, [:])
   }
 
-  // HOME and the volume keys through XCUIDevice; the lock button through XCTest's private device event (consumer page
-  // 0x0C, usage 0x30), which returns an error where the public call would fail the test (K42).
+  // The volume keys through XCUIDevice; the lock button through XCTest's private device event (consumer page 0x0C,
+  // usage 0x30), which returns an error where the public call would fail the test. HOME brings SpringBoard to the front:
+  // XCUIDevice's Home press, and the same HID usage as a device event, did nothing on an iPhone (iOS 26.6.2, K42).
   @MainActor
   private func button(_ name: String) -> (Int, [String: Any]) {
     switch name {
-    case "home": XCUIDevice.shared.press(.home)
+    case "home": XCUIApplication(bundleIdentifier: "com.apple.springboard").activate()
     case "volumeUp": XCUIDevice.shared.press(.volumeUp)
     case "volumeDown": XCUIDevice.shared.press(.volumeDown)
     case "lock":

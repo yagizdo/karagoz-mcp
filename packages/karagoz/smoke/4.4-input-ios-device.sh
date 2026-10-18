@@ -6,7 +6,8 @@
 # before anything is sent; every runner failure maps to its code (K42).
 # Precondition: macOS. Fake adb, simctl, devicectl and xcodebuild come through ANDROID_HOME and DEVELOPER_DIR under
 # env -i, Xcode's preferences through a fake HOME, usbmuxd through USBMUXD_SOCKET_ADDRESS (the fakes in
-# smoke/fixtures/runner/).
+# smoke/fixtures/runner/). The real step drives Probe on a paired iPhone whose runner is installed, signed with a profile
+# and identity this Mac already has, else it prints SKIP; it removes Probe again unless KEEP_PROBE=1.
 set -e
 cd "$(dirname "$0")/.."
 [ "$(uname -s)" = Darwin ] || { echo "SKIP: iPhones need macOS"; echo "ok: skipped"; exit 0; }
@@ -14,8 +15,8 @@ npm run --silent build
 
 node_bin=$(command -v node)
 tmp=$(mktemp -d)
-trap 'set +e; [ -n "$daemon" ] && { kill "$daemon"; wait "$daemon"; } 2>/dev/null; pkill -f "sleep 97\\.44"; pkill -f "runner.cjs $tmp/fake"; rm -rf "$tmp"' EXIT
-daemon=
+trap 'set +e; [ -n "$daemon" ] && { kill "$daemon"; wait "$daemon"; } 2>/dev/null; pkill -f "sleep 97\\.44"; pkill -f "runner.cjs $tmp/fake"; [ -n "$probe_phone" ] && [ "${KEEP_PROBE:-0}" != 1 ] && unprobe; rm -rf "$tmp"' EXIT
+daemon= probe_phone=
 fail() { echo "FAIL: $*"; exit 1; }
 is() { [ "$2" = "$3" ] || fail "$1: expected $3, got $2"; }
 code_of() { "$node_bin" -e '
@@ -198,4 +199,130 @@ pkill -f "runner.cjs $fake"; rm -f "$fake/runner-port"
 refuses "no runner" RUNNER_NOT_INSTALLED "'karagoz install-runner --device P1' (MCP: install_runner)" tap 1 1 --device P1
 ok="$ok, runner failures, hang (30s), tap beside ui-tree, not installed"
 
-echo "ok: $ok"
+# 5. A real paired iPhone with karagoz's runner. Probe, the iOS smokes' test app, is built for the phone and signed with
+# a profile Xcode keeps that covers dev.karagoz.probe (the team wildcard install-runner left, or Probe's own id), holds
+# the phone and names an identity in the keychain; installed and launched with devicectl, driven only inside itself,
+# removed by the EXIT trap. Real tools and HOME; nothing but Probe's own labels is printed.
+real() { env -i HOME="$HOME" PATH=/usr/bin:/bin TMPDIR="$tmp" ANDROID_HOME="$tmp/sdk" "$node_bin" dist/cli.js "$@" 2>/dev/null; }
+dctl() { /usr/bin/xcrun devicectl "$@" -q > /dev/null 2> "$tmp/devicectl.err"; }
+unprobe() {
+  real key HOME --device "$probe_phone" > /dev/null
+  dctl device uninstall app --device "$probe_phone" dev.karagoz.probe
+  ! /usr/bin/xcrun devicectl device info apps --device "$probe_phone" --bundle-id dev.karagoz.probe --json-output - -q 2> /dev/null |
+    /usr/bin/grep -q '"bundleIdentifier"' || echo "FAIL: Probe is still on the iPhone"
+}
+phone=$(real devices | "$node_bin" -e '
+  const r = JSON.parse(require("fs").readFileSync(0, "utf8"));
+  console.log(r.devices.find((d) => d.kind === "physical" && d.state === "paired" && (d.runner === "running" || d.runner === "installed"))?.id ?? "");
+')
+profile= identity= team=
+if [ -n "$phone" ]; then
+  now=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+  for f in "$HOME/Library/Developer/Xcode/UserData/Provisioning Profiles"/*.mobileprovision; do
+    [ -f "$f" ] && /usr/bin/security cms -D -i "$f" -o "$tmp/profile.plist" 2> /dev/null || continue
+    t=$(/usr/bin/plutil -extract TeamIdentifier.0 raw "$tmp/profile.plist" 2> /dev/null) || continue
+    case "$(/usr/bin/plutil -extract Entitlements.application-identifier raw "$tmp/profile.plist" 2> /dev/null)" in
+      "$t.*" | "$t.dev.karagoz.probe") ;;
+      *) continue ;;
+    esac
+    expr "$(/usr/bin/plutil -extract ExpirationDate raw "$tmp/profile.plist")" \> "$now" > /dev/null || continue
+    /usr/bin/plutil -extract ProvisionedDevices json -o - "$tmp/profile.plist" 2> /dev/null | /usr/bin/grep -qi "\"$phone\"" || continue
+    i=0
+    while c=$(/usr/bin/plutil -extract "DeveloperCertificates.$i" raw "$tmp/profile.plist" 2> /dev/null); do
+      sha=$(printf '%s' "$c" | /usr/bin/base64 -D | /usr/bin/shasum -a 1 | /usr/bin/cut -c1-40 | /usr/bin/tr a-f A-F)
+      if /usr/bin/security find-identity -v -p codesigning | /usr/bin/grep -q " $sha "; then profile=$f identity=$sha team=$t; fi
+      i=$((i + 1))
+    done
+  done
+fi
+if [ -z "$phone" ]; then
+  echo "SKIP: no paired iPhone with karagoz's runner"
+  real_ok="real skipped"
+elif [ -z "$profile" ]; then
+  echo "SKIP: no provisioning profile here covers dev.karagoz.probe on the iPhone with an identity in the keychain"
+  real_ok="real skipped (no profile)"
+else
+  mkdir "$tmp/probe"
+  sh smoke/fixtures/input-ios/build.sh "$tmp/probe" iphoneos > /dev/null || fail "building Probe for the iPhone failed"
+  app=$tmp/probe/Probe.app
+  printf '%s\n' '<?xml version="1.0" encoding="UTF-8"?>' \
+    '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">' \
+    "<plist version=\"1.0\"><dict><key>application-identifier</key><string>$team.dev.karagoz.probe</string>" \
+    "<key>com.apple.developer.team-identifier</key><string>$team</string><key>get-task-allow</key><true/></dict></plist>" \
+    > "$tmp/probe.entitlements"
+  cp "$profile" "$app/embedded.mobileprovision"
+  /usr/bin/codesign --force --sign "$identity" --entitlements "$tmp/probe.entitlements" --timestamp=none "$app" 2> /dev/null ||
+    fail "codesign could not sign Probe"
+  probe_phone=$phone
+  dctl device install app --device "$phone" "$app" ||
+    fail "devicectl could not install Probe ($(/usr/bin/grep -oE '0xe80[0-9a-f]+' "$tmp/devicectl.err" | /usr/bin/head -1))"
+  dctl device process launch --device "$phone" --terminate-existing dev.karagoz.probe || fail "devicectl could not launch Probe"
+  # q <what> [arg]: one fact from a fresh tree of Probe. root: the root's label; label <id>: that node's label or value;
+  # center <id>: its center; top <label>: the top edge of the node with that label, or gone; keyboard: yes or no;
+  # covered: a row's label whose center the keyboard covers; size: the root's width and height.
+  cat > "$tmp/q.cjs" <<'JS'
+const [file, what, arg] = process.argv.slice(2);
+const root = JSON.parse(require("fs").readFileSync(file, "utf8")).root;
+const all = [];
+const walk = (n) => { all.push(n); (n.children ?? []).forEach(walk); };
+walk(root);
+const mid = (n) => [(n.bounds[0] + n.bounds[2]) / 2, (n.bounds[1] + n.bounds[3]) / 2];
+const keyboard = all.find((n) => n.role === "Keyboard");
+const inside = (k, [x, y]) => x >= k.bounds[0] && x < k.bounds[2] && y >= k.bounds[1] && y < k.bounds[3];
+const by = (id) => all.find((n) => n.identifier === id);
+const answers = {
+  root: () => root.label ?? "",
+  label: () => by(arg)?.label ?? by(arg)?.value ?? "missing",
+  center: () => (by(arg) ? mid(by(arg)).join(" ") : "missing"),
+  top: () => { const n = all.find((m) => m.label === arg); return n ? String(n.bounds[1]) : "gone"; },
+  keyboard: () => (keyboard ? "yes" : "no"),
+  covered: () => all.find((n) => /^Row \d+$/.test(n.label ?? "") && keyboard && inside(keyboard, mid(n)))?.label ?? "",
+  size: () => `${root.bounds[2]} ${root.bounds[3]}`,
+};
+console.log(answers[what]());
+JS
+  q() { real ui-tree --device "$phone" > "$tmp/tree.json" || fail "real ui-tree failed: $(code_of < "$tmp/tree.json")"; "$node_bin" "$tmp/q.cjs" "$tmp/tree.json" "$@"; }
+  # until <seconds> <want> <q args>: polls the tree until q prints want.
+  until_is() { n=$1 want=$2; shift 2; while [ "$(q "$@")" != "$want" ]; do n=$((n - 1)); [ $n -gt 0 ] || return 1; sleep 1; done; }
+  until_is 15 Probe root || fail "Probe is not in front"
+  is "unsigned request" "$("$node_bin" "$fixtures/unsigned.cjs" "$phone")" "HTTP/1.0 401 Unauthorized"
+  real tap --id tap-button --device "$phone" > /dev/null || fail "tap --id tap-button failed"
+  until_is 5 "Tap me 1" label tap-button || fail "tap --id: the button reads $(q label tap-button)"
+  set -- $(q center tap-button)
+  real tap "$1" "$2" --device "$phone" > /dev/null || fail "tap at the button's center failed"
+  until_is 5 "Tap me 2" label tap-button || fail "coordinate tap: the button reads $(q label tap-button)"
+  real tap --id long-target --duration 800 --device "$phone" > /dev/null || fail "long press failed"
+  until_is 5 "Long 1" label long-target || fail "800 ms press: $(q label long-target)"
+  real tap --id long-target --duration 300 --device "$phone" > /dev/null || fail "short press failed"
+  sleep 1
+  is "300 ms press is no long press" "$(q label long-target)" "Long 1"
+  real tap --id name-field --device "$phone" > /dev/null || fail "tap on the name field failed"
+  until_is 5 yes keyboard || fail "no keyboard after tapping the name field"
+  real text 'karagoz çğıİş 😀' --device "$phone" > /dev/null || fail "text failed"
+  until_is 5 'echo:karagoz çğıİş 😀' label echo || fail "text: the echo reads $(q label echo)"
+  real key DEL --device "$phone" > /dev/null || fail "key DEL failed"
+  until_is 5 'echo:karagoz çğıİş ' label echo || fail "key DEL: the echo reads $(q label echo)"
+  row=$(q covered)
+  [ -n "$row" ] || fail "no row sits under the keyboard"
+  if out=$(real tap --text "$row" --device "$phone"); then fail "tap under the keyboard exited 0"; fi
+  is "tap under the keyboard" "$(printf '%s' "$out" | code_of)" ELEMENT_COVERED
+  real key ENTER --device "$phone" > /dev/null || fail "key ENTER failed"
+  until_is 5 no keyboard || fail "the keyboard stayed up after key ENTER"
+  if out=$(real tap --text Probe --device "$phone"); then fail "tap --text Probe exited 0"; fi
+  is "ambiguous" "$(printf '%s' "$out" | code_of)" ELEMENT_AMBIGUOUS
+  if out=$(real tap --id nope --timeout 1000 --device "$phone"); then fail "tap --id nope exited 0"; fi
+  is "not found" "$(printf '%s' "$out" | code_of)" ELEMENT_NOT_FOUND
+  set -- $(q size)
+  before=$(q top 'Row 1')
+  real swipe $(($1 / 2)) $(($2 * 3 / 4)) $(($1 / 2)) $(($2 / 4)) --duration 1000 --device "$phone" > /dev/null || fail "swipe failed"
+  sleep 1
+  after=$(q top 'Row 1')
+  [ "$after" = gone ] || "$node_bin" -e 'process.exit(+process.argv[1] - +process.argv[2] >= +process.argv[3] / 4 ? 0 : 1)' "$before" "$after" "$2" ||
+    fail "swipe: Row 1 went from $before to $after"
+  real key HOME --device "$phone" > /dev/null || fail "key HOME failed"
+  n=5
+  while [ "$(q root)" = Probe ]; do n=$((n - 1)); [ $n -gt 0 ] || fail "Probe stayed in front after key HOME"; sleep 1; done
+  real_ok="real Probe: taps, long press, text, DEL, keyboard cover, ENTER, ambiguous, not found, swipe, HOME, unsigned refused"
+fi
+
+echo "ok: $real_ok, $ok"
