@@ -166,7 +166,7 @@ refuses() {
 dc "/bin/cat '$tmp/phones27.json'"
 refuses "by UDID" NOT_SUPPORTED key HOME --device P1
 is "by UDID text" "$(printf '%s' "$out" | field error.message)" \
-  "device P1 is an iPhone; karagoz runs only screenshot, ui-tree, install-runner and uninstall-runner on one yet."
+  "device P1 is an iPhone; karagoz runs only screenshot, ui-tree, tap, swipe, install-runner and uninstall-runner on one yet."
 refuses "by model" NOT_SUPPORTED key HOME --device "iPhone 14 Pro Max"
 kdev=P3
 refuses "unpaired, from KARAGOZ_DEVICE" NOT_SUPPORTED key HOME

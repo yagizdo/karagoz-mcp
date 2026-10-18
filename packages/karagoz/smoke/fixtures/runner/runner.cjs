@@ -1,7 +1,8 @@
 // The fake runner for smokes 4.3 and 4.4: node runner.cjs <fake dir> <xctestrun>. Like the real one it takes
 // KARAGOZ_TOKEN from the .xctestrun's EnvironmentVariables, refuses a request without a valid MAC (401, unsigned) and
-// signs every other answer (K42). $fake/runner-mode steers it: old, stranger, squatter and mute change /health; hang,
-// close, private and snapshot change /tree; /health answers signed protocol 2 in every other mode.
+// signs every other answer (K42). Each input (POST) is appended to $fake/inputs as "<route> <body>". $fake/runner-mode
+// steers it: old, stranger, squatter and mute change /health; hang, close, private, snapshot, event and xctest change
+// /tree and the input routes; /health answers signed protocol 2 in every other mode.
 const http = require("http"), fs = require("fs"), crypto = require("crypto");
 const [, , fake, xctestrun] = process.argv;
 const env = /<key>EnvironmentVariables<\/key>\s*<dict>([\s\S]*?)<\/dict>/.exec(fs.readFileSync(xctestrun, "utf8"))?.[1] ?? "";
@@ -39,12 +40,18 @@ const server = http.createServer((req, res) => {
       return answer(401, { error: "unauthorized", kind: "auth" }, null);
     }
     if (req.url === "/health") return answer(200, { protocol: 2 });
-    fs.appendFileSync(fake + "/trees", "1\n");
+    if (req.method === "POST") fs.appendFileSync(fake + "/inputs", `${req.url} ${body}\n`);
+    else fs.appendFileSync(fake + "/trees", "1\n");
     if (m === "hang") return;
     if (m === "close") return req.socket.destroy();
-    if (m === "private" || m === "snapshot") {
-      return answer(500, { error: m === "private" ? "XCTest has no accessibilityInterface" : "Error kAXErrorIllegalArgument getting snapshot", kind: m });
-    }
+    const errors = {
+      private: "XCTest has no accessibilityInterface",
+      snapshot: "Error kAXErrorIllegalArgument getting snapshot",
+      event: "the iPhone did not take the event",
+      xctest: "Failed to synthesize event",
+    };
+    if (errors[m]) return answer(500, { error: errors[m], kind: m });
+    if (req.method === "POST") return answer(200, {});
     answer(200, JSON.parse(fs.readFileSync(fake + "/tree.json", "utf8")));
   });
 });

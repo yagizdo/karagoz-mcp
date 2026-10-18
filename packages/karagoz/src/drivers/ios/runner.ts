@@ -600,6 +600,35 @@ export async function tree(udid: string): Promise<unknown> {
   throw new KaragozError('CAPTURE_FAILED', error);
 }
 
+// One input on the iPhone, through the runner started first if need be. playMs is how long the gesture or the typing
+// takes, added to the call's budget as the runner adds it to its own (K42).
+export async function input(
+  udid: string,
+  route: '/tap' | '/swipe' | '/text' | '/button',
+  body: Record<string, unknown>,
+  playMs: number,
+): Promise<void> {
+  await ensure(udid);
+  const answer = await request(udid, 'POST', route, JSON.stringify(body), READ_TIMEOUT_MS + playMs, 'HELPER_FAILED');
+  if (!answer.signed) throw stranger(udid);
+  if (answer.status === 200) return;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(answer.body);
+  } catch {
+    // Not the runner's JSON: the status is all there is to say.
+    parsed = undefined;
+  }
+  const error = isRecord(parsed) && typeof parsed.error === 'string' ? parsed.error : `status ${answer.status}`;
+  if (isRecord(parsed) && parsed.kind === 'private') {
+    throw new KaragozError(
+      'HELPER_FAILED',
+      `${error}: this iOS changed an interface karagoz's runner uses; update karagoz`,
+    );
+  }
+  throw new KaragozError('HELPER_FAILED', `karagoz's runner could not play it: ${error}`);
+}
+
 export type RunnerState = 'running' | 'installed' | 'not installed' | null;
 
 // running when the runner answers; else installed or not from devicectl's app list; null for an unpaired phone or when
