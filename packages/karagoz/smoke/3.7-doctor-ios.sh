@@ -112,7 +112,13 @@ for dir in "$tmp/X27.app" "$tmp/X27.app/" "$d"; do
   doc DEVELOPER_DIR="$dir"
   is "ok ($dir)" "$(top ok "$d" 27.0 27A1)"
 done
-ok="$ok, app, ok"
+# A DEVELOPER_DIR that is a symlink to the Developer folder: version.plist sits beside the link's target, not the link.
+ln -s "$d" "$tmp/devlink"
+entries "$tmp/devlink"
+doc DEVELOPER_DIR="$tmp/devlink"
+is "ok (symlink)" "$(top ok "$tmp/devlink" 27.0 27A1)"
+entries "$d"
+ok="$ok, app, ok, symlink"
 
 # d. Xcode 26.
 fake "$tmp/X26.app" 26.2 17C52 "$fw"

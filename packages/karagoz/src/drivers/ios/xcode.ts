@@ -46,9 +46,10 @@ export async function xcode(): Promise<string> {
   return found.dev;
 }
 
-// The selected Xcode's build (ProductBuildVersion), or '' when its version.plist is missing.
+// The selected Xcode's build (ProductBuildVersion), or '' when its version.plist is missing. The path is text, not
+// join(): join drops '..' lexically, while the kernel resolves a DEVELOPER_DIR symlink to Developer first.
 export async function buildVersion(dev: string): Promise<string> {
-  const plist = await readFile(join(dev, '..', 'version.plist'), 'utf8').catch(() => '');
+  const plist = await readFile(`${dev}/../version.plist`, 'utf8').catch(() => '');
   return /<key>ProductBuildVersion<\/key>\s*<string>([^<]*)<\/string>/.exec(plist)?.[1] ?? '';
 }
 
