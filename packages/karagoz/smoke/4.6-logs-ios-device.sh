@@ -6,6 +6,10 @@
 # its one-hour window, APP_NOT_FOUND, not on USB, no pair record, a refused session, a missing service, a refused
 # archive, a cut and a stalled stream, log's own failure and hang, missing tools, malformed output, an unpaired phone,
 # a temporary directory gone after every case (also after SIGTERM mid-archive) and no pair-record value in any output.
+# The real part installs Probe (built for the phone, signed by fixtures/input-ios/sign.sh) on a paired iPhone attached
+# by USB, launches it with a marker argument it logs, reads the marker back with and without --package, chains --since
+# past it, terminates Probe and finds launchd's exit line, checks APP_NOT_FOUND, and uninstalls Probe; else it prints
+# SKIP. Only codes, counts and Probe's id are printed, the iPhone's id masked; the EXIT trap removes Probe.
 # Precondition: macOS. Fake usbmuxd (smoke/fixtures/logs-ios-device/usbmuxd.cjs, TLS with a throwaway openssl
 # certificate), devicectl, adb and simctl come under env -i; a fake log is first on PATH, tar is macOS's own.
 set -e
@@ -15,7 +19,8 @@ npm run --silent build
 
 node_bin=$(command -v node)
 tmp=$(mktemp -d)
-trap 'set +e; [ -f "$tmp/daemon" ] && kill "$(cat "$tmp/daemon")"; pkill -f "sleep 97\\.46"; rm -rf "$tmp"' EXIT
+trap 'set +e; [ -f "$tmp/daemon" ] && kill "$(cat "$tmp/daemon")"; pkill -f "sleep 97\\.46"; [ -n "$probe_phone" ] && unprobe; rm -rf "$tmp"' EXIT
+probe_phone=
 fail() { echo "FAIL: $*"; exit 1; }
 code_of() { "$node_bin" -e '
   const out = require("fs").readFileSync(0, "utf8").trimEnd();
@@ -255,6 +260,78 @@ rm "$fake/hang-mid"
 for secret in FAKE-HOST-ID-4242 FAKE-SYSTEM-BUID-4242 "$(sed -n 5p "$fake/key.pem")" "$(sed -n 5p "$fake/cert.pem")"; do
   ! grep -qF -- "$secret" "$tmp/stdout" "$tmp/stderr" || fail "a pair-record value was printed"
 done
+kill "$(cat "$tmp/daemon")"
+rm "$tmp/daemon"
 fakes="fakes: default, since, chain, lines, package, package lines, package since, no proof, not installed, unpaired, not on USB, no record, session, service, status, cut, stalls (60s), log errors, tools, malformed, SIGTERM, secrets"
 
-echo "ok: $fakes"
+# k. A real paired iPhone on USB. Real tools, HOME and usbmuxd; TMPDIR is this script's, checked empty at the end.
+real() { env -i HOME="$HOME" PATH=/usr/bin:/bin TMPDIR="$tmp/real" ANDROID_HOME="$tmp/sdk" "$node_bin" dist/cli.js "$@" 2>/dev/null; }
+installed() { /usr/bin/xcrun devicectl device info apps --device "$phone" --bundle-id dev.karagoz.probe --json-output - -q 2> /dev/null |
+  /usr/bin/grep -q '"bundleIdentifier"'; }
+unprobe() {
+  /usr/bin/xcrun devicectl device uninstall app --device "$probe_phone" dev.karagoz.probe -q > /dev/null 2>&1
+  ! installed || echo "FAIL: Probe is still on the iPhone"
+}
+# matches <file> <check>: how many records pass the check, a JS expression over the record r; "error <code>" for a failure.
+matches() { "$node_bin" -e '
+  const r = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"));
+  const check = new Function("r", "return " + process.argv[2]);
+  console.log(r.error ? "error " + r.error.code : r.records.filter(check).length);
+' "$1" "$2"; }
+mkdir "$tmp/real"
+phone=$(real devices | "$node_bin" -e '
+  const r = JSON.parse(require("fs").readFileSync(0, "utf8"));
+  console.log(r.devices.find((d) => d.kind === "physical" && d.state === "paired")?.id ?? "");
+')
+signed=
+if [ -n "$phone" ]; then
+  mkdir "$tmp/probe"
+  sh smoke/fixtures/input-ios/build.sh "$tmp/probe" iphoneos > /dev/null || fail "building Probe for the iPhone failed"
+  app=$tmp/probe/Probe.app
+  sh smoke/fixtures/input-ios/sign.sh "$app" "$phone" && signed=1 || [ $? = 2 ] || fail "signing Probe failed"
+fi
+if [ -z "$phone" ]; then
+  echo "SKIP: no paired iPhone"
+  real_ok="real skipped"
+elif [ -z "$signed" ]; then
+  echo "SKIP: no provisioning profile here covers dev.karagoz.probe on the iPhone with an identity in the keychain"
+  real_ok="real skipped (no profile)"
+else
+  probe_phone=$phone
+  mask() { printf '%s' "$1" | sed "s/$phone/XXXXXXXX-XXXXXXXXXXXXXXXX/g"; }
+  out=$(real install "$app" --device "$phone") || fail "real install: $(mask "$out")"
+  marker=karagoz-smoke-$$-$(date +%s)
+  t0=$(date +%s)
+  /usr/bin/xcrun devicectl device process launch --device "$phone" dev.karagoz.probe "$marker-one" -q > /dev/null 2>&1 ||
+    fail "launching Probe with the marker failed"
+  mine="r.message === '$marker-one' && r.level === 'I' && r.tag === 'Probe' && r.subsystem === 'dev.karagoz.probe' && r.category === 'smoke'"
+  # The marker is on the phone's disk once logd flushes it; a read takes about 10 s (K44).
+  i=0
+  until real logs --package dev.karagoz.probe --lines 100000 --device "$phone" > "$tmp/pkg" && [ "$(matches "$tmp/pkg" "$mine")" = 1 ]; do
+    i=$((i + 1)); [ $i -lt 3 ] || fail "real --package: the marker is not there after $i reads ($(matches "$tmp/pkg" true) records)"
+  done
+  real logs --since $((t0 - 2)) --lines 100000 --device "$phone" > "$tmp/all" || true
+  [ "$(matches "$tmp/all" "$mine")" = 1 ] || fail "real --since: the marker is not there ($(matches "$tmp/all" true) records)"
+  at=$("$node_bin" -e '
+    const r = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"));
+    console.log(r.records.find((x) => x.message === process.argv[2]).time);
+  ' "$tmp/pkg" "$marker-one")
+  real logs --package dev.karagoz.probe --since "$at" --lines 100000 --device "$phone" > "$tmp/chain" || true
+  [ "$(matches "$tmp/chain" "r.message === '$marker-one'")" = 0 ] || fail "real chain: the marker came again"
+  t1=$(date +%s)
+  out=$(real terminate dev.karagoz.probe --device "$phone") || fail "real terminate: $(mask "$out")"
+  exited="r.tag === 'launchd' && r.message.startsWith('exited ')"
+  i=0
+  until real logs --package dev.karagoz.probe --since $((t1 - 2)) --device "$phone" > "$tmp/exit" && [ "$(matches "$tmp/exit" "$exited")" -ge 1 ]; do
+    i=$((i + 1)); [ $i -lt 3 ] || fail "real exit line: not there after $i reads ($(matches "$tmp/exit" true) records)"
+  done
+  if out=$(real logs --package dev.karagoz.absent --device "$phone"); then fail "real absent app exited 0"; fi
+  [ "$(printf '%s' "$out" | code_of)" = APP_NOT_FOUND ] || fail "real absent app: $(mask "$out")"
+  out=$(real uninstall dev.karagoz.probe --device "$phone") || fail "real uninstall: $(mask "$out")"
+  ! installed || fail "real uninstall: Probe is still listed"
+  probe_phone=
+  [ -z "$(ls "$tmp/real")" ] || fail "real: left $(ls "$tmp/real") in TMPDIR"
+  real_ok="real Probe: marker with --package and --since, chain, exit line, not installed"
+fi
+
+echo "ok: $real_ok, $fakes"
