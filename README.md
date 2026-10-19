@@ -4,7 +4,7 @@ Device automation for mobile apps. One tool for four targets: Android emulator, 
 
 Website: [karagozmcp.com](https://karagozmcp.com/?utm_source=github&utm_medium=readme)
 
-> **Status: early development.** Twelve commands work on the Android emulator, `devices`, `screenshot`, `ui-tree`, `tap`, `swipe`, `text`, `key`, `install`, `launch`, `terminate`, `uninstall` and `logs` also work on a physical Android device, `doctor` reports the `adb` and Xcode they use, and the MCP server offers them to an AI agent. On an iOS simulator, the same thirteen work. On macOS, `devices` also lists the iPhones connected to the Mac, `screenshot` captures a paired one, and `ui-tree` reads one through karagoz's own runner, which `install-runner` builds and installs; no other command runs on an iPhone yet. Nothing is published to npm. See [Status](#status).
+> **Status: early development.** Twelve commands work on the Android emulator, `devices`, `screenshot`, `ui-tree`, `tap`, `swipe`, `text`, `key`, `install`, `launch`, `terminate`, `uninstall` and `logs` also work on a physical Android device, `doctor` reports the `adb` and Xcode they use, and the MCP server offers them to an AI agent. On an iOS simulator, the same thirteen work. On macOS, `devices` also lists the iPhones connected to the Mac, and every other command but `logs` runs on a paired one; `ui-tree`, `tap`, `swipe`, `text` and `key` go through karagoz's own runner, which `install-runner` builds and installs. Nothing is published to npm. See [Status](#status).
 
 ## Contents
 
@@ -52,10 +52,10 @@ Website: [karagozmcp.com](https://karagozmcp.com/?utm_source=github&utm_medium=r
 | [`swipe`](#swipe) | done | done | done | done |
 | [`text`](#text) | done | done | done | done |
 | [`key`](#key) | done | done | done | done |
-| [`install`](#install-1) | done | done | done | planned |
-| [`launch`](#launch) | done | done | done | planned |
-| [`terminate`](#terminate) | done | done | done | planned |
-| [`uninstall`](#uninstall) | done | done | done | planned |
+| [`install`](#install-1) | done | done | done | done |
+| [`launch`](#launch) | done | done | done | done |
+| [`terminate`](#terminate) | done | done | done | done |
+| [`uninstall`](#uninstall) | done | done | done | done |
 | [`logs`](#logs) | done | done | done | planned |
 | [`doctor`](#doctor) | done | done | done | done |
 | [`install-runner`](#install-runner), [`uninstall-runner`](#uninstall-runner) | | | | done |
@@ -81,7 +81,7 @@ Website: [karagozmcp.com](https://karagozmcp.com/?utm_source=github&utm_medium=r
 - **A running emulator** (`emulator -avd <name>`), or for `devices`, `screenshot`, `ui-tree`, `tap`, `swipe`, `text`, `key`, `install`, `launch`, `terminate`, `uninstall` and `logs`, a phone with USB debugging on, in state `device`, or for `devices`, `screenshot`, `ui-tree`, `tap`, `swipe`, `text`, `key`, `install`, `launch`, `terminate`, `uninstall` and `logs` on macOS, a booted iOS simulator (`open -a Simulator`; on Xcode 27, `xcrun simctl boot <name>`), or for `devices`, `screenshot`, `ui-tree`, `tap`, `swipe`, `text` and `key` on macOS, an iPhone connected to the Mac (for `screenshot`, paired with the Mac and with Developer Mode on: Settings > Privacy & Security > Developer Mode; for `ui-tree`, `tap`, `swipe`, `text` and `key`, also connected by USB cable, Settings > Developer > Enable UI Automation on, and karagoz's runner installed with [`install-runner`](#install-runner)). karagoz installs nothing on a device by itself; `install` installs only the app you pass it, and `install-runner` only karagoz's runner. A phone that adb cannot see is missing from the list: on Windows without the phone maker's USB driver, on a Mac laptop where "Allow accessory to connect" was refused, or in fastboot mode.
 - For `packages/karagoz/smoke/1.5-app-lifecycle.sh`, and for `packages/karagoz/smoke/2.5-app-lifecycle-physical.sh` when a phone is attached: a JDK and Android SDK build-tools with one platform. Both smokes build their own test APK, `dev.karagoz.smoke`, and remove it at the end. See [Development](#development).
 - For `ui-tree` and `tap --text` / `--id`: the screen is on, and no other UiAutomation client is connected (Appium, Maestro, `uiautomator events`). For input to reach apps, the screen is also unlocked: on a lock screen `text` and `key` type into the PIN field, and a wrong PIN counts as a failed unlock attempt; with the screen off, taps are dropped and keys still arrive. Both exit `0`.
-- **Xcode, opened once**, for iOS simulators in `devices`, `screenshot`, `ui-tree`, `tap`, `swipe`, `text`, `key`, `install`, `launch`, `terminate`, `uninstall` and `logs` (macOS only). karagoz runs CoreSimulator's own `simctl` (`/Library/Developer/PrivateFrameworks/CoreSimulator.framework/Versions/A/Resources/bin/simctl`), or `$DEVELOPER_DIR/usr/bin/simctl` when `DEVELOPER_DIR` is set. The Command Line Tools alone have no `simctl`, and no `swiftc` for the helper below. For iPhones in `devices`, Xcode 15 or newer: karagoz runs CoreDevice's own `devicectl` (`/Library/Developer/PrivateFrameworks/CoreDevice.framework/Versions/A/Resources/bin/devicectl`), or `$DEVELOPER_DIR/usr/bin/devicectl` when `DEVELOPER_DIR` is set; the Command Line Tools alone have none. For `screenshot` on an iPhone, Xcode 27 or newer, opened once: Xcode 26's `devicectl` has no `device capture screenshot`. For `ui-tree`, `tap`, `swipe`, `text` and `key` on an iPhone and `install-runner`, an Apple ID signed in to Xcode > Settings > Accounts, whose team Xcode has saved (it does once a project's Signing & Capabilities tab has been opened), or `--team`; tested with Xcode 27.1 and a paid team. A free Apple ID (Personal Team) also signs the runner, untested here: its profile lasts 7 days, so `install-runner` is run again weekly, and the phone asks once to trust the developer (Settings > General > VPN & Device Management, needs internet). On macOS every command that targets a device runs `simctl` and `devicectl` too, to list simulators and iPhones ([Device selection](#device-selection)).
+- **Xcode, opened once**, for iOS simulators in `devices`, `screenshot`, `ui-tree`, `tap`, `swipe`, `text`, `key`, `install`, `launch`, `terminate`, `uninstall` and `logs` (macOS only). karagoz runs CoreSimulator's own `simctl` (`/Library/Developer/PrivateFrameworks/CoreSimulator.framework/Versions/A/Resources/bin/simctl`), or `$DEVELOPER_DIR/usr/bin/simctl` when `DEVELOPER_DIR` is set. The Command Line Tools alone have no `simctl`, and no `swiftc` for the helper below. For iPhones in `devices`, `install`, `launch`, `terminate` and `uninstall`, Xcode 15 or newer: karagoz runs CoreDevice's own `devicectl` (`/Library/Developer/PrivateFrameworks/CoreDevice.framework/Versions/A/Resources/bin/devicectl`), or `$DEVELOPER_DIR/usr/bin/devicectl` when `DEVELOPER_DIR` is set; the Command Line Tools alone have none. For `screenshot` on an iPhone, Xcode 27 or newer, opened once: Xcode 26's `devicectl` has no `device capture screenshot`. For `ui-tree`, `tap`, `swipe`, `text` and `key` on an iPhone and `install-runner`, an Apple ID signed in to Xcode > Settings > Accounts, whose team Xcode has saved (it does once a project's Signing & Capabilities tab has been opened), or `--team`; tested with Xcode 27.1 and a paid team. A free Apple ID (Personal Team) also signs the runner, untested here: its profile lasts 7 days, so `install-runner` is run again weekly, and the phone asks once to trust the developer (Settings > General > VPN & Device Management, needs internet). On macOS every command that targets a device runs `simctl` and `devicectl` too, to list simulators and iPhones ([Device selection](#device-selection)).
 - The first `ui-tree`, `tap`, `swipe`, `text` or `key` on a simulator compiles a small helper with the selected Xcode's `swiftc` (`DEVELOPER_DIR`, else the `xcode-select` one, else `/Applications/Xcode.app`) into `~/Library/Caches/karagoz/`. That takes a few seconds, happens again after an Xcode update, and the helper's folder is safe to delete. The `runner/` folder next to it holds karagoz's iPhone runner: after deleting it, run `install-runner` again, and while a runner started before is still up (up to 10 minutes), calls to that iPhone fail with `DEVICE_NOT_READY`.
 - On a simulator, `tap`, `swipe` and `key` need Xcode 27 or newer: they go to the simulator's own input service, which older Xcodes do not have, and return `NOT_SUPPORTED` there. `text` loads Xcode's XCUIAutomation frameworks and puts the simulator in automation mode for the length of the call, as a UI test does; a UI test running on the same simulator makes it fail with `AUTOMATION_BUSY`. When the call ends, the simulator turns its app accessibility setting off; `text` writes it back if it was on, so later `ui-tree` reads still see apps.
 
@@ -137,7 +137,7 @@ The value is matched against every listed id first, exactly: adb serials (`emula
 | A value is given and nothing matches | `DEVICE_NOT_FOUND`, listing what is connected |
 | No value, nothing connected | `NO_DEVICE` |
 | No value and two or more devices listed (in any state), or a name that matches two entries: the same AVD listed as `emulator-5554` and `127.0.0.1:5555`, or two phones of the same model | `DEVICE_AMBIGUOUS` |
-| The picked device is an iPhone and the command is not `screenshot`, `ui-tree`, `install-runner` or `uninstall-runner`: no other command runs on one yet. This comes before any readiness check. | `NOT_SUPPORTED` |
+| The picked device is an iPhone and the command is `logs`, which does not run on one yet. This comes before any readiness check. | `NOT_SUPPORTED` |
 | `install-runner` or `uninstall-runner` picked a simulator or an Android device. This comes before any readiness check. | `NOT_SUPPORTED` |
 | The picked device is not in state `device` (`offline`, `unauthorized`, ...), a simulator not `Booted` (`Booting`, `Shutting Down`), or an iPhone not `paired` (`unpaired`, `pairingInProgress`; the message says what to do on the phone) | `DEVICE_NOT_READY` |
 
@@ -209,15 +209,15 @@ The set is closed. Any failure without a code of its own is reported as `INTERNA
 | `SIMCTL_TIMEOUT` | simctl did not answer in 30 s; for `install`, 30 s plus 1 s per started MB of the file (31 s for a `.app`). For `logs`, the read did not finish in 30 s; the message says what to pass to read less. | `devices`, inside `errors`; `screenshot`, `install`, `launch`, `terminate`, `uninstall` and `logs` on a simulator; on macOS, every command that targets a device (listing, see [Device selection](#device-selection)) |
 | `SIMCTL_FAILED` | simctl exited with an error, or printed something karagoz does not expect. The message is simctl's stderr, or Node's error when simctl printed nothing; for unexpected output, `unexpected simctl output:` and its first line. For `logs`, `log`'s own error, or output that is not `log show`'s records. | `devices`, inside `errors`; `screenshot`, `install`, `launch`, `terminate`, `uninstall` and `logs` on a simulator; on macOS, every command that targets a device (listing, see [Device selection](#device-selection)) |
 | `DEVICECTL_NOT_FOUND` | No `devicectl` found: Xcode older than 15, or never opened, or only the Command Line Tools, or `DEVELOPER_DIR` points somewhere without one. See [Requirements](#requirements). | `devices`, inside `errors`; on macOS, every command that targets a device (listing, see [Device selection](#device-selection)) |
-| `DEVICECTL_TIMEOUT` | devicectl did not answer in 10 s; 30 s for a command on an iPhone, 120 s for installing the runner. | `devices`, inside `errors`; `screenshot`, `ui-tree`, `install-runner`, `uninstall-runner` on an iPhone; on macOS, every command that targets a device (listing, see [Device selection](#device-selection)) |
-| `DEVICECTL_FAILED` | devicectl exited with an error, or printed something karagoz does not expect. The message is devicectl's stderr, or Node's error when it printed nothing; for unexpected output, `unexpected devicectl output:` and its first line. For `screenshot` on an iPhone, any capture failure not listed under `DEVICE_NOT_READY`, such as no connection to the phone, a developer disk image that could not be mounted, or a second capture of the same phone while one runs. | `devices`, inside `errors`; `screenshot`, `ui-tree`, `install-runner`, `uninstall-runner` on an iPhone; on macOS, every command that targets a device (listing, see [Device selection](#device-selection)) |
+| `DEVICECTL_TIMEOUT` | devicectl did not answer in 10 s; 30 s for a command on an iPhone (for `install`, plus 1 s for every started MB of the file), 120 s for installing the runner. For `launch` on an iPhone the message names an app held by a debugger. | `devices`, inside `errors`; `screenshot`, `ui-tree`, `install`, `launch`, `terminate`, `uninstall`, `install-runner`, `uninstall-runner` on an iPhone; on macOS, every command that targets a device (listing, see [Device selection](#device-selection)) |
+| `DEVICECTL_FAILED` | devicectl exited with an error, or printed something karagoz does not expect. The message is devicectl's stderr, or Node's error when it printed nothing; for unexpected output, `unexpected devicectl output:` and its first line. For `screenshot` on an iPhone, any capture failure not listed under `DEVICE_NOT_READY`, such as no connection to the phone, a developer disk image that could not be mounted, or a second capture of the same phone while one runs. For `launch` and `terminate` on an iPhone, devicectl's description and the phone's reason. | `devices`, inside `errors`; `screenshot`, `ui-tree`, `launch`, `terminate`, `install-runner`, `uninstall-runner` on an iPhone; on macOS, every command that targets a device (listing, see [Device selection](#device-selection)) |
 | `NO_DEVICE` | No device connected and none named. On macOS the message also names booting a simulator. | all but `devices` and `doctor` |
 | `DEVICE_NOT_FOUND` | The named device is not connected. | all but `devices` and `doctor` |
 | `DEVICE_AMBIGUOUS` | More than one device and none named, or a name that matches more than one. | all but `devices` and `doctor` |
-| `DEVICE_NOT_READY` | The device is `offline`, `unauthorized` or similar, or the simulator is `Booting` or `Shutting Down`, or its input service did not answer within 4 s (`tap`, `swipe`, `key` right after a boot), or for `screenshot` an iPhone that is not paired yet, has Developer Mode off, is no longer paired with this Mac, or is locked since it restarted; for `ui-tree`, `tap`, `swipe`, `text` and `key` also an iPhone not connected by USB cable, locked, with a developer it does not trust yet, a runner that did not start within 60 s (look at the phone: the passcode sheet for UI automation, or Enable UI Automation off), something else answering on the runner's port without this Mac's key, or another app holding that port. The message says what to do. | all but `devices` and `doctor` |
+| `DEVICE_NOT_READY` | The device is `offline`, `unauthorized` or similar, or the simulator is `Booting` or `Shutting Down`, or its input service did not answer within 4 s (`tap`, `swipe`, `key` right after a boot), or for `screenshot` an iPhone that is not paired yet, has Developer Mode off, is no longer paired with this Mac, or is locked since it restarted; for `launch`, a locked iPhone; for `ui-tree`, `tap`, `swipe`, `text` and `key` also an iPhone not connected by USB cable, locked, with a developer it does not trust yet, a runner that did not start within 60 s (look at the phone: the passcode sheet for UI automation, or Enable UI Automation off), something else answering on the runner's port without this Mac's key, or another app holding that port. The message says what to do. | all but `devices` and `doctor` |
 | `HELPER_FAILED` | The iOS helper cannot run on this Mac: no Xcode selected, no `swiftc` (the Command Line Tools are not enough), a failed compile, a crash, an Xcode that changed a private interface karagoz uses, or input the simulator did not take (no automation session, typing that failed, no answer within 30 s). For the iPhone runner: no Apple account or team in Xcode, a failed build (xcodebuild's error lines and the log path), xcodebuild failing to start the runner for a reason karagoz does not know (the log path), or an iOS that changed a private interface the runner uses; for input on an iPhone, an event the runner could not play (its message), no answer within 30 s plus the gesture or typing time, or a runner that closed the connection. The message says which and what to do. | `ui-tree`, `tap`, `swipe`, `text`, `key` on a simulator or an iPhone; `install-runner` |
 | `RUNNER_NOT_INSTALLED` | A command on an iPhone found no karagoz runner it can use: none is installed, the installed one was built by another karagoz or Xcode (or its build on this Mac was deleted), its profile does not include this iPhone, its profile expired, or a runner from an older karagoz is still answering (it signs nothing). The message names `karagoz install-runner --device <UDID>` and the MCP tool `install_runner`. | `ui-tree`, `tap`, `swipe`, `text`, `key` on an iPhone |
-| `NOT_SUPPORTED` | The device is an iOS simulator with Xcode 26 or older: `'tap' on iOS simulators needs Xcode 27 or later`. Or the device is an iPhone and the command does not run on one: `device <UDID> is an iPhone; karagoz runs only screenshot, ui-tree, tap, swipe, text, key, install-runner and uninstall-runner on one yet.` Or `install-runner` or `uninstall-runner` on another device: `device <id> is not an iPhone; karagoz's runner runs only on iPhones.` Or `screenshot` on an iPhone with a `devicectl` older than Xcode 27's: `'screenshot' on an iPhone needs Xcode 27 or later: ...`. Argument checks come first. | `tap`, `swipe`, `key`; `screenshot` on an iPhone before Xcode 27; for an iPhone, all but `devices`, `screenshot`, `ui-tree`, `tap`, `swipe`, `text`, `key`, `install-runner`, `uninstall-runner` and `doctor`; `install-runner` and `uninstall-runner` elsewhere |
+| `NOT_SUPPORTED` | The device is an iOS simulator with Xcode 26 or older: `'tap' on iOS simulators needs Xcode 27 or later`. Or the device is an iPhone and the command does not run on one: `device <UDID> is an iPhone; karagoz runs every command but logs on one yet.` Or `install-runner` or `uninstall-runner` on another device: `device <id> is not an iPhone; karagoz's runner runs only on iPhones.` Or `screenshot` on an iPhone with a `devicectl` older than Xcode 27's: `'screenshot' on an iPhone needs Xcode 27 or later: ...`. Argument checks come first. | `tap`, `swipe`, `key`; `screenshot` on an iPhone before Xcode 27; `logs` on an iPhone; `install-runner` and `uninstall-runner` elsewhere |
 | `CAPTURE_FAILED` | The screen could not be read: bad screenshot data, missing display info, a uiautomator failure, on iOS a read the helper could not finish, or on an iPhone a snapshot the runner could not take, no answer within 30 s, a runner that closed the connection, or for a `tap` or `swipe` in landscape no panel size from `devicectl`. The message says which. | `screenshot`, `ui-tree`, `tap --text/--id`; `tap`, `swipe` on an iPhone |
 | `AUTOMATION_BUSY` | Another UiAutomation client holds the device; on a simulator, a UI test holds automation mode. | `ui-tree`, `tap --text/--id`; `text` on a simulator |
 | `WRITE_FAILED` | The screenshot file could not be written. | `screenshot` |
@@ -226,8 +226,8 @@ The set is closed. Any failure without a code of its own is reported as `INTERNA
 | `ELEMENT_AMBIGUOUS` | More than one node matches. | `tap --text/--id` |
 | `ELEMENT_COVERED` | The node's center is under the on-screen keyboard. | `tap --text/--id` |
 | `INPUT_BLOCKED` | The device does not let adb inject input; on Xiaomi, Redmi and POCO, "USB debugging (Security settings)" is off; on vivo and iQOO, "USB simulated click". | `tap`, `swipe`, `text`, `key` |
-| `INSTALL_FAILED` | The device refused the app. `reason` is Android's code, or simctl's `<domain>:<code>` on a simulator. For `install-runner`, devicectl's message. | `install`, `install-runner` |
-| `UNINSTALL_FAILED` | The device refused to remove the app, or it is a simulator's system app (`reason` `SYSTEM_APP`). `reason` is Android's code, or simctl's `<domain>:<code>` on a simulator. For `uninstall-runner`, devicectl's message. | `uninstall`, `uninstall-runner` |
+| `INSTALL_FAILED` | The device refused the app. `reason` is Android's code, or simctl's `<domain>:<code>` on a simulator, or on an iPhone the `<domain>:<code>` of the deepest error devicectl reports. For `install-runner`, devicectl's message. | `install`, `install-runner` |
+| `UNINSTALL_FAILED` | The device refused to remove the app, or it is an iOS system app (`reason` `SYSTEM_APP`). `reason` is Android's code, or simctl's `<domain>:<code>` on a simulator, or on an iPhone the `<domain>:<code>` of the deepest error devicectl reports. For `uninstall-runner`, devicectl's message. | `uninstall`, `uninstall-runner` |
 | `APP_NOT_FOUND` | The package is not installed. | `launch`, `terminate`, `uninstall`, `logs` |
 | `APP_NOT_LAUNCHABLE` | The package is installed but has no activity a launcher can start. | `launch` on Android |
 | `INTERNAL` | A bug in karagoz. Please report it with the message. | all |
@@ -780,11 +780,11 @@ A volume key takes about 0.4 s, `POWER` about 0.9 s. Errors: those of [`tap` on 
 karagoz install <apk> [--device <id>]
 ```
 
-Installs an app from one APK file, or on an iOS simulator from a `.app` or `.ipa`, or replaces the installed version of the same app.
+Installs an app from one APK file, or on an iOS simulator or iPhone from a `.app` or `.ipa`, or replaces the installed version of the same app.
 
 | Option | Default | Meaning |
 | --- | --- | --- |
-| `<apk>` | | Path to an `.apk` file, or for a simulator a `.app` directory or an `.ipa` file. A relative path is resolved against the current directory. |
+| `<apk>` | | Path to an `.apk` file, or for a simulator or an iPhone a `.app` directory or an `.ipa` file. A relative path is resolved against the current directory. |
 | `--device <id>` | see [Device selection](#device-selection) | |
 
 **Output**
@@ -797,7 +797,7 @@ Installs an app from one APK file, or on an iOS simulator from a `.app` or `.ipa
 
 **Errors**
 
-- `INVALID_ARGS`: `'<path>' is not an .apk, .app or .ipa file`, `no file at '<path>'`, `'<path>' is not a file`, or for a `.app` `'<path>' is not a directory`. Checked before any device call. Once the device is picked, and before anything is sent to it: `'<path>' is an Android app; <udid> is an iOS simulator` or `'<path>' is an iOS app; <serial> is an Android device`.
+- `INVALID_ARGS`: `'<path>' is not an .apk, .app or .ipa file`, `no file at '<path>'`, `'<path>' is not a file`, or for a `.app` `'<path>' is not a directory`. Checked before any device call. Once the device is picked, and before anything is sent to it: `'<path>' is an Android app; <udid> is an iOS simulator` (`is an iPhone` on one) or `'<path>' is an iOS app; <serial> is an Android device`.
 - `INSTALL_FAILED`: Android refused the APK. The message is adb's, and `reason` is Android's code, as in the [example above](#output-and-errors). Codes seen on the emulator: `INSTALL_FAILED_VERSION_DOWNGRADE` (a lower `versionCode` than the installed app), `INSTALL_FAILED_UPDATE_INCOMPATIBLE` (signed with another key), `INSTALL_PARSE_FAILED_NOT_APK`, `INSTALL_FAILED_DEPRECATED_SDK_VERSION` (`targetSdkVersion` below 24 on Android 16).
 - On a phone, Android's code can come from the phone's own install check, with text that says someone cancelled when nobody did: `INSTALL_FAILED_VERIFICATION_FAILURE` (Play Protect refused the app), `INSTALL_FAILED_USER_RESTRICTED` with `Install canceled by user` (Xiaomi, Redmi, POCO: "Install via USB" is off, or its prompt ran out), `INSTALL_FAILED_ABORTED` with `User rejected permissions` (vivo, iQOO: the same).
 - A failure without an Android code, such as `Error: device is still booting.`, stays `ADB_FAILED`.
@@ -823,6 +823,19 @@ Takes a `.app` bundle directory or an `.ipa`, built for the simulator, and runs 
 - A build for a physical iPhone is refused: `INSTALL_FAILED` with `reason` `IXUserPresentableErrorDomain:4` and simctl's message, which says the executable has no code for the simulator. Other refusals carry simctl's own `<domain>:<code>`, such as `IXErrorDomain:13` for a bundle without `Info.plist`. A failure without one stays `SIMCTL_FAILED`.
 - A lower `CFBundleVersion` than the installed app is not refused. The app's data is kept across reinstalls.
 - `SIMCTL_TIMEOUT` after 30 s plus 1 s for every started MB of the file; a `.app` gets 31 s. Over an app stopped in a debugger (an Xcode breakpoint or pause) the install waits for the debugger: the call ends in `SIMCTL_TIMEOUT`, and the app is installed once it continues or the debug session ends. Meanwhile other calls to that simulator can time out too.
+
+#### On an iPhone
+
+Takes a `.app` bundle directory or an `.ipa` built and signed for this iPhone, and runs `devicectl device install app`. karagoz does not re-sign the app: build it for the phone in Xcode or Flutter, which sign it with a profile that includes this iPhone.
+
+```json
+{"device":"XXXXXXXX-XXXXXXXXXXXXXXXX","path":"/Users/me/Build/Products/Debug-iphoneos/Probe.app"}
+```
+
+- The phone checks the signature first. A refusal is `INSTALL_FAILED` whose `reason` is the phone's own `<domain>:<code>`, the deepest error devicectl reports, and whose message names the cause: `MIInstallerErrorDomain:13` with `0xe8008014 (The executable contains an invalid signature.)` for a simulator build, `0xe800801c (No code signature found.)` for an unsigned app, and, from public reports (not measured here), `0xe8008015` or `0xe8008012` for a profile that does not include this iPhone. The message then says that karagoz does not re-sign. A bundle without `Info.plist` is refused on the Mac: `com.apple.dt.CoreDeviceError:3000`.
+- A reinstall replaces the version, a lower one too, and keeps the app's data. Installing over the running app stops it. A locked iPhone installs too.
+- A small app took 1.4 to 1.5 s, a 100 MB one 4.1 s the first time (devicectl then sends only what changed).
+- `DEVICECTL_TIMEOUT` after 30 s plus 1 s for every started MB of the file; a `.app` gets 31 s.
 
 ### launch
 
@@ -878,6 +891,18 @@ Starts an app the way tapping its launcher icon does.
 - An app that crashes at start also exits `0`. A running app comes to the front as it is.
 - `APP_NOT_FOUND`: `app 'dev.karagoz.nope' is not installed on <udid>`. Any other refusal is `SIMCTL_FAILED` with simctl's message. `APP_NOT_LAUNCHABLE` does not come from a simulator: a bundle without an executable is refused at install.
 
+#### On an iPhone
+
+Runs `devicectl device process launch`, with `<package>` the bundle id.
+
+```json
+{"device":"XXXXXXXX-XXXXXXXXXXXXXXXX","package":"dev.karagoz.probe","activity":null}
+```
+
+- It returns when the app's process starts (0.3 to 0.5 s), before the app is in front. A running app, also one in the background, comes to the front with the same process; nothing is restarted. `activity` is always `null`.
+- `APP_NOT_FOUND`: `app 'dev.karagoz.nope' is not installed on <UDID>`. A locked iPhone gives `DEVICE_NOT_READY` after about 10 s. Any other refusal is `DEVICECTL_FAILED` with devicectl's description and the phone's reason, such as an app whose developer the phone does not trust yet.
+- An app stopped in a debugger, or started stopped, holds the launch until it continues: karagoz exits with `DEVICECTL_TIMEOUT` after 30 s, and the message names that cause.
+
 ### terminate
 
 ```
@@ -923,6 +948,18 @@ Runs `simctl terminate`. System apps are stopped like any other.
 - Stopping the app in front shows the home screen's first page, not the app that was open before.
 - An app that is installed but not running gives the same output. `APP_NOT_FOUND` when it is not installed: simctl answers both the same way, so karagoz checks first.
 - An app stopped in a debugger (an Xcode breakpoint or pause) does not stop until the debugger lets it run: karagoz exits with `SIMCTL_TIMEOUT` after 30 s, the app stops when it continues or the debug session ends, and other calls to that simulator can time out for up to 5 minutes. An app that runs under the debugger stops at once, and Xcode's session ends.
+
+#### On an iPhone
+
+Looks the app up with `devicectl device info apps`, then kills every process running from its bundle, the app and its extensions, with `devicectl device process terminate --kill`. System apps are stopped like any other.
+
+```json
+{"device":"XXXXXXXX-XXXXXXXXXXXXXXXX","package":"com.apple.Preferences"}
+```
+
+- An app that is installed but not running gives the same output. `APP_NOT_FOUND` when it is not installed.
+- An app stopped in a debugger, or started stopped, stops at once.
+- Took 0.5 to 0.6 s.
 
 ### uninstall
 
@@ -974,6 +1011,18 @@ Runs `simctl uninstall`.
 - A running app is killed first; the home screen then shows the page its icon was on.
 - `APP_NOT_FOUND` when it is not installed: simctl reports success for a missing app, so karagoz checks first. A refusal from simctl is `UNINSTALL_FAILED` with its `<domain>:<code>` as `reason`.
 - As with `install`, an app stopped in a debugger ends the call in `SIMCTL_TIMEOUT` after 30 s; the app is removed once the debugger lets it run or the debug session ends.
+
+#### On an iPhone
+
+Runs `devicectl device uninstall app`.
+
+```json
+{"device":"XXXXXXXX-XXXXXXXXXXXXXXXX","package":"dev.karagoz.probe"}
+```
+
+- A system app, one not installed under the phone's `/private/var/containers/Bundle/Application/` such as Settings, is refused before anything is sent: `UNINSTALL_FAILED`, `reason` `SYSTEM_APP`, `'com.apple.Preferences' is a system app; an iPhone does not remove system apps`.
+- `APP_NOT_FOUND` when it is not installed: devicectl reports success for a missing app, so karagoz checks first. A refusal is `UNINSTALL_FAILED` with the phone's `<domain>:<code>` as `reason`.
+- A running app, also one stopped in a debugger, is killed and removed. A locked iPhone removes too. Took about 0.55 s.
 
 ### logs
 
@@ -1353,7 +1402,7 @@ npm run lint        # oxlint and the Prettier check; npm run format fixes format
 
 The repository is an npm workspace. `packages/karagoz` is the CLI and the MCP server, with its smoke scripts in `packages/karagoz/smoke/`; it is the package that gets published. `packages/ios-runner` is the iPhone runner's Xcode project (one Swift file); it is not published on its own: the build copies it into `packages/karagoz/dist/ios-runner/`, and `install-runner` builds it on the user's Mac. Run the npm scripts from the repository root.
 
-Each step has one smoke script in `packages/karagoz/smoke/`. Each builds first and needs a running emulator, `packages/karagoz/smoke/M-mcp.sh` included, except `packages/karagoz/smoke/0b-version.sh`, `packages/karagoz/smoke/1.7-doctor.sh`, `packages/karagoz/smoke/2.2-screenshot-physical.sh`, `packages/karagoz/smoke/2.3-ui-tree-physical.sh`, `packages/karagoz/smoke/2.4-input-physical.sh`, `packages/karagoz/smoke/2.5-app-lifecycle-physical.sh`, `packages/karagoz/smoke/2.6-logs-physical.sh`, `packages/karagoz/smoke/3.1-devices-ios.sh`, `packages/karagoz/smoke/3.2-screenshot-ios.sh`, `packages/karagoz/smoke/3.3-ui-tree-ios.sh`, `packages/karagoz/smoke/3.4-input-ios.sh`, `packages/karagoz/smoke/3.5-app-lifecycle-ios.sh`, `packages/karagoz/smoke/3.6-logs-ios.sh`, `packages/karagoz/smoke/4.1-devices-ios-device.sh`, `packages/karagoz/smoke/4.2-screenshot-ios-device.sh`, `packages/karagoz/smoke/4.3-ui-tree-ios-device.sh` and `packages/karagoz/smoke/4.4-input-ios-device.sh`: 1.7 uses fake `adb` scripts only and never runs the real adb, 3.1 uses fake `adb` and `simctl` scripts and reads the real simulator list, 3.2 uses fake `adb`, `simctl` and `devicectl` scripts and captures a booted simulator when one runs (else its real step prints `SKIP`), 3.3 adds a fake `swiftc` and reads a booted simulator's tree the same way, 3.4, 3.5 and 3.6 build a test app from `packages/karagoz/smoke/fixtures/input-ios/` and drive, install and remove it as `dev.karagoz.probe` on a booted simulator (3.6 reads its log back), 4.1 uses fake `adb`, `simctl` and `devicectl` scripts and reads the real iPhone list, 4.2 uses the same fakes and captures a paired iPhone when one is attached (else its real step prints `SKIP`), 4.3 adds a fake `xcodebuild`, a fake usbmuxd and a fake runner and reads a paired iPhone's tree when one with karagoz's runner is attached (else its real step prints `SKIP`), 4.4 uses the same fakes and, on such an iPhone, builds the test app for it, signs it with a profile and identity this Mac already has, drives it and removes it (else its real step prints `SKIP`), all ten macOS only (they print `SKIP` elsewhere), and 2.2, 2.3, 2.4, 2.5 and 2.6 need a phone only for their phone step, which they skip when none is listed. The header of each script lists its preconditions:
+Each step has one smoke script in `packages/karagoz/smoke/`. Each builds first and needs a running emulator, `packages/karagoz/smoke/M-mcp.sh` included, except `packages/karagoz/smoke/0b-version.sh`, `packages/karagoz/smoke/1.7-doctor.sh`, `packages/karagoz/smoke/2.2-screenshot-physical.sh`, `packages/karagoz/smoke/2.3-ui-tree-physical.sh`, `packages/karagoz/smoke/2.4-input-physical.sh`, `packages/karagoz/smoke/2.5-app-lifecycle-physical.sh`, `packages/karagoz/smoke/2.6-logs-physical.sh`, `packages/karagoz/smoke/3.1-devices-ios.sh`, `packages/karagoz/smoke/3.2-screenshot-ios.sh`, `packages/karagoz/smoke/3.3-ui-tree-ios.sh`, `packages/karagoz/smoke/3.4-input-ios.sh`, `packages/karagoz/smoke/3.5-app-lifecycle-ios.sh`, `packages/karagoz/smoke/3.6-logs-ios.sh`, `packages/karagoz/smoke/4.1-devices-ios-device.sh`, `packages/karagoz/smoke/4.2-screenshot-ios-device.sh`, `packages/karagoz/smoke/4.3-ui-tree-ios-device.sh`, `packages/karagoz/smoke/4.4-input-ios-device.sh` and `packages/karagoz/smoke/4.5-app-lifecycle-ios-device.sh`: 1.7 uses fake `adb` scripts only and never runs the real adb, 3.1 uses fake `adb` and `simctl` scripts and reads the real simulator list, 3.2 uses fake `adb`, `simctl` and `devicectl` scripts and captures a booted simulator when one runs (else its real step prints `SKIP`), 3.3 adds a fake `swiftc` and reads a booted simulator's tree the same way, 3.4, 3.5 and 3.6 build a test app from `packages/karagoz/smoke/fixtures/input-ios/` and drive, install and remove it as `dev.karagoz.probe` on a booted simulator (3.6 reads its log back), 4.1 uses fake `adb`, `simctl` and `devicectl` scripts and reads the real iPhone list, 4.2 uses the same fakes and captures a paired iPhone when one is attached (else its real step prints `SKIP`), 4.3 adds a fake `xcodebuild`, a fake usbmuxd and a fake runner and reads a paired iPhone's tree when one with karagoz's runner is attached (else its real step prints `SKIP`), 4.4 uses the same fakes and, on such an iPhone, builds the test app for it, signs it with a profile and identity this Mac already has (`packages/karagoz/smoke/fixtures/input-ios/sign.sh`), drives it and removes it (else its real step prints `SKIP`), 4.5 uses fake `adb`, `simctl` and `devicectl` scripts and, on a paired iPhone, signs the test app the same way, installs, launches, terminates and removes it through karagoz and launches and terminates Settings (else its real step prints `SKIP`), all eleven macOS only (they print `SKIP` elsewhere), and 2.2, 2.3, 2.4, 2.5 and 2.6 need a phone only for their phone step, which they skip when none is listed. The header of each script lists its preconditions:
 
 ```sh
 sh packages/karagoz/smoke/1.4-input.sh
