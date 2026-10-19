@@ -2,7 +2,7 @@
 # Step M: `karagoz mcp` serves the 15 commands as MCP tools over stdio. The CLI lists mcp and checks its arguments;
 # the bundle holds no HTTP transport or bearer-auth code and reaches the server chunk only through import(); both
 # supported protocol versions are echoed; tools/list carries the 15 tools, their annotations and flat schemas within
-# 7,000 characters; every result and error is the CLI's JSON line; key HOME, ui_tree and an inline screenshot work on
+# 7,100 characters; every result and error is the CLI's JSON line; key HOME, ui_tree and an inline screenshot work on
 # the emulator; a cancelled call, stdin close, SIGTERM and SIGINT kill the call's adb child at once and the server
 # keeps serving after a cancel; a cancelled logs call kills its streaming simctl; UiAutomation reads on one device take turns and a cancelled waiting read never runs;
 # a cached adb that vanishes is looked up again, stays in use when an earlier candidate reappears, and is the one
@@ -253,7 +253,8 @@ for (const tool of list.tools) {
   const banned = keys(schema).filter((key) => ['oneOf', 'anyOf', 'allOf', 'pattern', 'minimum', 'maximum', 'format', 'default'].includes(key));
   if (banned.length) fail(`list: ${name} schema has ${banned.join(', ')}`);
 }
-if (JSON.stringify(list).length > 7000) fail(`list: ${JSON.stringify(list).length} characters, over 7000`);
+// 7,100 since install names iPhones and that it does not re-sign (7,067 then, K43).
+if (JSON.stringify(list).length > 7100) fail(`list: ${JSON.stringify(list).length} characters, over 7100`);
 
 // Parity. Fails unless the call fails with exactly the envelope want, and the server logged its message.
 async function refuses(tool, args, want) {
