@@ -1,6 +1,7 @@
 import { createConnection, type Socket } from 'node:net';
 import { cancellation } from '../../cancellation.js';
 import { KaragozError } from '../../errors.js';
+import { TRUST } from './devicectl.js';
 import { isRecord } from './devices.js';
 
 // Apple's USB multiplexer daemon; any user may connect (srw-rw-rw-). The phone sees the connection on its loopback, so
@@ -11,7 +12,7 @@ const HEADER = 16;
 // usbmuxd's result codes: 0 connected, 2 no such device, 3 nothing listens on that port.
 const REFUSED = 3;
 
-type Plist = string | number | boolean | Plist[] | { [key: string]: Plist };
+export type Plist = string | number | boolean | Plist[] | { [key: string]: Plist };
 
 // The variable other usbmux clients read; only its UNIX:<path> form is honored, which the smoke's fake daemon uses.
 function daemonPath(): string {
@@ -21,17 +22,20 @@ function daemonPath(): string {
 
 const escape = (text: string) => text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
-function message(fields: Record<string, string | number>): Buffer {
-  const entries = Object.entries({ ClientVersionString: 'karagoz', ProgName: 'karagoz', ...fields })
+// An XML plist of flat string and integer fields: every usbmux and lockdown request karagoz sends is one.
+export function plist(fields: Record<string, string | number>): string {
+  const entries = Object.entries(fields)
     .map(([key, value]) =>
       typeof value === 'number'
         ? `<key>${key}</key><integer>${String(value)}</integer>`
         : `<key>${key}</key><string>${escape(value)}</string>`,
     )
     .join('');
-  const body = Buffer.from(
-    `<?xml version="1.0" encoding="UTF-8"?>\n<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">\n<plist version="1.0"><dict>${entries}</dict></plist>\n`,
-  );
+  return `<?xml version="1.0" encoding="UTF-8"?>\n<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">\n<plist version="1.0"><dict>${entries}</dict></plist>\n`;
+}
+
+function message(fields: Record<string, string | number>): Buffer {
+  const body = Buffer.from(plist({ ClientVersionString: 'karagoz', ProgName: 'karagoz', ...fields }));
   const header = Buffer.alloc(HEADER);
   header.writeUInt32LE(HEADER + body.length, 0);
   header.writeUInt32LE(1, 4);
@@ -49,7 +53,7 @@ const ENTITIES = new Map([
 ]);
 
 // The XML plist usbmuxd answers with: dict, array, string, integer, real, true, false, data (kept as its text).
-function parse(xml: string): Plist {
+export function parse(xml: string): Plist {
   const tokens = [...xml.matchAll(/<[?!][^>]*>|<(\/?)(\w+)[^>]*?(\/?)>|([^<]+)/g)].filter(
     (token) => token[2] !== undefined || (token[4] !== undefined && token[4].trim() !== ''),
   );
@@ -191,18 +195,24 @@ async function attached(timeoutMs: number): Promise<Map<string, number>> {
   }
 }
 
-function notOnUsb(udid: string): KaragozError {
+// reach names what the caller wanted from the phone: its runner, or its log.
+function notOnUsb(udid: string, reach: string): KaragozError {
   return new KaragozError(
     'DEVICE_NOT_READY',
-    `device ${udid} is not ready: it is not connected by USB. karagoz reaches its runner over a USB cable; connect the iPhone with one.`,
+    `device ${udid} is not ready: it is not connected by USB. karagoz reaches ${reach} over a USB cable; connect the iPhone with one.`,
   );
 }
 
 // A raw stream to the phone's loopback port, paused (the caller resumes it once it listens), or 'refused' when nothing
 // listens there yet. Not attached by cable is DEVICE_NOT_READY, never retried.
-export async function connect(udid: string, port: number, timeoutMs: number): Promise<Socket | 'refused'> {
+export async function connect(
+  udid: string,
+  port: number,
+  timeoutMs: number,
+  reach = 'its runner',
+): Promise<Socket | 'refused'> {
   const id = (await attached(timeoutMs)).get(udid.toUpperCase());
-  if (id === undefined) throw notOnUsb(udid);
+  if (id === undefined) throw notOnUsb(udid, reach);
   const socket = await open(timeoutMs);
   try {
     // usbmuxd wants the port in network byte order inside the integer.
@@ -216,7 +226,7 @@ export async function connect(udid: string, port: number, timeoutMs: number): Pr
     if (result === 0) return socket;
     socket.destroy();
     if (result === REFUSED) return 'refused';
-    if (result === 2) throw notOnUsb(udid);
+    if (result === 2) throw notOnUsb(udid, reach);
     throw new KaragozError(
       'HELPER_FAILED',
       `usbmuxd refused the connection (result ${typeof result === 'number' ? result : 'missing'})`,
@@ -225,4 +235,47 @@ export async function connect(udid: string, port: number, timeoutMs: number): Pr
     socket.destroy();
     throw err;
   }
+}
+
+// <data> keeps its base64 text, line breaks included.
+const bytes = (value: unknown) =>
+  typeof value === 'string' ? Buffer.from(value.replace(/\s/g, ''), 'base64') : undefined;
+
+// What a lockdown session needs from this Mac's pairing with the phone, which usbmuxd hands any local user (K44). It
+// stays in memory: no message, log or file ever carries a value of it.
+export async function pairRecord(
+  udid: string,
+  timeoutMs: number,
+): Promise<{ hostId: string; systemBuid: string; cert: Buffer; key: Buffer }> {
+  const socket = await open(timeoutMs);
+  let reply: Plist;
+  try {
+    reply = await exchange(socket, message({ MessageType: 'ReadPairRecord', PairRecordID: udid }), timeoutMs);
+  } finally {
+    socket.destroy();
+  }
+  const data = bytes(isRecord(reply) ? reply.PairRecordData : undefined);
+  if (!data) {
+    throw new KaragozError(
+      'DEVICE_NOT_READY',
+      `device ${udid} is not ready: this Mac holds no pairing record for it. ${TRUST}`,
+    );
+  }
+  const unreadable = new KaragozError(
+    'HELPER_FAILED',
+    `this Mac's pairing record for ${udid} is not in a form karagoz reads`,
+  );
+  let record: Plist;
+  try {
+    record = parse(data.toString('utf8'));
+  } catch {
+    // ponytail: only an XML record is read, which macOS 27 stores; another form gets this message, not its content.
+    throw unreadable;
+  }
+  if (!isRecord(record)) throw unreadable;
+  const { HostID: hostId, SystemBUID: systemBuid } = record;
+  const cert = bytes(record.HostCertificate);
+  const key = bytes(record.HostPrivateKey);
+  if (typeof hostId !== 'string' || typeof systemBuid !== 'string' || !cert || !key) throw unreadable;
+  return { hostId, systemBuid, cert, key };
 }

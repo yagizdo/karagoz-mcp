@@ -156,11 +156,11 @@ function ready(target: Candidate): string {
 }
 
 // Every later adb call passes -s <id> and every simctl call the UDID, so the tools' own defaults never apply (K21).
-// Only a command that passes accept runs on an iPhone; 'iphone-only' (the runner's own commands) refuses everything
-// else. Both refusals are permanent answers, given before any readiness check (K21 4.1, 4.2 and 4.3 notes).
+// Every command runs on an iPhone (K21 4.6 note); 'iphone-only' (the runner's own commands) refuses everything else, a
+// permanent answer given before any readiness check (K21 4.3 note).
 export async function resolveTarget(
   device: string | undefined,
-  accept?: 'iphone' | 'iphone-only',
+  accept?: 'iphone-only',
 ): Promise<{ id: string; platform: 'android' } | { id: string; platform: 'ios'; kind: 'simulator' | 'physical' }> {
   const target = await find(device);
   const physical = target.platform === 'ios' && target.kind === 'physical';
@@ -171,11 +171,5 @@ export async function resolveTarget(
     );
   }
   if (target.platform === 'android') return { id: ready(target), platform: 'android' };
-  if (physical && !accept) {
-    throw new KaragozError(
-      'NOT_SUPPORTED',
-      `device ${target.id} is an iPhone; karagoz runs every command but logs on one yet.`,
-    );
-  }
   return { id: ready(target), platform: 'ios', kind: target.kind };
 }

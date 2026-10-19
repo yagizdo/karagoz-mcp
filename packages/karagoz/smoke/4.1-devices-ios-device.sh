@@ -3,7 +3,8 @@
 # the simulators: id the UDID, kind physical, state devicectl's pairing state, name the model. Simulators, remembered
 # phones that are not attached, nearby unpaired devices and other Apple devices are dropped; Xcode 27's properties
 # dictionary and the older keys read the same; a missing, failing or hung devicectl is one ios errors entry. Targeted
-# commands that do not run on an iPhone find one by UDID or model and refuse it with NOT_SUPPORTED. iPhone rows end in
+# commands find an iPhone by UDID, model, KARAGOZ_DEVICE or as the only device (logs then reaches for usbmuxd, which is
+# not there, so it fails with HELPER_FAILED; unpaired is DEVICE_NOT_READY before that). iPhone rows end in
 # runner: not installed for a paired phone whose app list has no runner, null for one that is not paired (K18, K21 4.1
 # and 4.2 notes, K39, K41).
 # Precondition: macOS with Xcode. No emulator is needed. Step 1 reads the real devicectl list only and compares zero
@@ -149,8 +150,9 @@ is hung "$out" "$(entry DEVICECTL_TIMEOUT "devicectl did not answer within 10s. 
 [ "$elapsed" -ge 9 ] && [ "$elapsed" -lt 16 ] || fail "hung: took ${elapsed}s, expected about 10"
 ! pgrep -f 'sleep 97\.39' >/dev/null || fail "hung: the fake devicectl's sleep outlived karagoz"
 
-# 5. Targets: an iPhone is found by UDID, model or KARAGOZ_DEVICE and refused before any readiness check, unpaired
-# included; a name on an iPhone and a simulator, or no value with several devices, is ambiguous (K21 4.1 note).
+# 5. Targets: an iPhone is found by UDID, model, KARAGOZ_DEVICE or as the only device; an unpaired one is not ready
+# before any device call; a name on an iPhone and a simulator, or no value with several devices, is ambiguous (K21 4.1
+# and 4.6 notes).
 code_of() { "$node_bin" -e '
   const out = require("fs").readFileSync(0, "utf8").trimEnd();
   try { console.log(out.includes("\n") ? "not-one-line" : JSON.parse(out).error.code) } catch { console.log("not-json") }
@@ -164,12 +166,12 @@ refuses() {
   is "$step" "$(printf '%s' "$out" | code_of)" "$code"
 }
 dc "/bin/cat '$tmp/phones27.json'"
-refuses "by UDID" NOT_SUPPORTED logs --device P1
-is "by UDID text" "$(printf '%s' "$out" | field error.message)" \
-  "device P1 is an iPhone; karagoz runs every command but logs on one yet."
-refuses "by model" NOT_SUPPORTED logs --device "iPhone 14 Pro Max"
+refuses "by UDID" HELPER_FAILED logs --device P1
+is "by UDID text" "$(printf '%s' "$out" | field error.message)" "cannot reach usbmuxd at $tmp/no-usbmuxd (ENOENT)"
+refuses "by model" HELPER_FAILED logs --device "iPhone 14 Pro Max"
 kdev=P3
-refuses "unpaired, from KARAGOZ_DEVICE" NOT_SUPPORTED logs
+refuses "unpaired, from KARAGOZ_DEVICE" DEVICE_NOT_READY logs
+case "$(printf '%s' "$out" | field error.message)" in "device P3 is not ready (state: unpaired)."*) ;; *) fail "unpaired text: $out" ;; esac
 kdev=
 refuses "iPhone and simulator name" DEVICE_AMBIGUOUS screenshot --device "iPhone 17 Pro"
 refuses "unknown value" DEVICE_NOT_FOUND screenshot --device nope
@@ -180,7 +182,7 @@ cat > "$tmp/one.json" <<'JSON'
 {"result":{"devices":[{"visibilityClass":"default","properties":{"hardware":{"udid":"P1","reality":"physical","platform":"iOS","marketingName":"iPhone 14 Pro Max"},"connection":{"pairingState":"paired","state":"connected","transportType":"wired"}}}]}}
 JSON
 dc "/bin/cat '$tmp/one.json'"
-refuses "bare, one iPhone" NOT_SUPPORTED logs
+refuses "bare, one iPhone" HELPER_FAILED logs
 adb_lists 'fake-1\tdevice\n'
 refuses "bare, emulator and iPhone" DEVICE_AMBIGUOUS screenshot
 # A missing devicectl means no iPhones: the one emulator is the target.
