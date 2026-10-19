@@ -49,7 +49,7 @@ const TOOLS: Tool[] = [
     name: 'tap',
     title: 'Tap',
     description:
-      'Tap x, y in physical pixels, or the center of the node whose text or contentDesc (iOS: label or value) equals text, or whose resource id (iOS: identifier) matches id. duration makes it a long press.',
+      'Tap x, y in physical pixels, or the center of the node whose text or contentDesc (iOS: label or value) equals text, or whose resource id (iOS: identifier) matches id. duration makes it a long press. An iPhone needs install_runner once.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -71,7 +71,7 @@ const TOOLS: Tool[] = [
   {
     name: 'swipe',
     title: 'Swipe',
-    description: 'Swipe from x1, y1 to x2, y2 in physical pixels.',
+    description: 'Swipe from x1, y1 to x2, y2 in physical pixels. An iPhone needs install_runner once.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -90,7 +90,7 @@ const TOOLS: Tool[] = [
     name: 'text',
     title: 'Type text',
     description:
-      'Type into the focused field. Android: only printable ASCII, newline, tab, ç, Ç and ß. iOS simulator: any text.',
+      'Type into the focused field. Android: only printable ASCII, newline, tab, ç, Ç and ß. iOS: any text; an iPhone needs install_runner once.',
     inputSchema: { type: 'object', properties: { text: { type: 'string' }, device }, required: ['text'] },
     annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
   },
@@ -104,7 +104,7 @@ const TOOLS: Tool[] = [
         key: {
           type: 'string',
           description:
-            'KeyEvent name (HOME, BACK, KEYCODE_7) or code 1-340; "7" is code 7 (KEYCODE_0), not the digit. iOS simulators take HOME, POWER, VOLUME_UP/DOWN and keyboard keys.',
+            'KeyEvent name (HOME, BACK, KEYCODE_7) or code 1-340; "7" is code 7 (KEYCODE_0), not the digit. iOS takes HOME, POWER, VOLUME_UP/DOWN and keyboard keys; an iPhone only keys that type a character, and needs install_runner once.',
         },
         device,
       },

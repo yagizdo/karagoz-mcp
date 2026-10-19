@@ -147,7 +147,8 @@ export async function doctor(): Promise<Report> {
   const compiler = dev ? swiftc(dev) : undefined;
   const devicectl = devicectlPath();
   const [plist, simctlEntry, swiftcEntry, devicectlEntry, helperEntry, signingEntry, runnerEntry] = await Promise.all([
-    dev ? text(join(dev, '..', 'version.plist')) : '',
+    // Text, not join(): join drops '..' lexically, while the kernel resolves a DEVELOPER_DIR symlink to Developer first.
+    dev ? text(`${dev}/../version.plist`) : '',
     simctl(dev),
     compiler ? tool(compiler.bin, compiler.missing) : ({ status: 'missing', message: NO_XCODE } satisfies Entry),
     tool(

@@ -4,7 +4,9 @@
 # refuse a simulator or an Android device before any readiness check. `ui-tree` on a paired iPhone asks the runner over
 # usbmux, starts an installed runner with xcodebuild test-without-building once under a lock when nothing answers,
 # refuses to start one that is not installed, maps its raw snapshot to K34's tree in pixels, and maps every start and
-# read failure to its code (K41).
+# read failure to its code (K41). Each start puts a fresh secret in a 0600 file and a 0600 copy of the build's
+# .xctestrun, never on xcodebuild's command line; every request and answer is signed with it, and an older runner, a
+# stranger, a squatter, a listener that never answers and a taken port each get their own refusal (K42).
 # Precondition: macOS. Fake adb, simctl, devicectl and xcodebuild come through ANDROID_HOME and DEVELOPER_DIR under
 # env -i, Xcode's preferences through a fake HOME, usbmuxd through USBMUXD_SOCKET_ADDRESS (a fake daemon forwarding to
 # a fake runner). The real step reads a paired iPhone's tree when `karagoz devices` lists one whose runner is installed,
@@ -16,7 +18,7 @@ npm run --silent build
 
 node_bin=$(command -v node)
 tmp=$(mktemp -d)
-trap 'set +e; [ -n "$daemon" ] && { kill "$daemon"; wait "$daemon"; } 2>/dev/null; pkill -f "sleep 97\\.43"; pkill -f "$tmp/runner.js"; rm -rf "$tmp"' EXIT
+trap 'set +e; [ -n "$daemon" ] && { kill "$daemon"; wait "$daemon"; } 2>/dev/null; pkill -f "sleep 97\\.43"; pkill -f "runner.cjs $tmp/fake"; rm -rf "$tmp"' EXIT
 daemon=
 fail() { echo "FAIL: $*"; exit 1; }
 is() { [ "$2" = "$3" ] || fail "$1: expected $3, got $2"; }
@@ -28,6 +30,7 @@ message_of() { "$node_bin" -e 'console.log(JSON.parse(require("fs").readFileSync
 
 # Fakes. Scripts call /bin tools by absolute path: env -i leaves no PATH for them. Files under $fake steer them.
 fake="$tmp/fake"
+fixtures=$(pwd)/smoke/fixtures/runner
 dev="$tmp/Xcode.app/Contents/Developer"
 mkdir -p "$tmp/sdk/platform-tools" "$dev/usr/bin" "$tmp/home/Library/Preferences" "$fake"
 cat > "$tmp/sdk/platform-tools/adb" <<FAKE
@@ -64,12 +67,14 @@ case "\$*" in
     if [ -f "$fake/build-error" ]; then /bin/cat "$fake/build-error"; exit 65; fi
     while [ \$# -gt 0 ]; do [ "\$1" = -derivedDataPath ] && dd=\$2; shift; done
     /bin/mkdir -p "\$dd/Build/Products/Debug-iphoneos/KaragozRunner-Runner.app"
-    : > "\$dd/Build/Products/KaragozRunner_iphoneos27.1-arm64.xctestrun"
+    /bin/cp "$fixtures/KaragozRunner.xctestrun" "\$dd/Build/Products/KaragozRunner_iphoneos27.1-arm64.xctestrun"
     ;;
   *test-without-building*)
+    while [ \$# -gt 0 ]; do [ "\$1" = -xctestrun ] && xr=\$2; shift; done
     case "\$(/bin/cat "$fake/start")" in
-      ok) "$node_bin" "$tmp/runner.js" "$fake" & exec /bin/sleep 97.43 ;;
+      ok) "$node_bin" "$fixtures/runner.cjs" "$fake" "\$xr" & exec /bin/sleep 97.43 ;;
       hang) /bin/sleep 97.43 & exec /bin/sleep 97.43 ;;
+      wait) /bin/cat "$fake/start-text"; exec /bin/sleep 97.43 ;;
       *) /bin/cat "$fake/start-text"; exit 65 ;;
     esac
     ;;
@@ -170,67 +175,9 @@ out=$(k uninstall-runner --device P1) || fail "uninstall of nothing exited non-z
 is "uninstall of nothing" "$out" '{"device":"P1","apps":[],"profiles":[]}'
 
 
-# 5. ui-tree. A fake usbmuxd lists the phones in $fake/usb (serial[:connection type]) and forwards Connect to the fake
-# runner's port, or answers 3 (refused) when nothing listens and 2 (no such device) when $fake/gone exists; the fake
-# runner answers /health and /tree as $fake/runner-mode says.
-cat > "$tmp/usbmuxd.js" <<'JS'
-const net = require("net"), fs = require("fs");
-const [, , path, fake] = process.argv;
-const frame = (body) => {
-  const xml = Buffer.from(`<?xml version="1.0" encoding="UTF-8"?>\n<plist version="1.0"><dict>${body}</dict></plist>\n`);
-  const head = Buffer.alloc(16);
-  head.writeUInt32LE(16 + xml.length, 0); head.writeUInt32LE(1, 4); head.writeUInt32LE(8, 8); head.writeUInt32LE(1, 12);
-  return Buffer.concat([head, xml]);
-};
-const result = (n) => frame(`<key>MessageType</key><string>Result</string><key>Number</key><integer>${n}</integer>`);
-net.createServer((socket) => {
-  let buffer = Buffer.alloc(0);
-  socket.on("error", () => {});
-  const data = (chunk) => {
-    buffer = Buffer.concat([buffer, chunk]);
-    if (buffer.length < 16 || buffer.length < buffer.readUInt32LE(0)) return;
-    socket.off("data", data);
-    const xml = buffer.subarray(16, buffer.readUInt32LE(0)).toString();
-    if (xml.includes("<string>ListDevices</string>")) {
-      const entries = fs.readFileSync(fake + "/usb", "utf8").split(/\s+/).filter(Boolean);
-      const list = entries.map((entry, i) => {
-        const [serial, type = "USB"] = entry.split(":");
-        return `<dict><key>DeviceID</key><integer>${i + 7}</integer><key>MessageType</key><string>Attached</string><key>Properties</key><dict><key>ConnectionType</key><string>${type}</string><key>DeviceID</key><integer>${i + 7}</integer><key>SerialNumber</key><string>${serial}</string></dict></dict>`;
-      });
-      return socket.end(frame(`<key>DeviceList</key><array>${list.join("")}</array>`));
-    }
-    const swapped = Number(/<key>PortNumber<\/key><integer>(\d+)<\/integer>/.exec(xml)[1]);
-    fs.appendFileSync(fake + "/connects", `${((swapped & 0xff) << 8) | (swapped >> 8)}\n`);
-    if (fs.existsSync(fake + "/gone")) return socket.end(result(2));
-    let port = 0;
-    try { port = Number(fs.readFileSync(fake + "/runner-port", "utf8")); } catch {}
-    if (!port) return socket.end(result(3));
-    const runner = net.connect(port, "127.0.0.1");
-    runner.on("error", () => socket.end(result(3)));
-    runner.on("connect", () => { socket.write(result(0)); socket.pipe(runner); runner.pipe(socket); });
-  };
-  socket.on("data", data);
-}).listen(path);
-JS
-cat > "$tmp/runner.js" <<'JS'
-const http = require("http"), fs = require("fs");
-const fake = process.argv[2];
-const mode = () => { try { return fs.readFileSync(fake + "/runner-mode", "utf8").trim(); } catch { return "ok"; } };
-const server = http.createServer((req, res) => {
-  if (req.url === "/health") return res.end(JSON.stringify({ protocol: mode() === "protocol2" ? 2 : 1 }));
-  fs.appendFileSync(fake + "/trees", "1\n");
-  const m = mode();
-  if (m === "hang") return;
-  if (m === "close") return req.socket.destroy();
-  if (m === "private" || m === "snapshot") {
-    res.statusCode = 500;
-    return res.end(JSON.stringify({ error: m === "private" ? "XCTest has no accessibilityInterface" : "Error kAXErrorIllegalArgument getting snapshot", kind: m }));
-  }
-  res.end(fs.readFileSync(fake + "/tree.json"));
-});
-server.listen(0, "127.0.0.1", () => fs.writeFileSync(fake + "/runner-port", String(server.address().port)));
-JS
-"$node_bin" "$tmp/usbmuxd.js" "$tmp/usbmuxd" "$fake" &
+# 5. ui-tree, through the fake usbmuxd and the fake runner in smoke/fixtures/runner/ (their headers say what steers
+# them).
+"$node_bin" "$fixtures/usbmuxd.cjs" "$tmp/usbmuxd" "$fake" &
 daemon=$!
 echo P1 > "$fake/usb"
 : > "$fake/connects"
@@ -239,7 +186,7 @@ display() { echo "{\"result\":{\"displays\":[{\"primary\":true,\"pointScale\":3,
 display rot0 1290,2796
 runner_installed() { printf 'echo %s\n' "'{\"result\":{\"apps\":[{\"bundleIdentifier\":\"com.karagozmcp.runner.$1.xctrunner\"}]}}'" > "$fake/apps"; }
 runner_installed abcde12345
-stop_runner() { pkill -f "$tmp/runner.js"; pkill -f "sleep 97\.43"; rm -f "$fake/runner-port"; while pgrep -f "$tmp/runner.js" > /dev/null; do sleep 0.1; done; }
+stop_runner() { pkill -f "runner.cjs $fake"; pkill -f "sleep 97\.43"; rm -f "$fake/runner-port"; while pgrep -f "runner.cjs $fake" > /dev/null; do sleep 0.1; done; }
 starts() { /usr/bin/grep -c test-without-building "$fake/xcodebuild" || true; }
 cat > "$fake/tree.json" <<'JSON'
 {"root":{"type":2,"label":"Probe","frame":[0,0,430,932],"children":[{"type":1,"frame":[0,0,430,932],"children":[
@@ -256,9 +203,25 @@ out=$(k ui-tree --device P1) || fail "cold start exited non-zero: $out"
 is "cold start, mapping" "$out" "$want"
 is "cold start: one xcodebuild" "$(starts)" $((before + 1))
 args=$(/usr/bin/grep test-without-building "$fake/xcodebuild" | /usr/bin/tail -1)
-for wanted in "-destination id=P1" "-only-testing:KaragozRunner/Runner/testServe" "-test-timeouts-enabled NO" "/ABCDE12345/Build/Products/KaragozRunner_iphoneos27.1-arm64.xctestrun"; do
+for wanted in "-destination id=P1" "-only-testing:KaragozRunner/Runner/testServe" "-test-timeouts-enabled NO" "/ABCDE12345/Build/Products/session-P1.xctestrun"; do
   case "$args" in *"$wanted"*) ;; *) fail "start arguments lack '$wanted': $args" ;; esac
 done
+# The secret: 64 hex characters in a 0600 file, added to a 0600 copy of the build's .xctestrun inside
+# EnvironmentVariables only, on no command line; the build's own file is untouched.
+secret=$tmp/home/Library/Caches/karagoz/runner/P1.token
+products=$(dirname "$(/usr/bin/find "$tmp/home/Library/Caches/karagoz/runner" -path '*/ABCDE12345/Build/Products/session-P1.xctestrun')")
+is "secret mode" "$(/usr/bin/stat -f %Lp "$secret")" 600
+/usr/bin/grep -Eqx '[0-9a-f]{64}' "$secret" || fail "the secret is not 64 hex characters"
+is "session copy mode" "$(/usr/bin/stat -f %Lp "$products/session-P1.xctestrun")" 600
+is "secret in EnvironmentVariables" "$("$node_bin" -e '
+  const fs = require("fs"), [copy, secret] = process.argv.slice(1);
+  const env = /<key>EnvironmentVariables<\/key>\s*<dict>([\s\S]*?)<\/dict>/.exec(fs.readFileSync(copy, "utf8"))[1];
+  const text = fs.readFileSync(copy, "utf8");
+  console.log(env.includes(`<key>KARAGOZ_TOKEN</key><string>${fs.readFileSync(secret, "utf8")}</string>`) && text.split("KARAGOZ_TOKEN").length === 2);
+' "$products/session-P1.xctestrun" "$secret")" true
+/usr/bin/cmp -s "$products/KaragozRunner_iphoneos27.1-arm64.xctestrun" "$fixtures/KaragozRunner.xctestrun" || fail "the build's .xctestrun changed"
+! /usr/bin/grep -q -F -f "$secret" "$fake/xcodebuild" || fail "the secret is on xcodebuild's command line"
+[ ! -s "$fake/refused" ] || fail "the runner refused karagoz's own requests: $(/bin/cat "$fake/refused")"
 is "runner port" "$(/usr/bin/sort -u "$fake/connects")" 27753
 out=$(k ui-tree --device P1) || fail "warm read exited non-zero: $out"
 is "warm read: no second start" "$(starts)" $((before + 1))
@@ -278,11 +241,24 @@ cp "$tmp/tree.portrait.json" "$fake/tree.json"
 display rot0 1290,2796
 
 # Read failures from a running runner.
-for m in snapshot:CAPTURE_FAILED:kAXErrorIllegalArgument private:HELPER_FAILED:"update karagoz" close:CAPTURE_FAILED:"closed the connection" protocol2:RUNNER_NOT_INSTALLED:"install-runner --device P1"; do
+for m in snapshot:CAPTURE_FAILED:kAXErrorIllegalArgument private:HELPER_FAILED:"update karagoz" close:CAPTURE_FAILED:"closed the connection" \
+  old:RUNNER_NOT_INSTALLED:"is an older version on iPhone P1. Install it with 'karagoz install-runner --device P1'" \
+  stranger:DEVICE_NOT_READY:"answers on karagoz's port 27753" squatter:DEVICE_NOT_READY:"answers on karagoz's port 27753"; do
   echo "${m%%:*}" > "$fake/runner-mode"
   rest=${m#*:}
   refuses "runner ${m%%:*}" "${rest%%:*}" "${rest#*:}" ui-tree --device P1
 done
+# A 4.3 runner on a Mac that never had a secret is still the older runner; a listener that accepts and never answers
+# is not ours, and no start replaces the secret of a runner that may only be slow.
+echo old > "$fake/runner-mode"
+mv "$secret" "$tmp/secret.saved"
+refuses "older runner, no secret here" RUNNER_NOT_INSTALLED "is an older version" ui-tree --device P1
+mv "$tmp/secret.saved" "$secret"
+echo mute > "$fake/runner-mode"
+before=$(starts)
+refuses "listener never answers" DEVICE_NOT_READY "answers on karagoz's port 27753" ui-tree --device P1
+is "listener never answers: no start" "$(starts)" "$before"
+rm -f "$fake/refused"
 echo hang > "$fake/runner-mode"
 t0=$(date +%s)
 refuses "runner hangs" CAPTURE_FAILED "did not answer within 30 s" ui-tree --device P1
@@ -317,6 +293,8 @@ echo "Error Domain=com.apple.dt.CoreDeviceError Code=3002 (0xe8008012 (This prov
 refuses "profile lacks the phone" RUNNER_NOT_INSTALLED "signed for other phones" ui-tree --device P1
 echo "The application could not be launched because its profile has not been explicitly trusted by the user." > "$fake/start-text"
 refuses "untrusted developer" DEVICE_NOT_READY "VPN & Device Management" ui-tree --device P1
+echo "cannot listen on 127.0.0.1:27753: Address already in use" > "$fake/start-text"
+refuses "port taken" DEVICE_NOT_READY "holds karagoz's port 27753" ui-tree --device P1
 echo "xcodebuild: error: Something unexpected happened." > "$fake/start-text"
 refuses "unknown start failure" HELPER_FAILED "Something unexpected happened. (log: " ui-tree --device P1
 for m in "The provisioning profile has expired.|RUNNER_NOT_INSTALLED|expired provisioning profile" \
@@ -327,6 +305,16 @@ for m in "The provisioning profile has expired.|RUNNER_NOT_INSTALLED|expired pro
   rest=${m#*|}
   refuses "start: ${m%%|*}" "${rest%%|*}" "${rest#*|}" ui-tree --device P1
 done
+# A locked iPhone: xcodebuild says so and waits for it without exiting (measured); the start ends at once.
+echo wait > "$fake/start"
+printf '%s\n' 'Run Destination Preflight: The destination is not ready.' \
+  'Error Domain=com.apple.dt.deviceprep Code=-3 "Unlock iPhone to Continue" UserInfo={NSLocalizedRecoverySuggestion=Xcode cannot launch KaragozRunner on iPhone because the device is locked.}' \
+  'Run Destination Preflight: Waiting for the destination to become ready.' > "$fake/start-text"
+t0=$(date +%s)
+refuses "start on a locked iPhone" DEVICE_NOT_READY "it is locked" ui-tree --device P1
+[ $(($(date +%s) - t0)) -le 10 ] || fail "the locked start took $(($(date +%s) - t0)) s"
+sleep 1
+! pgrep -f "sleep 97\.43" > /dev/null || fail "the waiting xcodebuild was left running"
 echo hang > "$fake/start"
 t0=$(date +%s)
 refuses "start never answers" DEVICE_NOT_READY "did not start within 60 s" ui-tree --device P1
@@ -371,7 +359,7 @@ wait $first || fail "first concurrent call failed: $(/bin/cat "$tmp/first")"
 wait $second || fail "second concurrent call failed: $(/bin/cat "$tmp/second")"
 is "concurrent: one start" "$(starts)" $((before + 1))
 is "concurrent: same tree" "$(/bin/cat "$tmp/second")" "$want"
-refuses "other commands" NOT_SUPPORTED "runs only screenshot, ui-tree, install-runner and uninstall-runner" key HOME --device P1
+refuses "other commands" NOT_SUPPORTED "runs only screenshot, ui-tree, tap, swipe, text, key, install-runner and uninstall-runner" launch com.example --device P1
 stop_runner
 
 # 6. devices: iPhone rows end in runner. doctor: signing from Xcode's teams, iosRunner from the builds section 1 made.
@@ -415,4 +403,4 @@ else
   case "$real_ok" in real*) ;; *) fail "real tree: $real_ok" ;; esac
 fi
 
-echo "ok: $real_ok, teams, build arguments, failures, targets, uninstall, mapping, mini, read failures, not on USB, Wi-Fi only, serial case, gone before Connect, not installed, start failures, start budget (60s), MCP and CLI SIGTERM during a start, lock, devices, doctor, landscape keyboard"
+echo "ok: $real_ok, teams, build arguments, failures, targets, uninstall, mapping, mini, read failures, not on USB, Wi-Fi only, serial case, gone before Connect, not installed, start failures, start budget (60s), MCP and CLI SIGTERM during a start, lock, devices, doctor, landscape keyboard, secret, signatures, older runner, stranger, squatter, mute listener, port taken, locked start"

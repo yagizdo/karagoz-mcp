@@ -255,16 +255,18 @@ function keyboardsTurned(node: IosNode, rotation: number | null, panel: { width:
   return children ? { ...node, children } : node;
 }
 
-// What is on a paired iPhone's screen, from karagoz's runner; scale and rotation from the display screenshot reads.
-// The runner's failure is reported first: it is the one a caller can act on (install-runner).
-export async function readPhoneTree(udid: string): Promise<{ rotation: number | null; root: IosNode }> {
+// What is on a paired iPhone's screen, from karagoz's runner; scale and rotation from the display screenshot reads,
+// which an element tap reuses. The runner's failure is reported first: it is the one a caller can act on (install-runner).
+export async function readPhoneTree(
+  udid: string,
+): Promise<{ rotation: number | null; root: IosNode; display: Awaited<ReturnType<typeof displayOf>> }> {
   const [raw, shown] = await Promise.allSettled([tree(udid), displayOf(udid)]);
   if (raw.status === 'rejected') throw raw.reason;
   if (shown.status === 'rejected') throw shown.reason;
   const { scale, rotation, panel } = shown.value;
   try {
     const root = phoneNode(raw.value, panel ? panelScale(panel.width, panel.height, scale) : scale);
-    return { rotation, root: panel ? keyboardsTurned(root, rotation, panel) : root };
+    return { rotation, root: panel ? keyboardsTurned(root, rotation, panel) : root, display: shown.value };
   } catch (err) {
     if (!(err instanceof Error)) throw err;
     throw new KaragozError('CAPTURE_FAILED', `cannot parse the runner's tree: ${err.message}`);

@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>KaragozRunner</key>
+	<dict>
+		<key>EnvironmentVariables</key>
+		<dict>
+			<key>TERM</key>
+			<string>dumb</string>
+		</dict>
+		<key>TestingEnvironmentVariables</key>
+		<dict>
+			<key>XCODE_SCHEME_NAME</key>
+			<string>KaragozRunner</string>
+		</dict>
+		<key>UITargetAppEnvironmentVariables</key>
+		<dict>
+			<key>XCODE_SCHEME_NAME</key>
+			<string>KaragozRunner</string>
+		</dict>
+	</dict>
+	<key>__xctestrun_metadata__</key>
+	<dict>
+		<key>FormatVersion</key>
+		<integer>1</integer>
+	</dict>
+</dict>
+</plist>

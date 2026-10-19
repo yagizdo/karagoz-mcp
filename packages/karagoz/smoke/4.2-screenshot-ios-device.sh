@@ -251,8 +251,8 @@ devdir=$tmp/dev
 leftover "a failed capture"
 
 # 8. Every other command still refuses an iPhone.
-other="device P1 is an iPhone; karagoz runs only screenshot, ui-tree, install-runner and uninstall-runner on one yet."
-refuses "key" NOT_SUPPORTED "$other" key HOME --device P1
+other="device P1 is an iPhone; karagoz runs only screenshot, ui-tree, tap, swipe, text, key, install-runner and uninstall-runner on one yet."
+refuses "logs" NOT_SUPPORTED "$other" logs --device P1
 refuses "launch" NOT_SUPPORTED "$other" launch com.apple.Preferences --device P1
 
 echo "ok: $ok, fixtures, readiness, failures, old devicectl, hung (${took}s), others"

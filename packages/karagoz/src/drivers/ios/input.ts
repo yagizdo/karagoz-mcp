@@ -2,9 +2,11 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { cancellation } from '../../cancellation.js';
 import { KaragozError } from '../../errors.js';
-import { rotation } from './devicectl.js';
+import { displayOf, rotation } from './devicectl.js';
+import { input } from './runner.js';
+import { panelScale } from './screenshot.js';
 import { simctl } from './simctl.js';
-import { helper, readTree, RUN_TIMEOUT_MS, type IosNode } from './ui-tree.js';
+import { helper, readPhoneTree, readTree, RUN_TIMEOUT_MS, type IosNode } from './ui-tree.js';
 import { CACHE_HINT, xcode } from './xcode.js';
 
 const run = promisify(execFile);
@@ -75,6 +77,37 @@ const KEYBOARD = new Map<string, number>([
   ['META_RIGHT', 231],
 ]);
 
+// An iPhone's runner presses the hardware buttons, and types the keys that make a character through its text path, with
+// XCTest's own characters for delete and escape (K42).
+const PHONE_BUTTONS = new Map([
+  ['HOME', 'home'],
+  ['POWER', 'lock'],
+  ['VOLUME_UP', 'volumeUp'],
+  ['VOLUME_DOWN', 'volumeDown'],
+]);
+// ponytail: keys that type no character (arrows, F-keys, page and line keys, forward delete, modifiers) have no iPhone
+// route: XCTest's typeKey goes through the hardware-keyboard path and was never shown to work on a phone (K42).
+const PHONE_CHARACTERS = new Map<string, string>([
+  ...Array.from('ABCDEFGHIJKLMNOPQRSTUVWXYZ', (name): [string, string] => [name, name.toLowerCase()]),
+  ...Array.from('0123456789', (name): [string, string] => [name, name]),
+  ['SPACE', ' '],
+  ['ENTER', '\n'],
+  ['TAB', '\t'],
+  ['DEL', '\u007f'],
+  ['ESCAPE', '\u001b'],
+  ['MINUS', '-'],
+  ['EQUALS', '='],
+  ['LEFT_BRACKET', '['],
+  ['RIGHT_BRACKET', ']'],
+  ['BACKSLASH', '\\'],
+  ['SEMICOLON', ';'],
+  ['APOSTROPHE', "'"],
+  ['GRAVE', '`'],
+  ['COMMA', ','],
+  ['PERIOD', '.'],
+  ['SLASH', '/'],
+]);
+
 // The portrait panel in the tree's pixels, the size dtuhidd's ratios divide (K35).
 async function panelSide(udid: string, side: 'WIDTH' | 'HEIGHT'): Promise<number> {
   const text = (await simctl(['getenv', udid, `SIMULATOR_MAINSCREEN_${side}`])).trim();
@@ -88,8 +121,19 @@ async function panelSide(udid: string, side: 'WIDTH' | 'HEIGHT'): Promise<number
   return value;
 }
 
+// K35's table: x, y in the interface orientation to the unrotated portrait panel width x height, all in one unit. A
+// null rotation (Xcode 26, or devicectl failing) counts as portrait.
+function portrait(turn: number | null, width: number, height: number, x: number, y: number): [number, number] {
+  return turn === 90
+    ? [width - y, x]
+    : turn === 180
+      ? [width - x, height - y]
+      : turn === 270
+        ? [y, height - x]
+        : [x, y];
+}
+
 // x, y are the tree's pixels in the interface orientation; dtuhidd takes 0-1 ratios of the unrotated portrait panel.
-// A null rotation (Xcode 26, or devicectl failing) counts as portrait (K35).
 async function panel(udid: string, rotated?: number | null) {
   const [turn, width, height] = await Promise.all([
     rotated === undefined ? rotation(udid) : rotated,
@@ -97,10 +141,52 @@ async function panel(udid: string, rotated?: number | null) {
     panelSide(udid, 'HEIGHT'),
   ]);
   return (x: number, y: number) => {
-    const [px, py] =
-      turn === 90 ? [width - y, x] : turn === 180 ? [width - x, height - y] : turn === 270 ? [y, height - x] : [x, y];
+    const [px, py] = portrait(turn, width, height, x, y);
     return [px / width, py / height].map((ratio) => String(Math.round(ratio * 1e6) / 1e6));
   };
+}
+
+type Display = Awaited<ReturnType<typeof displayOf>>;
+
+// UIInterfaceOrientation's raw values for a rotation: K34's rotation turns the way Android's does, so 90 is UIKit's
+// landscape right (K42).
+const ORIENTATION = new Map([
+  [0, 1],
+  [90, 4],
+  [180, 2],
+  [270, 3],
+]);
+
+// An iPhone's runner takes the portrait panel's points and the interface orientation: the tree's pixels divided by the
+// scale the tree used (the mini rule), turned by K35's table over the panel in points (K42).
+function points({ scale, rotation: turn, panel: native }: Display) {
+  const s = native ? panelScale(native.width, native.height, scale) : scale;
+  if (!native && turn !== null && turn !== 0) {
+    throw new KaragozError('CAPTURE_FAILED', "cannot read the panel size from 'devicectl device info displays'");
+  }
+  const [width, height] = [(native?.width ?? 0) / s, (native?.height ?? 0) / s];
+  const round = (value: number) => Math.round(value * 1000) / 1000;
+  return {
+    orientation: ORIENTATION.get(turn ?? 0) ?? 1,
+    at: (x: number, y: number) => {
+      const [px, py] = portrait(turn, width, height, x / s, y / s);
+      return { x: round(px), y: round(py) };
+    },
+  };
+}
+
+// display comes from a tree read the caller already made; a plain tap reads it itself.
+export async function tapPhone(udid: string, x: number, y: number, duration: number | undefined, display?: Display) {
+  const { at, orientation } = points(display ?? (await displayOf(udid)));
+  await input(udid, '/tap', { ...at(x, y), ...(duration !== undefined && { duration }), orientation }, duration ?? 0);
+  return duration === undefined ? { device: udid, x, y } : { device: udid, x, y, duration };
+}
+
+export async function swipePhone(udid: string, x1: number, y1: number, x2: number, y2: number, duration = SWIPE_MS) {
+  const { at, orientation } = points(await displayOf(udid));
+  const [from, to] = [at(x1, y1), at(x2, y2)];
+  await input(udid, '/swipe', { x1: from.x, y1: from.y, x2: to.x, y2: to.y, duration, orientation }, duration);
+  return { device: udid, x1, y1, x2, y2, duration };
 }
 
 // One helper run per command; exit codes and stderr per the contract at the top of ax-helper.swift. The compile runs
@@ -178,17 +264,37 @@ function collect(node: IosNode, selector: Selector, found: IosNode[]): IosNode[]
   return found;
 }
 
+const inside = (node: IosNode, target: IosNode): boolean =>
+  node === target || (node.children ?? []).some((child) => inside(child, target));
+
+// The software keyboard is in an iPhone's tree (K41): a center it covers would land on a key, unless the target is one
+// of its own keys (K26's rule, K42).
+function underKeyboard(node: IosNode, target: IosNode, x: number, y: number): boolean {
+  if (node.role === 'Keyboard') {
+    const [l = 0, t = 0, r = 0, b = 0] = node.bounds;
+    return x >= l && x < r && y >= t && y < b && !inside(node, target);
+  }
+  return (node.children ?? []).some((child) => underKeyboard(child, target, x, y));
+}
+
 // Only "no match" reads again; a failed read or an ambiguous match ends it. --timeout waits for the element to appear
 // and never repeats the tap (K26, K11 note).
-// ponytail: no keyboard-cover check, so ELEMENT_COVERED stays Android-only: this simulator never showed a software
-// keyboard (its hardware keyboard state), so where its keys sit was never measured (K35).
-export async function tapElement(udid: string, selector: Selector, duration: number | undefined, timeout: number) {
+// ponytail: the keyboard-cover check runs on an iPhone only: this simulator never showed a software keyboard (its
+// hardware keyboard state), so where its keys sit was never measured (K35).
+export async function tapElement(
+  udid: string,
+  selector: Selector,
+  duration: number | undefined,
+  timeout: number,
+  kind: 'simulator' | 'physical',
+) {
   const what = selector.kind === 'text' ? `label or value '${selector.label}'` : `identifier '${selector.id}'`;
   const start = performance.now();
   for (let reads = 1; ; reads++) {
     // Without it a cancelled wait keeps reading for its whole timeout (K31).
     cancellation.getStore()?.throwIfAborted();
-    const { rotation: rotated, root } = await readTree(udid);
+    const read = kind === 'physical' ? await readPhoneTree(udid) : { ...(await readTree(udid)), display: undefined };
+    const { rotation: rotated, root } = read;
     const found = collect(root, selector, []);
     if (found.length > 1) {
       const shown = found.slice(0, 5).map((node) => `${node.role} [${node.bounds.join(',')}]`);
@@ -201,9 +307,19 @@ export async function tapElement(udid: string, selector: Selector, duration: num
     const [match] = found;
     if (match) {
       const [l = 0, t = 0, r = 0, b = 0] = match.bounds;
+      const [x, y] = [(l + r) / 2, (t + b) / 2];
+      if (read.display && underKeyboard(root, match, x, y)) {
+        throw new KaragozError(
+          'ELEMENT_COVERED',
+          `the software keyboard covers the center of the node with ${what} at (${x}, ${y}); hide the keyboard first, then tap again`,
+        );
+      }
       const element = { ...match };
       delete element.children;
-      return { ...(await tap(udid, (l + r) / 2, (t + b) / 2, duration, rotated)), element };
+      const tapped = read.display
+        ? await tapPhone(udid, x, y, duration, read.display)
+        : await tap(udid, x, y, duration, rotated);
+      return { ...tapped, element };
     }
     const elapsed = performance.now() - start;
     if (elapsed >= timeout) {
@@ -234,8 +350,8 @@ const restore = (udid: string) =>
 // wait in arrival order (K35). Another process typing at the same time still races.
 const turns = new Map<string, Promise<void>>();
 
-// Typed into whatever has focus; with none, nothing is typed and the call still succeeds, as on Android (K35).
-export async function text(udid: string, value: string) {
+// Any Unicode types on iOS but control characters other than newline and tab (K35); where names the target.
+function typable(value: string, where: string) {
   const control = new Set(Array.from(value).filter((char) => /\p{Cc}/u.test(char) && char !== '\n' && char !== '\t'));
   if (control.size) {
     const named = Array.from(
@@ -244,9 +360,14 @@ export async function text(udid: string, value: string) {
     );
     throw new KaragozError(
       'TEXT_UNSUPPORTED',
-      `cannot type ${named.join(', ')} on an iOS simulator: control characters other than newline and tab; nothing was typed`,
+      `cannot type ${named.join(', ')} on ${where}: control characters other than newline and tab; nothing was typed`,
     );
   }
+}
+
+// Typed into whatever has focus; with none, nothing is typed and the call still succeeds, as on Android (K35).
+export async function text(udid: string, value: string) {
+  typable(value, 'an iOS simulator');
   const signal = cancellation.getStore();
   const turn = (turns.get(udid) ?? Promise.resolve()).then(() => {
     signal?.throwIfAborted();
@@ -275,6 +396,33 @@ async function typeText(udid: string, value: string) {
   }
   if (wasOn) await restore(udid);
   return { device: udid, text: value };
+}
+
+// The runner types into whatever has focus; with none, nothing is typed and the call still succeeds (K35, K42).
+// ponytail: no length check here; the runner refuses a request over 1 MiB, and the error does not say that was why.
+// Check the length here when a caller sends that much.
+export async function textPhone(udid: string, value: string) {
+  typable(value, 'an iPhone');
+  const typing = Math.ceil((Array.from(value).length / TYPE_SPEED) * 1000);
+  await input(udid, '/text', { text: value, speed: TYPE_SPEED }, typing);
+  return { device: udid, text: value };
+}
+
+// The name check runs before the runner starts: a key an iPhone lacks is wrong for this target and stays wrong (K42).
+export async function keyPhone(udid: string, name: string, code: number) {
+  const button = PHONE_BUTTONS.get(name);
+  const character = PHONE_CHARACTERS.get(name);
+  if (button === undefined && character === undefined) {
+    const hint = name === 'BACK' ? "; tap the app's back button or swipe from the left edge" : '';
+    throw new KaragozError(
+      'INVALID_ARGS',
+      `'${name}' has no iPhone key; an iPhone takes HOME, POWER, VOLUME_UP, VOLUME_DOWN and keys that type a character (letters, digits, SPACE, ENTER, TAB, DEL, ESCAPE, punctuation)${hint}`,
+    );
+  }
+  await (button === undefined
+    ? input(udid, '/text', { text: character, speed: TYPE_SPEED }, 0)
+    : input(udid, '/button', { button }, 0));
+  return { device: udid, key: `KEYCODE_${name}`, code };
 }
 
 // The name check runs before anything compiles: an iOS-less key is wrong for this target and stays wrong (K35).
