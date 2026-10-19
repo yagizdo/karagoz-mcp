@@ -39,13 +39,63 @@ const PHONE_STATES: [string[], string][] = [
     ['developer mode is turned off', 'developer mode is disabled', 'developer mode is no longer enabled'],
     'Developer Mode is off. Turn it on in Settings > Privacy & Security > Developer Mode, then restart the iPhone.',
   ],
-  [['device is locked', 'still locked'], 'it is locked. Unlock the iPhone and try again.'],
+  // A launch on a locked iPhone says "…because the device was not, or could not be, unlocked." (K43).
+  [['device is locked', 'still locked', 'could not be, unlocked'], 'it is locked. Unlock the iPhone and try again.'],
 ];
 
-// Every devicectl call; udid names the iPhone a device verb targets, whose failures may be one of PHONE_STATES. No
-// --timeout (devicectl refuses values under 5 s) and no --omit-deprecated-fields-in-json (devicectl before 642 rejects
-// it) (K39).
-async function devicectl(args: string[], timeout: number, udid?: string): Promise<string> {
+// One error of devicectl's JSON on stdout, outermost first, each with the sentence it carries.
+type Link = { domain: string; code: number; description: string | undefined; sentence: string | undefined };
+
+const text = (value: unknown) => (isRecord(value) && typeof value.string === 'string' ? value.string : undefined);
+
+// The error chain of a failed call run with --json-output -: the phone's own cause sits a few links down (K43).
+function links(stdout: string): Link[] {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(stdout);
+  } catch {
+    // Not devicectl's JSON (an argument error writes none): no chain.
+    return [];
+  }
+  const chain: Link[] = [];
+  let error = isRecord(parsed) ? parsed.error : undefined;
+  while (isRecord(error) && typeof error.domain === 'string' && typeof error.code === 'number') {
+    const info = isRecord(error.userInfo) ? error.userInfo : {};
+    const description = text(info.NSLocalizedDescription);
+    const sentence = text(info.NSLocalizedFailureReason) ?? text(info.NSLocalizedRecoverySuggestion) ?? description;
+    chain.push({ domain: error.domain, code: error.code, description, sentence });
+    error = isRecord(info.NSUnderlyingError) ? info.NSUnderlyingError.error : undefined;
+  }
+  return chain;
+}
+
+// The outermost description, then the deepest sentence: "Failed to install the app on the device." and why.
+function said(chain: Link[]): string {
+  const deepest = chain.findLast((link) => link.sentence !== undefined)?.sentence;
+  const parts = [chain[0]?.description, deepest].filter((part): part is string => part !== undefined);
+  return [...new Set(parts)].join(' ').slice(0, 300);
+}
+
+// <domain>:<code> of the deepest link, the phone's own cause; the outermost is CoreDeviceError 3002 for every refused
+// install (K43).
+const at = (chain: Link[]) => {
+  const deepest = chain.at(-1);
+  return deepest && `${deepest.domain}:${deepest.code}`;
+};
+
+const has = (chain: Link[], domain: string, code: number) =>
+  chain.some((link) => link.domain === domain && link.code === code);
+
+// Every devicectl call; udid names the iPhone a device verb targets, whose failures may be one of PHONE_STATES. With
+// failed, a failure that left devicectl's JSON error chain on stdout goes to it: it returns the error to throw, or null
+// when the failure counts as done. No --timeout (devicectl refuses values under 5 s) and no
+// --omit-deprecated-fields-in-json (devicectl before 642 rejects it) (K39).
+async function devicectl(
+  args: string[],
+  timeout: number,
+  udid?: string,
+  failed?: (chain: Link[]) => KaragozError | null,
+): Promise<string> {
   const bin = devicectlPath();
   const signal = cancellation.getStore();
   // An aborted signal still spawns devicectl and kills it a tick later.
@@ -74,6 +124,12 @@ async function devicectl(args: string[], timeout: number, udid?: string): Promis
     const lower = stderr.toLowerCase();
     const state = udid === undefined ? undefined : PHONE_STATES.find(([texts]) => texts.some((t) => lower.includes(t)));
     if (state) throw new KaragozError('DEVICE_NOT_READY', `device ${udid} is not ready: ${state[1]}`);
+    const chain = failed && 'stdout' in err && typeof err.stdout === 'string' ? links(err.stdout) : [];
+    if (failed && chain.length) {
+      const error = failed(chain);
+      if (error) throw error;
+      return '';
+    }
     throw new KaragozError('DEVICECTL_FAILED', (stderr || err.message).slice(0, 300));
   }
 }
@@ -270,4 +326,97 @@ export async function profiles(udid: string): Promise<{ uuid: string; appId: str
 
 export async function removeProfile(udid: string, uuid: string): Promise<void> {
   await devicectl(['device', 'profile', 'remove', '--device', udid, uuid, '-q'], PHONE_TIMEOUT_MS, udid);
+}
+
+const RESIGN =
+  ' karagoz installs an app as it was built and does not re-sign it: build it for this iPhone (Xcode or Flutter sign it with a profile that includes this iPhone).';
+
+// A user's .app or .ipa as it was built (K43). A refusal's reason is the phone's own cause; the code-signing check
+// (MIInstallerErrorDomain 13, ApplicationVerificationFailed) also refuses a simulator build and an unsigned app.
+export async function installOn(udid: string, path: string, timeout: number): Promise<void> {
+  await devicectl(
+    ['device', 'install', 'app', '--device', udid, path, '--json-output', '-', '-q'],
+    timeout,
+    udid,
+    (chain) => {
+      const hint = has(chain, 'MIInstallerErrorDomain', 13) ? RESIGN : '';
+      return new KaragozError('INSTALL_FAILED', said(chain) + hint, at(chain));
+    },
+  );
+}
+
+// Returns at spawn, before the app is in front; a running app comes to the front with the same pid (K43).
+export async function launchOn(udid: string, id: string): Promise<void> {
+  const stdout = await devicectl(
+    ['device', 'process', 'launch', '--device', udid, id, '--json-output', '-', '-q'],
+    PHONE_TIMEOUT_MS,
+    udid,
+    (chain) =>
+      // LaunchServices' "no such app" under CoreDeviceError 10002 (K43).
+      has(chain, 'NSOSStatusErrorDomain', -10814)
+        ? new KaragozError('APP_NOT_FOUND', `app '${id}' is not installed on ${udid}`)
+        : new KaragozError('DEVICECTL_FAILED', said(chain)),
+  );
+  const process = json(stdout).process;
+  if (!isRecord(process) || typeof process.processIdentifier !== 'number') {
+    throw new KaragozError(
+      'DEVICECTL_FAILED',
+      `unexpected devicectl output: ${(stdout.split('\n')[0] ?? '').slice(0, 300)}`,
+    );
+  }
+}
+
+// The installed app's bundle URL, system apps included; undefined when it is not installed.
+export async function appOn(udid: string, id: string): Promise<string | undefined> {
+  const result = json(
+    await devicectl(
+      ['device', 'info', 'apps', '--device', udid, '--bundle-id', id, '--include-all-apps', '--json-output', '-', '-q'],
+      PHONE_TIMEOUT_MS,
+      udid,
+    ),
+  );
+  const list = Array.isArray(result.apps) ? result.apps : [];
+  const app: unknown = list.find((entry: unknown) => isRecord(entry) && entry.bundleIdentifier === id);
+  return isRecord(app) && typeof app.url === 'string' ? app.url : undefined;
+}
+
+// Every process running from the app's bundle, its extensions included. Matched by path, never by executable name:
+// every Flutter app's executable is Runner (K43).
+export async function pidsUnder(udid: string, url: string): Promise<number[]> {
+  const result = json(
+    await devicectl(
+      ['device', 'info', 'processes', '--device', udid, '--json-output', '-', '-q'],
+      PHONE_TIMEOUT_MS,
+      udid,
+    ),
+  );
+  const list = Array.isArray(result.runningProcesses) ? result.runningProcesses : [];
+  const bundle = url.endsWith('/') ? url : `${url}/`;
+  return list.flatMap((entry: unknown) =>
+    isRecord(entry) &&
+    typeof entry.executable === 'string' &&
+    entry.executable.startsWith(bundle) &&
+    typeof entry.processIdentifier === 'number'
+      ? [entry.processIdentifier]
+      : [],
+  );
+}
+
+// SIGKILL, as Android's force-stop; a process that is already gone (NSPOSIXErrorDomain 3) counts as stopped.
+export async function kill(udid: string, pid: number): Promise<void> {
+  await devicectl(
+    ['device', 'process', 'terminate', '--device', udid, '--pid', String(pid), '--kill', '--json-output', '-', '-q'],
+    PHONE_TIMEOUT_MS,
+    udid,
+    (chain) => (has(chain, 'NSPOSIXErrorDomain', 3) ? null : new KaragozError('DEVICECTL_FAILED', said(chain))),
+  );
+}
+
+export async function uninstallFrom(udid: string, id: string): Promise<void> {
+  await devicectl(
+    ['device', 'uninstall', 'app', '--device', udid, id, '--json-output', '-', '-q'],
+    PHONE_TIMEOUT_MS,
+    udid,
+    (chain) => new KaragozError('UNINSTALL_FAILED', said(chain), at(chain)),
+  );
 }
