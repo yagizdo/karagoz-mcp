@@ -281,7 +281,8 @@ elif [ -z "$signed" ]; then
   real_ok="real skipped (no profile)"
 else
   probe_phone=$phone
-  is_out() { [ "$1" = "$2" ] || fail "$3: got $1, expected $2"; }
+  mask() { printf '%s' "$1" | sed "s/$phone/XXXXXXXX-XXXXXXXXXXXXXXXX/g"; }
+  is_out() { [ "$1" = "$2" ] || fail "$3: got $(mask "$1"), expected $(mask "$2")"; }
   is_out "$(real install "$app" --device "$phone")" "{\"device\":\"$phone\",\"path\":\"$app\"}" "real install"
   installed || fail "real install: Probe is not listed"
   launched="{\"device\":\"$phone\",\"package\":\"dev.karagoz.probe\",\"activity\":null}"
@@ -302,7 +303,7 @@ else
   is_out "$(pids /Preferences.app/Preferences)" "" "real terminate Settings: processes left"
   is_out "$(real uninstall dev.karagoz.probe --device "$phone")" "$stopped" "real uninstall"
   ! installed || fail "real uninstall: Probe is still listed"
-  if out=$(real uninstall dev.karagoz.probe --device "$phone"); then fail "real uninstall again exited 0: $out"; fi
+  if out=$(real uninstall dev.karagoz.probe --device "$phone"); then fail "real uninstall again exited 0: $(mask "$out")"; fi
   is_out "$(printf '%s' "$out" | code_of)" APP_NOT_FOUND "real uninstall again"
   real_ok="real Probe: install, launch, same pid, terminate, not running, Settings, uninstall, not installed"
 fi
