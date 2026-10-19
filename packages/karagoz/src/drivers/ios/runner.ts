@@ -597,14 +597,19 @@ export async function tree(udid: string): Promise<unknown> {
     throw new KaragozError('CAPTURE_FAILED', `cannot parse the runner's answer: ${body.slice(0, 100)}`);
   }
   if (status === 200 && isRecord(parsed) && parsed.root !== undefined) return parsed.root;
+  throw runnerError(parsed, status, 'CAPTURE_FAILED', '');
+}
+
+// The runner's refusal, by its error text or else the status; a changed private interface is HELPER_FAILED (K41).
+function runnerError(parsed: unknown, status: number, code: ErrorCode, prefix: string): KaragozError {
   const error = isRecord(parsed) && typeof parsed.error === 'string' ? parsed.error : `status ${status}`;
   if (isRecord(parsed) && parsed.kind === 'private') {
-    throw new KaragozError(
+    return new KaragozError(
       'HELPER_FAILED',
       `${error}: this iOS changed an interface karagoz's runner uses; update karagoz`,
     );
   }
-  throw new KaragozError('CAPTURE_FAILED', error);
+  return new KaragozError(code, prefix + error);
 }
 
 // One input on the iPhone, through the runner started first if need be. playMs is how long the gesture or the typing
@@ -626,14 +631,7 @@ export async function input(
     // Not the runner's JSON: the status is all there is to say.
     parsed = undefined;
   }
-  const error = isRecord(parsed) && typeof parsed.error === 'string' ? parsed.error : `status ${answer.status}`;
-  if (isRecord(parsed) && parsed.kind === 'private') {
-    throw new KaragozError(
-      'HELPER_FAILED',
-      `${error}: this iOS changed an interface karagoz's runner uses; update karagoz`,
-    );
-  }
-  throw new KaragozError('HELPER_FAILED', `karagoz's runner could not play it: ${error}`);
+  throw runnerError(parsed, answer.status, 'HELPER_FAILED', "karagoz's runner could not play it: ");
 }
 
 export type RunnerState = 'running' | 'installed' | 'not installed' | null;

@@ -14,9 +14,12 @@ private let idleSeconds: TimeInterval = 600
 // XCTest cannot cancel a job on main, and a blocked main thread serves nothing more, so past its budget (this, plus the
 // gesture or typing time for input) the runner answers and exits.
 private let jobSeconds: Double = 20
+// The host waits 30 s plus the play time and a job takes at most jobSeconds plus it: a call queued longer than this is
+// refused, so nothing plays after karagoz has reported the call failed (K42).
+private let gateSeconds: Double = 8
 // A plain tap holds this long (K42).
 private let tapMilliseconds: Double = 100
-// A long text is the largest request; 1 MiB is minutes of typing.
+// A long text is the largest request; 1 MiB is hours of typing.
 private let maxRequestBytes = 1 << 20
 // UIAccessibilityTraitHeader; the simulator's tree calls these nodes AXHeading (K34).
 private let headerTrait: UInt64 = 0x10000
@@ -196,7 +199,7 @@ final class Runner: XCTestCase {
     let parts = (lines.first ?? "").split(separator: " ")
     let length = fields["content-length"] ?? "0"
     guard parts.count >= 2, !length.isEmpty, length.utf8.allSatisfy({ $0 >= 48 && $0 <= 57 }), let count = Int(length),
-      end.upperBound + count <= maxRequestBytes
+      count <= maxRequestBytes - end.upperBound
     else { return respond(connection, 400, ["error": "bad request line or Content-Length", "kind": "route"], nonce: nil) }
     while request.count < end.upperBound + count, more() {}
     guard request.count == end.upperBound + count else {
@@ -237,7 +240,11 @@ final class Runner: XCTestCase {
   // Runs work on main under the gate and answers what it returns, or what XCTest recorded meanwhile.
   private func job(_ connection: Int32, _ nonce: String, _ seconds: Double, _ what: String,
     _ work: @escaping @MainActor () -> (Int, [String: Any])) {
-    gate.wait()
+    guard gate.wait(timeout: .now() + gateSeconds) == .success else {
+      return respond(
+        connection, 500, ["error": "another input or ui-tree read is still running on the iPhone", "kind": "busy"],
+        nonce: nonce)
+    }
     defer { gate.signal() }
     var answer: (Int, [String: Any]) = (500, [:])
     let done = DispatchSemaphore(value: 0)
