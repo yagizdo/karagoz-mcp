@@ -10,9 +10,13 @@ import {
 } from './drivers/android/app.js';
 import {
   install as iosInstall,
+  installPhone,
   launch as iosLaunch,
+  launchPhone,
   terminate as iosTerminate,
+  terminatePhone,
   uninstall as iosUninstall,
+  uninstallPhone,
 } from './drivers/ios/app.js';
 import { KaragozError } from './errors.js';
 
@@ -36,39 +40,50 @@ export async function install(device: string | undefined, apk: string) {
   if (kind !== '.app' && !info.isFile()) throw new KaragozError('INVALID_ARGS', `'${path}' is not a file`);
   // One more second per started MB, as input.ts adds a gesture's duration (K19 note, K28). A .app directory's own
   // size is a few bytes, so it gets 31 s (K36).
+  // ponytail: on an iPhone 31 s covers a .app of about 600 MB at the measured 25 MB/s (K43); sum the bundle's size if
+  // a larger one times out.
   const timeout = INSTALL_BASE_MS + Math.ceil(info.size / 1_000_000) * 1000;
-  const { id, platform } = await resolveTarget(device);
-  if (platform === 'ios' && kind === '.apk') {
-    throw new KaragozError('INVALID_ARGS', `'${path}' is an Android app; ${id} is an iOS simulator`);
+  const target = await resolveTarget(device, 'iphone');
+  const { id } = target;
+  if (target.platform === 'android') {
+    if (kind !== '.apk') throw new KaragozError('INVALID_ARGS', `'${path}' is an iOS app; ${id} is an Android device`);
+    return androidInstall(id, path, timeout);
   }
-  if (platform === 'android' && kind !== '.apk') {
-    throw new KaragozError('INVALID_ARGS', `'${path}' is an iOS app; ${id} is an Android device`);
+  const phone = target.kind === 'physical';
+  if (kind === '.apk') {
+    throw new KaragozError(
+      'INVALID_ARGS',
+      `'${path}' is an Android app; ${id} is ${phone ? 'an iPhone' : 'an iOS simulator'}`,
+    );
   }
-  return platform === 'ios' ? iosInstall(id, path, timeout) : androidInstall(id, path, timeout);
+  return phone ? installPhone(id, path, timeout) : iosInstall(id, path, timeout);
 }
 
 // iOS's bundle id alphabet, of which Android's package names are a subset; Android's own check runs once the target is
 // known. The value reaches a device shell or simctl, so garbage stops here (K28, K36).
-export async function packageTarget(device: string | undefined, pkg: string) {
+export async function packageTarget(device: string | undefined, pkg: string, accept?: 'iphone') {
   if (!/^[A-Za-z0-9_-]+(\.[A-Za-z0-9_-]+)*$/.test(pkg)) {
     throw new KaragozError('INVALID_ARGS', `'${pkg}' is not a package name`);
   }
-  const resolved = await resolveTarget(device);
+  const resolved = await resolveTarget(device, accept);
   if (resolved.platform === 'android') checkPackage(pkg);
   return resolved;
 }
 
 export async function launch(device: string | undefined, pkg: string) {
-  const { id, platform } = await packageTarget(device, pkg);
-  return platform === 'ios' ? iosLaunch(id, pkg) : androidLaunch(id, pkg);
+  const target = await packageTarget(device, pkg, 'iphone');
+  if (target.platform === 'android') return androidLaunch(target.id, pkg);
+  return target.kind === 'physical' ? launchPhone(target.id, pkg) : iosLaunch(target.id, pkg);
 }
 
 export async function terminate(device: string | undefined, pkg: string) {
-  const { id, platform } = await packageTarget(device, pkg);
-  return platform === 'ios' ? iosTerminate(id, pkg) : androidTerminate(id, pkg);
+  const target = await packageTarget(device, pkg, 'iphone');
+  if (target.platform === 'android') return androidTerminate(target.id, pkg);
+  return target.kind === 'physical' ? terminatePhone(target.id, pkg) : iosTerminate(target.id, pkg);
 }
 
 export async function uninstall(device: string | undefined, pkg: string) {
-  const { id, platform } = await packageTarget(device, pkg);
-  return platform === 'ios' ? iosUninstall(id, pkg) : androidUninstall(id, pkg);
+  const target = await packageTarget(device, pkg, 'iphone');
+  if (target.platform === 'android') return androidUninstall(target.id, pkg);
+  return target.kind === 'physical' ? uninstallPhone(target.id, pkg) : iosUninstall(target.id, pkg);
 }

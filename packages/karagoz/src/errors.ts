@@ -38,8 +38,8 @@ export class KaragozError extends Error {
     readonly code: ErrorCode,
     message: string,
     // The platform's own code for INSTALL_FAILED and UNINSTALL_FAILED: Android's, such as
-    // INSTALL_FAILED_VERSION_DOWNGRADE, simctl's <domain>:<code>, or SYSTEM_APP for a simulator's system app (K5, K28,
-    // K36).
+    // INSTALL_FAILED_VERSION_DOWNGRADE, simctl's or the iPhone's <domain>:<code>, or SYSTEM_APP for an iOS system app
+    // (K5, K28, K36, K43).
     readonly reason?: string,
   ) {
     super(message);

@@ -3,7 +3,7 @@
 # from the primary display's pointScale with the 1080x2340 rule, rotation from its currentOrientation, null safeArea)
 # and writes devicectl's own bytes. An unpaired or still-pairing iPhone is refused before any capture; devicectl's
 # phone-state failures, an older devicectl without the verb, a hung or empty capture, a missing scale and a rotation
-# during the capture map to their codes; every other command still refuses an iPhone (K40, K21 4.2 note).
+# during the capture map to their codes; logs still refuses an iPhone (K40, K21 4.2 note, K43).
 # Precondition: macOS with Xcode. The real step captures a paired iPhone when `karagoz devices` lists one, else it
 # prints SKIP; its image stays in this script's temp directory, removed at exit. Fake adb, simctl and devicectl come
 # through ANDROID_HOME and DEVELOPER_DIR under env -i; the adb server on the default port is never touched.
@@ -250,9 +250,9 @@ devdir=$tmp/dev
 # 7. No failure left a temp directory.
 leftover "a failed capture"
 
-# 8. Every other command still refuses an iPhone.
-other="device P1 is an iPhone; karagoz runs only screenshot, ui-tree, tap, swipe, text, key, install-runner and uninstall-runner on one yet."
+# 8. logs still refuses an iPhone.
+other="device P1 is an iPhone; karagoz runs every command but logs on one yet."
 refuses "logs" NOT_SUPPORTED "$other" logs --device P1
-refuses "launch" NOT_SUPPORTED "$other" launch com.apple.Preferences --device P1
+refuses "logs --package" NOT_SUPPORTED "$other" logs --package com.apple.Preferences --device P1
 
 echo "ok: $ok, fixtures, readiness, failures, old devicectl, hung (${took}s), others"

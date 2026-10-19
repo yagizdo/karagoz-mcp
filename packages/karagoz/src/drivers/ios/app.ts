@@ -1,4 +1,5 @@
 import { KaragozError } from '../../errors.js';
+import { appOn, installOn, kill, launchOn, PHONE_TIMEOUT_MS, pidsUnder, uninstallFrom } from './devicectl.js';
 import { header, simctl, TIMEOUT_MS } from './simctl.js';
 
 // True when err is simctl's SIMCTL_FAILED with this NSPOSIXErrorDomain code in its header (K36).
@@ -81,5 +82,50 @@ export async function uninstall(udid: string, id: string) {
     );
   }
   await simctl(['uninstall', udid, id], undefined, 'UNINSTALL_FAILED').catch(removal);
+  return { device: udid, package: id };
+}
+
+// An iPhone's verbs (K43). Unlike the simulator's, install, terminate and uninstall stop an app a debugger holds; only
+// launch waits for it to continue.
+
+export async function installPhone(udid: string, path: string, timeout: number) {
+  await installOn(udid, path, timeout);
+  return { device: udid, path };
+}
+
+export async function launchPhone(udid: string, id: string) {
+  await launchOn(udid, id).catch((err: unknown) => {
+    if (!(err instanceof KaragozError) || err.code !== 'DEVICECTL_TIMEOUT') throw err;
+    throw new KaragozError(
+      'DEVICECTL_TIMEOUT',
+      `devicectl did not answer within ${PHONE_TIMEOUT_MS / 1000}s. If a debugger has the app stopped (a breakpoint, a pause or a start that waits for one), the iPhone holds the launch until the app continues. Otherwise CoreDevice's service may still be starting or be stuck.`,
+    );
+  });
+  return { device: udid, package: id, activity: null };
+}
+
+// The bundle URL keys the app's processes; devicectl's terminate and uninstall take no bundle id that says "not
+// installed" (uninstall of a missing app exits 0, K43).
+async function bundleOf(udid: string, id: string): Promise<string> {
+  const url = await appOn(udid, id);
+  if (url === undefined) throw new KaragozError('APP_NOT_FOUND', `app '${id}' is not installed on ${udid}`);
+  return url;
+}
+
+export async function terminatePhone(udid: string, id: string) {
+  for (const pid of await pidsUnder(udid, await bundleOf(udid, id))) await kill(udid, pid);
+  return { device: udid, package: id };
+}
+
+export async function uninstallPhone(udid: string, id: string) {
+  // User apps live under the data volume's Bundle/Application; Settings is /Applications/Preferences.app (K43).
+  if (!(await bundleOf(udid, id)).includes('/private/var/containers/Bundle/Application/')) {
+    throw new KaragozError(
+      'UNINSTALL_FAILED',
+      `'${id}' is a system app; an iPhone does not remove system apps`,
+      'SYSTEM_APP',
+    );
+  }
+  await uninstallFrom(udid, id);
   return { device: udid, package: id };
 }
