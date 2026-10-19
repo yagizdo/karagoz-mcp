@@ -199,10 +199,9 @@ pkill -f "runner.cjs $fake"; rm -f "$fake/runner-port"
 refuses "no runner" RUNNER_NOT_INSTALLED "'karagoz install-runner --device P1' (MCP: install_runner)" tap 1 1 --device P1
 ok="$ok, runner failures, hang (30s), tap beside ui-tree, not installed"
 
-# 5. A real paired iPhone with karagoz's runner. Probe, the iOS smokes' test app, is built for the phone and signed with
-# a profile Xcode keeps that covers dev.karagoz.probe (the team wildcard install-runner left, or Probe's own id), holds
-# the phone and names an identity in the keychain; installed and launched with devicectl, driven only inside itself,
-# removed by the EXIT trap. Real tools and HOME; nothing but Probe's own labels is printed.
+# 5. A real paired iPhone with karagoz's runner. Probe, the iOS smokes' test app, is built for the phone and signed by
+# fixtures/input-ios/sign.sh (a profile Xcode keeps, such as the team wildcard install-runner left); installed and
+# launched with devicectl, driven only inside itself, removed by the EXIT trap. Real tools and HOME; nothing but Probe's own labels is printed.
 real() { env -i HOME="$HOME" PATH=/usr/bin:/bin TMPDIR="$tmp" ANDROID_HOME="$tmp/sdk" "$node_bin" dist/cli.js "$@" 2>/dev/null; }
 dctl() { /usr/bin/xcrun devicectl "$@" -q > /dev/null 2> "$tmp/devicectl.err"; }
 unprobe() {
@@ -215,44 +214,20 @@ phone=$(real devices | "$node_bin" -e '
   const r = JSON.parse(require("fs").readFileSync(0, "utf8"));
   console.log(r.devices.find((d) => d.kind === "physical" && d.state === "paired" && (d.runner === "running" || d.runner === "installed"))?.id ?? "");
 ')
-profile= identity= team=
+signed=
 if [ -n "$phone" ]; then
-  now=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-  for f in "$HOME/Library/Developer/Xcode/UserData/Provisioning Profiles"/*.mobileprovision; do
-    [ -f "$f" ] && /usr/bin/security cms -D -i "$f" -o "$tmp/profile.plist" 2> /dev/null || continue
-    t=$(/usr/bin/plutil -extract TeamIdentifier.0 raw "$tmp/profile.plist" 2> /dev/null) || continue
-    case "$(/usr/bin/plutil -extract Entitlements.application-identifier raw "$tmp/profile.plist" 2> /dev/null)" in
-      "$t.*" | "$t.dev.karagoz.probe") ;;
-      *) continue ;;
-    esac
-    expr "$(/usr/bin/plutil -extract ExpirationDate raw "$tmp/profile.plist")" \> "$now" > /dev/null || continue
-    /usr/bin/plutil -extract ProvisionedDevices json -o - "$tmp/profile.plist" 2> /dev/null | /usr/bin/grep -qi "\"$phone\"" || continue
-    i=0
-    while c=$(/usr/bin/plutil -extract "DeveloperCertificates.$i" raw "$tmp/profile.plist" 2> /dev/null); do
-      sha=$(printf '%s' "$c" | /usr/bin/base64 -D | /usr/bin/shasum -a 1 | /usr/bin/cut -c1-40 | /usr/bin/tr a-f A-F)
-      if /usr/bin/security find-identity -v -p codesigning | /usr/bin/grep -q " $sha "; then profile=$f identity=$sha team=$t; fi
-      i=$((i + 1))
-    done
-  done
+  mkdir "$tmp/probe"
+  sh smoke/fixtures/input-ios/build.sh "$tmp/probe" iphoneos > /dev/null || fail "building Probe for the iPhone failed"
+  app=$tmp/probe/Probe.app
+  sh smoke/fixtures/input-ios/sign.sh "$app" "$phone" && signed=1 || [ $? = 2 ] || fail "signing Probe failed"
 fi
 if [ -z "$phone" ]; then
   echo "SKIP: no paired iPhone with karagoz's runner"
   real_ok="real skipped"
-elif [ -z "$profile" ]; then
+elif [ -z "$signed" ]; then
   echo "SKIP: no provisioning profile here covers dev.karagoz.probe on the iPhone with an identity in the keychain"
   real_ok="real skipped (no profile)"
 else
-  mkdir "$tmp/probe"
-  sh smoke/fixtures/input-ios/build.sh "$tmp/probe" iphoneos > /dev/null || fail "building Probe for the iPhone failed"
-  app=$tmp/probe/Probe.app
-  printf '%s\n' '<?xml version="1.0" encoding="UTF-8"?>' \
-    '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">' \
-    "<plist version=\"1.0\"><dict><key>application-identifier</key><string>$team.dev.karagoz.probe</string>" \
-    "<key>com.apple.developer.team-identifier</key><string>$team</string><key>get-task-allow</key><true/></dict></plist>" \
-    > "$tmp/probe.entitlements"
-  cp "$profile" "$app/embedded.mobileprovision"
-  /usr/bin/codesign --force --sign "$identity" --entitlements "$tmp/probe.entitlements" --timestamp=none "$app" 2> /dev/null ||
-    fail "codesign could not sign Probe"
   probe_phone=$phone
   dctl device install app --device "$phone" "$app" ||
     fail "devicectl could not install Probe ($(/usr/bin/grep -oE '0xe80[0-9a-f]+' "$tmp/devicectl.err" | /usr/bin/head -1))"

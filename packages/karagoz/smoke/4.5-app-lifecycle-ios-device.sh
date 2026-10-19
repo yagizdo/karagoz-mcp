@@ -5,7 +5,10 @@
 # unmapped launch failure, terminate by the app's bundle path (every process under it, a gone pid as done, nothing
 # running as done), SYSTEM_APP with no removal sent, the wrong-platform file, a slow first call, a hung install and
 # the held launch of a stopped app, and logs still refusing an iPhone.
-# Precondition: macOS. Fake adb, simctl and devicectl come through ANDROID_HOME and DEVELOPER_DIR under env -i.
+# Precondition: macOS. Fake adb, simctl and devicectl come through ANDROID_HOME and DEVELOPER_DIR under env -i. The real
+# step installs Probe (built for the phone, signed by fixtures/input-ios/sign.sh) on a paired iPhone through karagoz,
+# launches and terminates it and Settings, uninstalls Probe and reads each effect back, else it prints SKIP; the EXIT
+# trap removes Probe. Nothing but dev.karagoz.probe reaches the phone's uninstall.
 set -e
 cd "$(dirname "$0")/.."
 [ "$(uname -s)" = Darwin ] || { echo "SKIP: iPhones need macOS"; echo "ok: skipped"; exit 0; }
@@ -13,7 +16,8 @@ npm run --silent build
 
 node_bin=$(command -v node)
 tmp=$(mktemp -d)
-trap 'set +e; pkill -f "sleep 97\\.45"; rm -rf "$tmp"' EXIT
+trap 'set +e; pkill -f "sleep 97\\.45"; [ -n "$probe_phone" ] && unprobe; rm -rf "$tmp"' EXIT
+probe_phone=
 fail() { echo "FAIL: $*"; exit 1; }
 code_of() { "$node_bin" -e '
   const out = require("fs").readFileSync(0, "utf8").trimEnd();
@@ -243,4 +247,64 @@ t1=$took
 hung "held launch" 30 "devicectl did not answer within 30s. If a debugger has the app stopped (a breakpoint, a pause or a start that waits for one), the iPhone holds the launch until the app continues. Otherwise CoreDevice's service may still be starting or be stuck." \
   launch dev.karagoz.held --device P1
 
-echo "ok: fakes: install, refusals, wrong platform, launch, not installed, locked, unmapped, cold (${cold}s), terminate by path, gone, idle, uninstall, system app, logs refused, hung install/launch (${t1}/${took}s)"
+fakes="fakes: install, refusals, wrong platform, launch, not installed, locked, unmapped, cold (${cold}s), terminate by path, gone, idle, uninstall, system app, logs refused, hung install/launch (${t1}/${took}s)"
+
+# g. A real paired iPhone, runner or not. Real tools and HOME; only codes and Probe's id are printed.
+real() { env -i HOME="$HOME" PATH=/usr/bin:/bin TMPDIR="$tmp" ANDROID_HOME="$tmp/sdk" "$node_bin" dist/cli.js "$@" 2>/dev/null; }
+installed() { /usr/bin/xcrun devicectl device info apps --device "$phone" --bundle-id dev.karagoz.probe --json-output - -q 2> /dev/null |
+  /usr/bin/grep -q '"bundleIdentifier"'; }
+unprobe() {
+  /usr/bin/xcrun devicectl device uninstall app --device "$probe_phone" dev.karagoz.probe -q > /dev/null 2>&1
+  ! installed || echo "FAIL: Probe is still on the iPhone"
+}
+# pids <bundle path part>: the running processes whose executable sits in it, space-separated.
+pids() { /usr/bin/xcrun devicectl device info processes --device "$phone" --json-output - -q 2> /dev/null | "$node_bin" -e '
+  const r = JSON.parse(require("fs").readFileSync(0, "utf8")).result.runningProcesses;
+  console.log(r.filter((p) => p.executable.includes(process.argv[1])).map((p) => p.processIdentifier).join(" "));
+' "$1"; }
+phone=$(real devices | "$node_bin" -e '
+  const r = JSON.parse(require("fs").readFileSync(0, "utf8"));
+  console.log(r.devices.find((d) => d.kind === "physical" && d.state === "paired")?.id ?? "");
+')
+signed=
+if [ -n "$phone" ]; then
+  mkdir "$tmp/probe"
+  sh smoke/fixtures/input-ios/build.sh "$tmp/probe" iphoneos > /dev/null || fail "building Probe for the iPhone failed"
+  app=$tmp/probe/Probe.app
+  sh smoke/fixtures/input-ios/sign.sh "$app" "$phone" && signed=1 || [ $? = 2 ] || fail "signing Probe failed"
+fi
+if [ -z "$phone" ]; then
+  echo "SKIP: no paired iPhone"
+  real_ok="real skipped"
+elif [ -z "$signed" ]; then
+  echo "SKIP: no provisioning profile here covers dev.karagoz.probe on the iPhone with an identity in the keychain"
+  real_ok="real skipped (no profile)"
+else
+  probe_phone=$phone
+  is_out() { [ "$1" = "$2" ] || fail "$3: got $1, expected $2"; }
+  is_out "$(real install "$app" --device "$phone")" "{\"device\":\"$phone\",\"path\":\"$app\"}" "real install"
+  installed || fail "real install: Probe is not listed"
+  launched="{\"device\":\"$phone\",\"package\":\"dev.karagoz.probe\",\"activity\":null}"
+  is_out "$(real launch dev.karagoz.probe --device "$phone")" "$launched" "real launch"
+  first=$(pids /Probe.app/Probe)
+  [ -n "$first" ] || fail "real launch: no Probe process"
+  is_out "$(real launch dev.karagoz.probe --device "$phone")" "$launched" "real launch again"
+  is_out "$(pids /Probe.app/Probe)" "$first" "real launch again: the pid"
+  stopped="{\"device\":\"$phone\",\"package\":\"dev.karagoz.probe\"}"
+  is_out "$(real terminate dev.karagoz.probe --device "$phone")" "$stopped" "real terminate"
+  is_out "$(pids /Probe.app/Probe)" "" "real terminate: Probe processes left"
+  is_out "$(real terminate dev.karagoz.probe --device "$phone")" "$stopped" "real terminate, not running"
+  is_out "$(real launch com.apple.Preferences --device "$phone")" \
+    "{\"device\":\"$phone\",\"package\":\"com.apple.Preferences\",\"activity\":null}" "real launch Settings"
+  [ -n "$(pids /Preferences.app/Preferences)" ] || fail "real launch Settings: no process"
+  is_out "$(real terminate com.apple.Preferences --device "$phone")" \
+    "{\"device\":\"$phone\",\"package\":\"com.apple.Preferences\"}" "real terminate Settings"
+  is_out "$(pids /Preferences.app/Preferences)" "" "real terminate Settings: processes left"
+  is_out "$(real uninstall dev.karagoz.probe --device "$phone")" "$stopped" "real uninstall"
+  ! installed || fail "real uninstall: Probe is still listed"
+  if out=$(real uninstall dev.karagoz.probe --device "$phone"); then fail "real uninstall again exited 0: $out"; fi
+  is_out "$(printf '%s' "$out" | code_of)" APP_NOT_FOUND "real uninstall again"
+  real_ok="real Probe: install, launch, same pid, terminate, not running, Settings, uninstall, not installed"
+fi
+
+echo "ok: $real_ok, $fakes"

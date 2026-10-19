@@ -1,6 +1,6 @@
 #!/bin/sh
 # Builds Probe.app into $1 from Probe.swift and Info.plist next to this script, for the iOS smokes: for a simulator, or
-# with "iphoneos" as $2 for a physical iPhone, unsigned (smoke 4.4 signs it). The selected Xcode's own swiftc, not xcrun;
+# with "iphoneos" as $2 for a physical iPhone, unsigned (sign.sh signs it). The selected Xcode's own swiftc, not xcrun;
 # the linker's ad-hoc signature is enough for a simulator. Missing tools fail with what is missing and where it looked.
 set -e
 out=$1
