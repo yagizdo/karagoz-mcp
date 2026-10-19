@@ -106,8 +106,11 @@ function sameBuild(app: string): (image: string, build: string) => boolean {
   };
 }
 
-function unexpected(line: string): KaragozError {
-  return new KaragozError('SIMCTL_FAILED', `unexpected log output: ${line.slice(0, 300)}`);
+// The code names the tool that printed the line: simctl on a simulator, karagoz's own read on an iPhone.
+type Failure = 'SIMCTL_FAILED' | 'HELPER_FAILED';
+
+function unexpected(line: string, code: Failure): KaragozError {
+  return new KaragozError(code, `unexpected log output: ${line.slice(0, 300)}`);
 }
 
 // log prints a week-year (YYYY): December 26-31 can carry next year (week 1 may start on Dec 26) and, under ISO rules,
@@ -127,25 +130,27 @@ function time(match: RegExpExecArray): number | undefined {
   return (at(y) * 1e6 + Number(micro)) / 1e6;
 }
 
+type Parsed = { record: LogRecord; image: string; build: string };
+
 // One ndjson line: a logEvent record with its process image's path and build UUID, or the summary line that proves
 // the read finished (K37).
-function parse(line: string): { record: LogRecord; image: string; build: string } | 'finished' {
+function parse(line: string, code: Failure): Parsed | 'finished' {
   let value: unknown;
   try {
     value = JSON.parse(line);
   } catch {
     // The line itself goes into the message; JSON.parse's position adds nothing to it.
-    throw unexpected(line);
+    throw unexpected(line, code);
   }
-  if (!isRecord(value)) throw unexpected(line);
+  if (!isRecord(value)) throw unexpected(line, code);
   if ('finished' in value) return 'finished';
   const { timestamp, processID, threadID, messageType, processImagePath, processImageUUID, subsystem, category } =
     value;
   const { eventMessage } = value;
   const match = typeof timestamp === 'string' ? TIMESTAMP.exec(timestamp) : null;
   const at = match ? time(match) : undefined;
-  if (at === undefined || typeof processID !== 'number' || typeof threadID !== 'number') throw unexpected(line);
-  if (typeof eventMessage !== 'string') throw unexpected(line);
+  if (at === undefined || typeof processID !== 'number' || typeof threadID !== 'number') throw unexpected(line, code);
+  if (typeof eventMessage !== 'string') throw unexpected(line, code);
   const path = typeof processImagePath === 'string' ? processImagePath : '';
   const record = {
     time: at,
@@ -158,6 +163,23 @@ function parse(line: string): { record: LogRecord; image: string; build: string 
     message: eventMessage,
   };
   return { record, image: path, build: typeof processImageUUID === 'string' ? processImageUUID : '' };
+}
+
+// Every line before the summary is a record; a line after it, or no summary at all, means the read was cut (K37).
+async function collect(
+  source: (onLine: (line: string) => void) => Promise<void>,
+  code: Failure,
+  onRecord: (parsed: Parsed) => void,
+): Promise<void> {
+  // An object, not a let: TypeScript would read the check after the call as if the callback never ran.
+  const read = { done: false };
+  await source((line) => {
+    if (read.done) throw unexpected(line, code);
+    const parsed = parse(line, code);
+    if (parsed === 'finished') read.done = true;
+    else onRecord(parsed);
+  });
+  if (!read.done) throw new KaragozError(code, 'log show ended without its summary line');
 }
 
 // log show has no record count: without --since, the window is the last minute, or the whole store for one app (K37).
@@ -175,22 +197,19 @@ export async function logs(udid: string, pkg: string | undefined, since: string 
   const ours = app === undefined ? undefined : sameBuild(app);
   const after = since === undefined ? -Infinity : Number(since);
   const ring: LogRecord[] = [];
-  // An object, not two lets: TypeScript would read the checks after the call as if the callback never ran.
-  const read = { matched: 0, done: false };
+  let matched = 0;
   // ponytail: no byte cap. A far --since with --lines in the millions can keep ~1.3 M records within the 30 s (heap
   // ~0.5 GB), and a result past V8's string limit fails as INTERNAL; a byte cap on the ring lifts it.
-  await simctlLines(
-    ['spawn', udid, 'log', 'show', '--style', 'ndjson', '--info', '--debug', ...bound, '--predicate', predicate],
-    (line) => {
-      if (read.done) throw unexpected(line);
-      const parsed = parse(line);
-      if (parsed === 'finished') {
-        read.done = true;
-        return;
-      }
-      const { record, image, build } = parsed;
+  await collect(
+    (onLine) =>
+      simctlLines(
+        ['spawn', udid, 'log', 'show', '--style', 'ndjson', '--info', '--debug', ...bound, '--predicate', predicate],
+        onLine,
+      ),
+    'SIMCTL_FAILED',
+    ({ record, image, build }) => {
       if (record.time <= after || (ours && !ours(image, build))) return;
-      read.matched += 1;
+      matched += 1;
       ring.push(record);
       if (ring.length === 2 * lines) ring.splice(0, lines);
     },
@@ -201,8 +220,7 @@ export async function logs(udid: string, pkg: string | undefined, since: string 
       'log show did not finish within 30s. Pass a later --since, or --package, to read less of the simulator log.',
     );
   });
-  if (!read.done) throw new KaragozError('SIMCTL_FAILED', 'log show ended without its summary line');
   const records = ring.slice(-lines);
-  const omitted = read.matched - records.length;
+  const omitted = matched - records.length;
   return pkg === undefined ? { device: udid, records, omitted } : { device: udid, package: pkg, records, omitted };
 }
