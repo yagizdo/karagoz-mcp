@@ -106,7 +106,7 @@ export async function launchPhone(udid: string, id: string) {
 
 // The bundle URL keys the app's processes; devicectl's terminate and uninstall take no bundle id that says "not
 // installed" (uninstall of a missing app exits 0, K43).
-async function bundleOf(udid: string, id: string): Promise<string> {
+export async function bundleOf(udid: string, id: string): Promise<string> {
   const url = await appOn(udid, id);
   if (url === undefined) throw new KaragozError('APP_NOT_FOUND', `app '${id}' is not installed on ${udid}`);
   return url;

@@ -1,9 +1,15 @@
-import { closeSync, openSync, readSync } from 'node:fs';
+import { type ChildProcess, spawn } from 'node:child_process';
+import { closeSync, existsSync, openSync, readSync, rmSync } from 'node:fs';
+import { mkdir, mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
 import { basename, join } from 'node:path';
+import { createInterface } from 'node:readline';
+import { cancellation } from '../../cancellation.js';
 import { KaragozError } from '../../errors.js';
-import { installed } from './app.js';
+import { bundleOf, installed } from './app.js';
 import { isRecord } from './devices.js';
-import { simctlLines } from './simctl.js';
+import { archive, relay } from './lockdown.js';
+import { simctlLines, TIMEOUT_MS } from './simctl.js';
 
 type LogRecord = {
   time: number;
@@ -106,8 +112,11 @@ function sameBuild(app: string): (image: string, build: string) => boolean {
   };
 }
 
-function unexpected(line: string): KaragozError {
-  return new KaragozError('SIMCTL_FAILED', `unexpected log output: ${line.slice(0, 300)}`);
+// The code names the tool that printed the line: simctl on a simulator, karagoz's own read on an iPhone.
+type Failure = 'SIMCTL_FAILED' | 'HELPER_FAILED';
+
+function unexpected(line: string, code: Failure): KaragozError {
+  return new KaragozError(code, `unexpected log output: ${line.slice(0, 300)}`);
 }
 
 // log prints a week-year (YYYY): December 26-31 can carry next year (week 1 may start on Dec 26) and, under ISO rules,
@@ -127,25 +136,27 @@ function time(match: RegExpExecArray): number | undefined {
   return (at(y) * 1e6 + Number(micro)) / 1e6;
 }
 
+type Parsed = { record: LogRecord; image: string; build: string };
+
 // One ndjson line: a logEvent record with its process image's path and build UUID, or the summary line that proves
 // the read finished (K37).
-function parse(line: string): { record: LogRecord; image: string; build: string } | 'finished' {
+function parse(line: string, code: Failure): Parsed | 'finished' {
   let value: unknown;
   try {
     value = JSON.parse(line);
   } catch {
     // The line itself goes into the message; JSON.parse's position adds nothing to it.
-    throw unexpected(line);
+    throw unexpected(line, code);
   }
-  if (!isRecord(value)) throw unexpected(line);
+  if (!isRecord(value)) throw unexpected(line, code);
   if ('finished' in value) return 'finished';
   const { timestamp, processID, threadID, messageType, processImagePath, processImageUUID, subsystem, category } =
     value;
   const { eventMessage } = value;
   const match = typeof timestamp === 'string' ? TIMESTAMP.exec(timestamp) : null;
   const at = match ? time(match) : undefined;
-  if (at === undefined || typeof processID !== 'number' || typeof threadID !== 'number') throw unexpected(line);
-  if (typeof eventMessage !== 'string') throw unexpected(line);
+  if (at === undefined || typeof processID !== 'number' || typeof threadID !== 'number') throw unexpected(line, code);
+  if (typeof eventMessage !== 'string') throw unexpected(line, code);
   const path = typeof processImagePath === 'string' ? processImagePath : '';
   const record = {
     time: at,
@@ -158,6 +169,23 @@ function parse(line: string): { record: LogRecord; image: string; build: string 
     message: eventMessage,
   };
   return { record, image: path, build: typeof processImageUUID === 'string' ? processImageUUID : '' };
+}
+
+// Every line before the summary is a record; a line after it, or no summary at all, means the read was cut (K37).
+async function collect(
+  source: (onLine: (line: string) => void) => Promise<void>,
+  code: Failure,
+  onRecord: (parsed: Parsed) => void,
+): Promise<void> {
+  // An object, not a let: TypeScript would read the check after the call as if the callback never ran.
+  const read = { done: false };
+  await source((line) => {
+    if (read.done) throw unexpected(line, code);
+    const parsed = parse(line, code);
+    if (parsed === 'finished') read.done = true;
+    else onRecord(parsed);
+  });
+  if (!read.done) throw new KaragozError(code, 'log show ended without its summary line');
 }
 
 // log show has no record count: without --since, the window is the last minute, or the whole store for one app (K37).
@@ -174,25 +202,19 @@ export async function logs(udid: string, pkg: string | undefined, since: string 
       : `type == logEvent AND (processImagePath CONTAINS ${quoted(`/${basename(app)}/`)} OR (process == "launchd_sim" AND subsystem CONTAINS "UIKitApplication:${pkg}[" AND composedMessage BEGINSWITH "exited "))`;
   const ours = app === undefined ? undefined : sameBuild(app);
   const after = since === undefined ? -Infinity : Number(since);
-  const ring: LogRecord[] = [];
-  // An object, not two lets: TypeScript would read the checks after the call as if the callback never ran.
-  const read = { matched: 0, done: false };
+  const ring: Ring = { records: [], matched: 0 };
   // ponytail: no byte cap. A far --since with --lines in the millions can keep ~1.3 M records within the 30 s (heap
   // ~0.5 GB), and a result past V8's string limit fails as INTERNAL; a byte cap on the ring lifts it.
-  await simctlLines(
-    ['spawn', udid, 'log', 'show', '--style', 'ndjson', '--info', '--debug', ...bound, '--predicate', predicate],
-    (line) => {
-      if (read.done) throw unexpected(line);
-      const parsed = parse(line);
-      if (parsed === 'finished') {
-        read.done = true;
-        return;
-      }
-      const { record, image, build } = parsed;
+  await collect(
+    (onLine) =>
+      simctlLines(
+        ['spawn', udid, 'log', 'show', '--style', 'ndjson', '--info', '--debug', ...bound, '--predicate', predicate],
+        onLine,
+      ),
+    'SIMCTL_FAILED',
+    ({ record, image, build }) => {
       if (record.time <= after || (ours && !ours(image, build))) return;
-      read.matched += 1;
-      ring.push(record);
-      if (ring.length === 2 * lines) ring.splice(0, lines);
+      keep(ring, record, lines);
     },
   ).catch((err: unknown) => {
     if (!(err instanceof KaragozError) || err.code !== 'SIMCTL_TIMEOUT') throw err;
@@ -201,8 +223,217 @@ export async function logs(udid: string, pkg: string | undefined, since: string 
       'log show did not finish within 30s. Pass a later --since, or --package, to read less of the simulator log.',
     );
   });
-  if (!read.done) throw new KaragozError('SIMCTL_FAILED', 'log show ended without its summary line');
-  const records = ring.slice(-lines);
-  const omitted = read.matched - records.length;
+  const records = ring.records.slice(-lines);
+  const omitted = ring.matched - records.length;
   return pkg === undefined ? { device: udid, records, omitted } : { device: udid, package: pkg, records, omitted };
+}
+
+// simctlLines' twin for macOS's own log (K44): listeners before any await, the first throw kills it and wins, K37's
+// 30 s.
+// ponytail: log and tar are found on PATH, so smoke 4.6 can put a fake log first; a user's own earlier `log` would be
+// called instead of macOS's.
+async function logLines(args: string[], onLine: (line: string) => void): Promise<void> {
+  const signal = cancellation.getStore();
+  signal?.throwIfAborted();
+  const child = spawn('log', args, {
+    stdio: ['ignore', 'pipe', 'pipe'],
+    timeout: TIMEOUT_MS,
+    ...(signal && { signal }),
+  });
+  let failure: Error | undefined;
+  child.on('error', (err) => {
+    failure = err;
+  });
+  let stderr = '';
+  child.stderr.setEncoding('utf8');
+  child.stderr.on('data', (chunk: string) => {
+    if (stderr.length < 4096) stderr += chunk;
+  });
+  const reader = createInterface({ input: child.stdout, crlfDelay: Infinity });
+  let thrown: { err: unknown } | undefined;
+  const read = (line: string) => {
+    try {
+      onLine(line);
+    } catch (err) {
+      // Already killed by the timeout or an abort: this is the cut last line, and that result wins.
+      if (child.killed) return;
+      thrown = { err };
+      child.kill();
+      reader.off('line', read);
+    }
+  };
+  reader.on('line', read);
+  const [code, ended] = await new Promise<[number | null, NodeJS.Signals | null]>((done) => {
+    child.on('close', (exit, by) => done([exit, by]));
+  });
+  // The SDK sends no response for a cancelled call, so the abort passes through unmapped (K31).
+  signal?.throwIfAborted();
+  if (failure) {
+    const missing = 'code' in failure && failure.code === 'ENOENT';
+    throw new KaragozError(
+      'HELPER_FAILED',
+      missing ? 'log not found on PATH' : `log did not start (${failure.message})`,
+    );
+  }
+  if (thrown) throw thrown.err;
+  if (child.killed) {
+    throw new KaragozError(
+      'HELPER_FAILED',
+      `log show did not finish within ${TIMEOUT_MS / 1000} s. Pass a later --since, or --package, to read less of the iPhone log.`,
+    );
+  }
+  if (code === 0) return;
+  throw new KaragozError(
+    'HELPER_FAILED',
+    stderr.trim().slice(0, 300) || (ended ? `log ended by ${ended}` : `log exited with code ${code}`),
+  );
+}
+
+// tar's own result decides, unless the stream failed first with a reason of its own; a tar that ends cleanly at a file
+// boundary leaves no Info.plist, which the phone sends last (K44 M5).
+async function unpacked(tar: ChildProcess, streaming: Promise<void>, dir: string): Promise<void> {
+  let failure: Error | undefined;
+  let stderr = '';
+  tar.stderr?.setEncoding('utf8');
+  tar.stderr?.on('data', (chunk: string) => {
+    if (stderr.length < 4096) stderr += chunk;
+  });
+  const exited = new Promise<number | null>((done) => {
+    tar.on('error', (err) => {
+      failure = err;
+      done(null);
+    });
+    tar.on('close', (code) => done(code));
+  });
+  const streamed = await streaming.then(
+    () => undefined,
+    (err: unknown) => err,
+  );
+  const code = await exited;
+  cancellation.getStore()?.throwIfAborted();
+  if (failure) {
+    const missing = 'code' in failure && failure.code === 'ENOENT';
+    throw new KaragozError(
+      'HELPER_FAILED',
+      missing ? 'tar not found on PATH' : `tar did not start (${failure.message})`,
+    );
+  }
+  if (streamed instanceof KaragozError) throw streamed;
+  if (code !== 0) {
+    const text = stderr.trim().slice(0, 300) || `exit ${String(code)}`;
+    throw new KaragozError('HELPER_FAILED', `tar could not unpack the iPhone's log archive: ${text}`);
+  }
+  if (streamed !== undefined) {
+    const why = streamed instanceof Error ? ('code' in streamed ? String(streamed.code) : streamed.message) : 'unknown';
+    throw new KaragozError('HELPER_FAILED', `the iPhone's log stream broke (${why})`);
+  }
+  if (!existsSync(join(dir, 'Info.plist')))
+    throw new KaragozError('HELPER_FAILED', "the iPhone's log archive ended early");
+}
+
+// The newest records of a simulator read or of one install folder on an iPhone; the older ones are only counted (K37).
+type Ring = { records: LogRecord[]; matched: number };
+
+function keep(ring: Ring, record: LogRecord, lines: number): void {
+  ring.matched += 1;
+  ring.records.push(record);
+  if (ring.records.length === 2 * lines) ring.records.splice(0, lines);
+}
+
+// The pid launchd names at the end of an app's job label: "user/501/UIKitApplication:<id>[ab12][rb-legacy] [6711]".
+const LAUNCHD_PID = / \[(\d+)\]$/;
+
+// An iPhone's log, read over USB with this Mac's pairing (K44): the phone archives its records from a start time, tar
+// unpacks them into a temporary .logarchive, and macOS's log show prints them in the simulator's ndjson. Without
+// --since: the last minute, or the last hour with --package (user decision, K44).
+export async function logsPhone(udid: string, pkg: string | undefined, since: string | undefined, lines: number) {
+  // file:///private/var/containers/Bundle/Application/<G>/<Name>.app/ (K43)
+  const current = pkg === undefined ? undefined : decodeURIComponent(new URL(await bundleOf(udid, pkg)).pathname);
+  const signal = cancellation.getStore();
+  const root = await mkdtemp(join(tmpdir(), 'karagoz-logs-')).catch((err: unknown) => {
+    throw new KaragozError('WRITE_FAILED', err instanceof Error ? err.message : String(err));
+  });
+  let tar: ChildProcess | undefined;
+  // cli.ts and mcp.ts exit right after the abort, before any await could run, so this cleans up on its own; tar goes
+  // first, or it keeps writing into the folder being removed.
+  const wipe = () => {
+    tar?.kill('SIGKILL');
+    try {
+      rmSync(root, { recursive: true, force: true, maxRetries: 3 });
+    } catch {
+      // The process is exiting; there is nobody left to tell.
+    }
+  };
+  signal?.addEventListener('abort', wipe, { once: true });
+  try {
+    // log show reads only a directory named *.logarchive (K44 M6).
+    const dir = join(root, 'phone.logarchive');
+    await mkdir(dir);
+    const { clock, socket } = await relay(udid);
+    const window = pkg === undefined ? 60 : 3600;
+    const start = since === undefined ? Math.floor(clock) - window : Number(since.split('.')[0]);
+    const child = spawn('tar', ['-x', '-f', '-', '-C', dir], { stdio: ['pipe', 'ignore', 'pipe'] });
+    tar = child;
+    await unpacked(child, archive(socket, start, child.stdin), dir);
+    const show = ['show', '--archive', dir, '--style', 'ndjson', '--info', '--debug'];
+    if (current === undefined) {
+      const bound = since === undefined ? ['--last', '1m'] : ['--start', `@${String(start)}`];
+      const after = since === undefined ? -Infinity : Number(since);
+      const ring: Ring = { records: [], matched: 0 };
+      await collect(
+        (onLine) => logLines([...show, ...bound, '--predicate', 'type == logEvent'], onLine),
+        'HELPER_FAILED',
+        ({ record }) => {
+          if (record.time > after) keep(ring, record, lines);
+        },
+      );
+      const records = ring.records.slice(-lines);
+      return { device: udid, records, omitted: ring.matched - records.length };
+    }
+    // No window for log show: the proof below may rest on a record from before --since (K44).
+    const folder = `/${basename(current)}/`;
+    const after = since === undefined ? clock - window : Number(since);
+    const folders = new Map<string, { ring: Ring; pids: Set<number> }>();
+    const exits: Ring = { records: [], matched: 0 };
+    const tied = new Set<number>();
+    const predicate = `type == logEvent AND (processImagePath CONTAINS ${quoted(folder)} OR (process == "launchd" AND subsystem CONTAINS "UIKitApplication:${pkg ?? ''}["))`;
+    await collect(
+      (onLine) => logLines([...show, '--predicate', predicate], onLine),
+      'HELPER_FAILED',
+      ({ record, image }) => {
+        const at = image.indexOf(folder);
+        if (at === -1) {
+          // launchd's lines for this bundle id: their pids tie folders to it; only the exit line is output (K37).
+          const pid = LAUNCHD_PID.exec(record.subsystem)?.[1];
+          if (pid !== undefined) tied.add(Number(pid));
+          if (record.message.startsWith('exited ') && record.time > after) keep(exits, record, lines);
+          return;
+        }
+        const path = image.slice(0, at + folder.length);
+        let entry = folders.get(path);
+        if (!entry) {
+          entry = { ring: { records: [], matched: 0 }, pids: new Set() };
+          folders.set(path, entry);
+        }
+        entry.pids.add(record.pid);
+        if (record.time > after) keep(entry.ring, record, lines);
+      },
+    );
+    // A folder is this app's when it is the current install or launchd ran one of its processes under the bundle id;
+    // with no proof at all, every folder with the app's folder name (user decision, K44).
+    const proven = [...folders].filter(
+      ([path, { pids }]) => path === current || [...pids].some((pid) => tied.has(pid)),
+    );
+    const chosen = (proven.length ? proven : [...folders]).map(([, { ring }]) => ring);
+    chosen.push(exits);
+    const records = chosen
+      .flatMap((ring) => ring.records)
+      .sort((a, b) => a.time - b.time)
+      .slice(-lines);
+    const matched = chosen.reduce((sum, ring) => sum + ring.matched, 0);
+    return { device: udid, package: pkg, records, omitted: matched - records.length };
+  } finally {
+    signal?.removeEventListener('abort', wipe);
+    await rm(root, { recursive: true, force: true, maxRetries: 3 });
+  }
 }

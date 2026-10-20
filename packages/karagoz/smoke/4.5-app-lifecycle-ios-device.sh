@@ -4,7 +4,7 @@
 # <domain>:<code>, the re-sign sentence on a code-signing refusal), APP_NOT_FOUND for each verb, a locked iPhone, an
 # unmapped launch failure, terminate by the app's bundle path (every process under it, a gone pid as done, nothing
 # running as done), SYSTEM_APP with no removal sent, the wrong-platform file, a slow first call, a hung install and
-# the held launch of a stopped app, and logs still refusing an iPhone.
+# the held launch of a stopped app.
 # Precondition: macOS. Fake adb, simctl and devicectl come through ANDROID_HOME and DEVELOPER_DIR under env -i. The real
 # step installs Probe (built for the phone, signed by fixtures/input-ios/sign.sh) on a paired iPhone through karagoz,
 # launches and terminates it and Settings, uninstalls Probe and reads each effect back, else it prints SKIP; the EXIT
@@ -222,14 +222,7 @@ call uninstall dev.karagoz.refused --device P1
 refuses UNINSTALL_FAILED "uninstall refused" "Failed to uninstall the app. Could not remove the app."
 reason_is "uninstall refused" MIInstallerErrorDomain:9
 
-# e. logs still refuses an iPhone, before any device call.
-other="device P1 is an iPhone; karagoz runs every command but logs on one yet."
-call logs --device P1
-refuses NOT_SUPPORTED "logs" "$other"
-call logs --package dev.karagoz.probe --device P1
-refuses NOT_SUPPORTED "logs --package" "$other"
-
-# f. A hung devicectl is killed: 31 s for an install of a .app; a launch held by a stopped app says so after 30 s.
+# e. A hung devicectl is killed: 31 s for an install of a .app; a launch held by a stopped app says so after 30 s.
 hung() { # <label> <seconds> <message> <karagoz arguments>
   label=$1 seconds=$2 message=$3
   shift 3
@@ -247,9 +240,9 @@ t1=$took
 hung "held launch" 30 "devicectl did not answer within 30s. If a debugger has the app stopped (a breakpoint, a pause or a start that waits for one), the iPhone holds the launch until the app continues. Otherwise CoreDevice's service may still be starting or be stuck." \
   launch dev.karagoz.held --device P1
 
-fakes="fakes: install, refusals, wrong platform, launch, not installed, locked, unmapped, cold (${cold}s), terminate by path, gone, idle, uninstall, system app, logs refused, hung install/launch (${t1}/${took}s)"
+fakes="fakes: install, refusals, wrong platform, launch, not installed, locked, unmapped, cold (${cold}s), terminate by path, gone, idle, uninstall, system app, hung install/launch (${t1}/${took}s)"
 
-# g. A real paired iPhone, runner or not. Real tools and HOME; only codes and Probe's id are printed.
+# f. A real paired iPhone, runner or not. Real tools and HOME; only codes and Probe's id are printed.
 real() { env -i HOME="$HOME" PATH=/usr/bin:/bin TMPDIR="$tmp" ANDROID_HOME="$tmp/sdk" "$node_bin" dist/cli.js "$@" 2>/dev/null; }
 installed() { /usr/bin/xcrun devicectl device info apps --device "$phone" --bundle-id dev.karagoz.probe --json-output - -q 2> /dev/null |
   /usr/bin/grep -q '"bundleIdentifier"'; }

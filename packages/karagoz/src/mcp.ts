@@ -149,7 +149,7 @@ const TOOLS: Tool[] = [
     name: 'logs',
     title: 'Read device logs',
     description:
-      'Read the newest device log records, oldest first. On iOS, without since or package, only the last minute.',
+      "Read the newest device log records, oldest first. On iOS without since: the last minute, or with package the simulator's whole log or an iPhone's last hour. An iPhone read takes about 10 s.",
     inputSchema: {
       type: 'object',
       properties: {
