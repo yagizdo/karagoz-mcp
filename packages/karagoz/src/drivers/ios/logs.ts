@@ -202,8 +202,7 @@ export async function logs(udid: string, pkg: string | undefined, since: string 
       : `type == logEvent AND (processImagePath CONTAINS ${quoted(`/${basename(app)}/`)} OR (process == "launchd_sim" AND subsystem CONTAINS "UIKitApplication:${pkg}[" AND composedMessage BEGINSWITH "exited "))`;
   const ours = app === undefined ? undefined : sameBuild(app);
   const after = since === undefined ? -Infinity : Number(since);
-  const ring: LogRecord[] = [];
-  let matched = 0;
+  const ring: Ring = { records: [], matched: 0 };
   // ponytail: no byte cap. A far --since with --lines in the millions can keep ~1.3 M records within the 30 s (heap
   // ~0.5 GB), and a result past V8's string limit fails as INTERNAL; a byte cap on the ring lifts it.
   await collect(
@@ -215,9 +214,7 @@ export async function logs(udid: string, pkg: string | undefined, since: string 
     'SIMCTL_FAILED',
     ({ record, image, build }) => {
       if (record.time <= after || (ours && !ours(image, build))) return;
-      matched += 1;
-      ring.push(record);
-      if (ring.length === 2 * lines) ring.splice(0, lines);
+      keep(ring, record, lines);
     },
   ).catch((err: unknown) => {
     if (!(err instanceof KaragozError) || err.code !== 'SIMCTL_TIMEOUT') throw err;
@@ -226,8 +223,8 @@ export async function logs(udid: string, pkg: string | undefined, since: string 
       'log show did not finish within 30s. Pass a later --since, or --package, to read less of the simulator log.',
     );
   });
-  const records = ring.slice(-lines);
-  const omitted = matched - records.length;
+  const records = ring.records.slice(-lines);
+  const omitted = ring.matched - records.length;
   return pkg === undefined ? { device: udid, records, omitted } : { device: udid, package: pkg, records, omitted };
 }
 
@@ -334,7 +331,7 @@ async function unpacked(tar: ChildProcess, streaming: Promise<void>, dir: string
     throw new KaragozError('HELPER_FAILED', "the iPhone's log archive ended early");
 }
 
-// One install folder's newest records, kept as the simulator read keeps them.
+// The newest records of a simulator read or of one install folder on an iPhone; the older ones are only counted (K37).
 type Ring = { records: LogRecord[]; matched: number };
 
 function keep(ring: Ring, record: LogRecord, lines: number): void {
