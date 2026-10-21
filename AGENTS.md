@@ -2,7 +2,7 @@
 
 Device automation for mobile apps across four targets: Android emulator, Android device, iOS simulator, iOS device. CLI first, MCP server as a thin wrapper over the same core.
 
-Every device command runs on all four targets (`install-runner` and `uninstall-runner` only on iPhones). The code is being refactored one feature at a time into the layout below; `### Not yet in this layout` lists what has not moved yet.
+Every device command runs on all four targets (`install-runner` and `uninstall-runner` only on iPhones).
 
 These rules are for anyone who changes this repository, person or agent. A decision number such as K5 points into the maintainers' design journal, which is not in the repository, so its reason is always written beside it.
 
@@ -54,18 +54,12 @@ Paths below are relative to `packages/karagoz/src/`.
 - **Command table:** `commands.ts`. Each entry declares its flags and its `run` calls one function from a feature file; `check()` validates arguments and `envelope()` builds the error envelope from `## Hard boundaries`. It imports no driver and never branches on platform.
 - **Feature files:** `screenshot.ts`, `ui-tree.ts`, `input.ts`, `app.ts`, `logs.ts`, `runner.ts`, one per feature, in this order: checks that do not depend on the platform, so `INVALID_ARGS` comes before any device call; `resolveTarget()` from `devices.ts`; exactly one branch between Android, iPhone (`kind === 'physical'`) and iOS simulator; then the work every platform shares, such as writing the PNG. A feature file never runs an external tool and never parses a tool's output. `screenshot.ts` is the example.
 - **Targets:** `devices.ts` lists every platform and resolves `--device`. It is the only top-level file that calls several drivers of one platform.
-- **Shared modules:** `errors.ts`, `cancellation.ts`, `png.ts`. They import nothing from `src/` but each other. Code or a table that two platforms need moves into a module like these (`png.ts` reads the PNG size for both); one platform's driver never hosts it for the other.
+- **Shared modules:** `errors.ts`, `cancellation.ts`, `png.ts`, `tool.ts` (runs an external tool and sorts its failure), `keys.ts` (key names), `xml.ts` (XML entities). They import nothing from `src/` but each other. Code or a table that two platforms need moves into a module like these (`png.ts` reads the PNG size for both); one platform's driver never hosts it for the other.
 - **Android driver:** `drivers/android/`. One transport, `adb.ts` (finds adb, runs it, maps its failures to error codes), and one file per feature named after its feature file. Emulator and phone share it: they differ in a few branches, not in transport (K10).
 - **iOS driver:** `drivers/ios/`, both Apple targets. Transports are files: `simctl.ts` for the simulator; `devicectl.ts`, `usbmux.ts`, `lockdown.ts` and `runner.ts` for the iPhone; `xcode.ts` (developer dir, caches, signing teams) for both. A feature file holds the simulator function `<verb>` and the iPhone function `<verb>Phone` side by side (`capture` and `capturePhone` in `drivers/ios/screenshot.ts`), because they share helpers such as `panelScale`. Swift lives in `drivers/ios/ax-helper.swift` (simulator helper) and `packages/ios-runner/` (iPhone runner).
-- **Imports:** a driver imports shared modules and files of its own platform only. Android never imports iOS, iOS never imports Android, and no driver imports a feature file, `devices.ts`, `commands.ts` or a front end.
+- **Imports:** a driver imports shared modules and files of its own platform only. Android never imports iOS, iOS never imports Android, and no driver imports a feature file, `devices.ts`, `commands.ts` or a front end. `no-restricted-imports` in `packages/karagoz/.oxlintrc.json` enforces this and the front-end rule; a new shared module goes into its allow list.
 - **No driver interface,** registry or map of drivers, though there are three backends. The branch is one or two lines per function, and the call shapes differ (an iPhone call goes through the runner, an Android key takes a key code), so an interface would add a type per feature that no caller needs. Import each driver function under an alias instead (`capture as captureAndroid` in `screenshot.ts`).
 - **New external tool:** its finding, running and failure mapping go into a transport file of its platform, next to the others. A tool only one feature calls may live in that feature's driver file (`log` in `drivers/ios/logs.ts`).
-
-### Not yet in this layout
-
-Do not copy these. The refactor step in brackets fixes each one, and its PR deletes the line.
-
-- `tar` in `drivers/ios/logs.ts` has no timeout; it ends with its input stream or the abort. [Q5]
 
 ## Conventions
 
