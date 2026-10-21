@@ -65,7 +65,6 @@ Paths below are relative to `packages/karagoz/src/`.
 
 Do not copy these. The refactor step in brackets fixes each one, and its PR deletes the line.
 
-- `commands.ts` imports both doctor drivers and branches on `IS_MAC`: doctor has no feature file. [Q1]
 - `onPath(name)` in `drivers/ios/doctor.ts` shares its name with `onPath()` in `drivers/android/adb.ts` and does something else (a POSIX executable check, not the Windows PATH walk). [Q1]
 - `ready()` and `HINTS` in `devices.ts` know each tool's raw states (`device`, `Booted`, `paired`, `unauthorized`); each driver should say when its own target is ready. [Q2]
 - `listAll()` and `find()` in `devices.ts` repeat the same three-platform listing. [Q2]
