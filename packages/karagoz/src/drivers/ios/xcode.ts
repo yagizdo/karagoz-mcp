@@ -95,15 +95,14 @@ const PLUTIL_TIMEOUT_MS = 5_000;
 
 export type Team = { id: string; name: string; free: boolean };
 
-// One key of Xcode's preferences as JSON, undefined when the file or key is missing. plutil only reads and converts the
-// file; no Xcode process starts (K41).
-async function preference(key: string): Promise<unknown> {
-  const prefs = join(homedir(), 'Library', 'Preferences', 'com.apple.dt.Xcode.plist');
+// One key of a property list in plutil's json or raw form, undefined when the file or key is missing. plutil only reads
+// and converts the file, binary or XML; no Xcode process starts (K41).
+async function plistValue(path: string, key: string, form: 'json' | 'raw'): Promise<string | undefined> {
   const signal = cancellation.getStore();
   signal?.throwIfAborted();
   let stdout: string;
   try {
-    ({ stdout } = await run('/usr/bin/plutil', ['-extract', key, 'json', '-o', '-', prefs], {
+    ({ stdout } = await run('/usr/bin/plutil', ['-extract', key, form, '-o', '-', path], {
       timeout: PLUTIL_TIMEOUT_MS,
       ...(signal && { signal }),
     }));
@@ -112,17 +111,28 @@ async function preference(key: string): Promise<unknown> {
     if (signal?.aborted) throw err;
     if (!(err instanceof Error)) throw err;
     if ('killed' in err && err.killed) {
-      throw new KaragozError('HELPER_FAILED', `plutil did not read ${prefs} within ${PLUTIL_TIMEOUT_MS / 1000} s`);
+      throw new KaragozError('HELPER_FAILED', `plutil did not read ${path} within ${PLUTIL_TIMEOUT_MS / 1000} s`);
     }
     // plutil exits 1 when the file or the key is missing.
     return undefined;
   }
+  return stdout;
+}
+
+async function preference(key: string): Promise<unknown> {
+  const stdout = await plistValue(join(homedir(), 'Library', 'Preferences', 'com.apple.dt.Xcode.plist'), key, 'json');
   try {
-    return JSON.parse(stdout);
+    return stdout === undefined ? undefined : JSON.parse(stdout);
   } catch {
     // plutil printed something other than JSON: read as missing, which the callers explain.
     return undefined;
   }
+}
+
+// A framework's CFBundleVersion, undefined when it cannot be read. CoreDevice's Info.plist is binary, and holds values
+// JSON cannot carry, so plutil's json form refuses it (K47).
+export async function bundleVersion(plist: string): Promise<string | undefined> {
+  return (await plistValue(plist, 'CFBundleVersion', 'raw'))?.trim() || undefined;
 }
 
 // The development teams of the Apple accounts signed in to Xcode. Xcode writes them only once it has shown a team list,

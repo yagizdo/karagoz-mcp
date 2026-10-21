@@ -1,17 +1,18 @@
 import { access, constants, readdir, readFile, stat } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { KaragozError } from '../../errors.js';
-import { devicectlPath } from './devicectl.js';
+import { COREDEVICE_PLIST, devicectlPath } from './devicectl.js';
 import { notOnPath } from './logs.js';
 import { runnerBuild, xcodebuild, xctestrun } from './runner.js';
-import { binary, FRAMEWORK_PLIST } from './simctl.js';
+import { binary, developerDir, FRAMEWORK_PLIST } from './simctl.js';
 import { helperPath, swiftc } from './ui-tree.js';
 import { daemonPath, unreachable } from './usbmux.js';
-import { NO_XCODE, noTeam, owns, selected, teams, type Team } from './xcode.js';
+import { bundleVersion, NO_XCODE, noTeam, owns, selected, teams, type Team } from './xcode.js';
 
-// doctor reads files, and runs nothing but plutil, which only converts Xcode's preference file. simctl would start
-// CoreSimulatorService and rewrite device_set.plist, and a shim under DEVELOPER_DIR can start Xcode's first launch, which
-// waits for a password (K30 3.7 note, K32, K41). xcodebuild can do the same, and usbmuxd is not connected to (K30 4.7).
+// doctor reads files, and runs nothing but plutil, which only converts Xcode's preference file and CoreDevice's binary
+// Info.plist. simctl would start CoreSimulatorService and rewrite device_set.plist, and a shim under DEVELOPER_DIR can
+// start Xcode's first launch, which waits for a password (K30 3.7 note, K32, K41). xcodebuild can do the same, and
+// usbmuxd is not connected to (K30 4.7).
 
 type Entry = { status: 'ok' | 'missing' | 'failed'; path?: string; version?: string; message?: string };
 type Helper = { status: 'ok' | 'not built' | 'failed'; path?: string; message?: string };
@@ -41,7 +42,7 @@ type Report = {
 // tap, swipe and key need Xcode 27's simulator HID service (K35).
 const FLOOR = 27;
 const OUTDATED = `tap, swipe and key on a simulator need Xcode ${FLOOR} or later`;
-// The first line of Xcode 27's simctl shim that names the CoreSimulator it was built for (K32).
+// The line of a simctl or devicectl shim that names the framework version its Xcode was built for (K32).
 const EXPECTED = /^EXPECTED_VERSION="([^"]+)"$/m;
 
 const text = (path: string) => readFile(path, 'utf8').catch(() => '');
@@ -113,6 +114,22 @@ function older(a: string, b: string): boolean {
   return false;
 }
 
+// When the selected Xcode's shim of a tool runs `xcodebuild -runFirstLaunch`, by the shim's own rule. A missing or older
+// framework means the first launch has not finished, shim or not. Xcode 27's simctl shim stops there (version_is_older);
+// Xcode 26.2's simctl shim and every known devicectl shim also run it for a newer framework, on every call, and karagoz
+// runs a shim only under DEVELOPER_DIR (K32, K47).
+function firstLaunch(name: 'simctl' | 'devicectl', framework: string, shim: string, current: string | undefined) {
+  const expected = EXPECTED.exec(shim)?.[1];
+  if (expected === undefined) return undefined;
+  if (!current || older(current, expected)) {
+    return `the selected Xcode expects ${framework} ${expected}, this Mac has ${current ?? 'none'}: open Xcode once to finish installing its components`;
+  }
+  if (current !== expected && developerDir() && !/\bversion_is_older\b/.test(shim)) {
+    return `the Xcode in DEVELOPER_DIR expects ${framework} ${expected} but this Mac has ${current} from a newer Xcode, so its ${name} runs xcodebuild -runFirstLaunch on every call: point DEVELOPER_DIR at the newest Xcode, or unset it`;
+  }
+  return undefined;
+}
+
 async function simctl(dev: string | undefined): Promise<Entry> {
   const { bin, missing } = binary();
   const [entry, framework, shim] = await Promise.all([
@@ -122,20 +139,34 @@ async function simctl(dev: string | undefined): Promise<Entry> {
   ]);
   if (entry.status === 'missing') return entry;
   const version = plistString(framework, 'CFBundleVersion');
-  const expected = EXPECTED.exec(shim)?.[1];
-  // The shim's own rule: an older framework means Xcode's first launch has not finished. Without DEVELOPER_DIR
-  // karagoz skips the shim, but the install is still incomplete. ponytail: Xcode 26.2's shim also runs it for a newer
-  // framework, which this misses; revisit with K32 M1 before v1.
-  const pending = entry.status === 'ok' && expected !== undefined && (!version || older(version, expected));
-  const message = pending
-    ? `the selected Xcode expects CoreSimulator ${expected}, this Mac has ${version ?? 'none'}: open Xcode once to finish installing its components`
-    : entry.message;
+  const problem = entry.status === 'ok' ? firstLaunch('simctl', 'CoreSimulator', shim, version) : undefined;
+  const message = problem ?? entry.message;
   return {
-    status: pending ? 'failed' : entry.status,
+    status: problem ? 'failed' : entry.status,
     path: bin,
     ...(version !== undefined && { version }),
     ...(message !== undefined && { message }),
   };
+}
+
+async function devicectl(dev: string | undefined): Promise<Entry> {
+  const path = devicectlPath();
+  const [entry, shim] = await Promise.all([
+    tool(
+      path,
+      `devicectl not found (tried ${path}): iPhones are not listed or reachable, and a simulator's rotation reads as null`,
+    ),
+    dev ? text(join(dev, 'usr', 'bin', 'devicectl')) : '',
+  ]);
+  if (entry.status !== 'ok' || !EXPECTED.test(shim)) return entry;
+  let problem: string | undefined;
+  try {
+    problem = firstLaunch('devicectl', 'CoreDevice', shim, await bundleVersion(COREDEVICE_PLIST));
+  } catch (err) {
+    if (!(err instanceof KaragozError)) throw err;
+    problem = err.message;
+  }
+  return problem ? { status: 'failed', path, message: problem } : entry;
 }
 
 async function helper(dev: string | undefined): Promise<Helper> {
@@ -193,7 +224,6 @@ export async function doctor(): Promise<Report> {
   const dev = found?.dev;
   const compiler = dev ? swiftc(dev) : undefined;
   const builder = dev ? xcodebuild(dev) : undefined;
-  const devicectl = devicectlPath();
   const [
     plist,
     simctlEntry,
@@ -211,10 +241,7 @@ export async function doctor(): Promise<Report> {
     dev ? text(`${dev}/../version.plist`) : '',
     simctl(dev),
     compiler ? tool(compiler.bin, compiler.missing) : ({ status: 'missing', message: NO_XCODE } satisfies Entry),
-    tool(
-      devicectl,
-      `devicectl not found (tried ${devicectl}): iPhones are not listed or reachable, and a simulator's rotation reads as null`,
-    ),
+    devicectl(dev),
     helper(dev),
     signing(),
     iosRunner(dev),

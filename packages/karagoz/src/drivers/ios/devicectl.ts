@@ -1,4 +1,4 @@
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { cancellation } from '../../cancellation.js';
 import { KaragozError } from '../../errors.js';
 import { runTool } from '../../tool.js';
@@ -15,6 +15,9 @@ const MAX_BUFFER = 64 * 1024 * 1024;
 // ponytail: Apple's private path, the binary Xcode's devicectl shim execs, called directly for the reason simctl's is
 // (K32). If Apple moves it, rotation reads as null.
 const FRAMEWORK = '/Library/Developer/PrivateFrameworks/CoreDevice.framework/Versions/A/Resources/bin/devicectl';
+
+// Its Info.plist: CFBundleVersion is the CoreDevice version a devicectl shim's EXPECTED_VERSION names.
+export const COREDEVICE_PLIST = join(dirname(FRAMEWORK), '..', 'Info.plist');
 
 export function devicectlPath(): string {
   const dev = developerDir();
