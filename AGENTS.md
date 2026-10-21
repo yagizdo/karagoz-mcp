@@ -67,8 +67,6 @@ Do not copy these. The refactor step in brackets fixes each one, and its PR dele
 
 - `ready()` and `HINTS` in `devices.ts` know each tool's raw states (`device`, `Booted`, `paired`, `unauthorized`); each driver should say when its own target is ready. [Q2]
 - `listAll()` and `find()` in `devices.ts` repeat the same three-platform listing. [Q2]
-- `isRecord` lives in `drivers/ios/devices.ts`, so seven iOS files import the simulator listing for a type guard. [Q2]
-- `avdName()` and `probe()` in `drivers/android/devices.ts` drop every error with a bare `catch {}`, a cancelled call's abort included. [Q2]
 - `adb.ts`, `simctl.ts`, `devicectl.ts` and the helper runs in `drivers/ios/ui-tree.ts` and `drivers/ios/input.ts` each copy the same abort, not-found, timeout and stderr mapping. [Q3]
 - The key-name table (`KEYS`, `keyCode()`) lives in `drivers/android/input.ts`, and `input.ts` parses every platform's key with it. [Q4]
 - `tapElement()` in `drivers/ios/input.ts` takes `kind` and branches between simulator and iPhone itself. [Q4]

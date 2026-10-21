@@ -1,3 +1,4 @@
+import { cancellation } from '../../cancellation.js';
 import { adb } from './adb.js';
 
 export type Entry = { id: string; state: string };
@@ -14,12 +15,14 @@ const PROPS =
   'getprop ro.product.model; getprop ro.boot.qemu; getprop ro.kernel.qemu; getprop ro.hardware; getprop ro.boot.qemu.avd_name; getprop ro.kernel.qemu.avd_name';
 
 // The AVD name comes from the emulator console, which answers even while the device is still offline.
-// Prints "<name>\r\nOK\r\n". Any failure leaves the name unknown rather than failing the listing.
+// Prints "<name>\r\nOK\r\n". Any failure but a cancelled call leaves the name unknown rather than failing the listing;
+// a swallowed abort would keep a cancelled call running (K31).
 async function avdName(id: string): Promise<string | null> {
   try {
     const first = (await adb(['-s', id, 'emu', 'avd', 'name'])).split('\n')[0]?.trim();
     return first && first !== 'OK' ? first : null;
-  } catch {
+  } catch (err) {
+    if (cancellation.getStore()?.aborted) throw err;
     return null;
   }
 }
@@ -29,7 +32,8 @@ async function probe(id: string): Promise<Described | null> {
   let out: string;
   try {
     out = await adb(['-s', id, 'shell', PROPS]);
-  } catch {
+  } catch (err) {
+    if (cancellation.getStore()?.aborted) throw err;
     // A device that does not answer keeps the serial rule rather than failing the listing, as in avdName().
     return null;
   }

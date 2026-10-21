@@ -2,7 +2,7 @@ import { createConnection, type Socket } from 'node:net';
 import { cancellation } from '../../cancellation.js';
 import { KaragozError } from '../../errors.js';
 import { TRUST } from './devicectl.js';
-import { isRecord } from './devices.js';
+import { isRecord } from './record.js';
 
 // Apple's USB multiplexer daemon; any user may connect (srw-rw-rw-). The phone sees the connection on its loopback, so
 // karagoz's runner listens there only (K41).

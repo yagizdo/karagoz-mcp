@@ -7,7 +7,7 @@ import { createInterface } from 'node:readline';
 import { cancellation } from '../../cancellation.js';
 import { KaragozError } from '../../errors.js';
 import { bundleOf, installed } from './app.js';
-import { isRecord } from './devices.js';
+import { isRecord } from './record.js';
 import { archive, relay } from './lockdown.js';
 import { simctlLines, TIMEOUT_MS } from './simctl.js';
 

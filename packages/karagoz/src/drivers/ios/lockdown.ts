@@ -5,7 +5,7 @@ import { connect as tlsConnect, type TLSSocket } from 'node:tls';
 import { cancellation } from '../../cancellation.js';
 import { KaragozError } from '../../errors.js';
 import { TRUST } from './devicectl.js';
-import { isRecord } from './devices.js';
+import { isRecord } from './record.js';
 import { connect, pairRecord, parse, plist, type Plist } from './usbmux.js';
 
 // lockdownd's port on every iPhone, reached through usbmuxd like the runner's (K41, K44).

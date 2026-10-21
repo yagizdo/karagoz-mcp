@@ -7,7 +7,7 @@ import { promisify } from 'node:util';
 import { cancellation } from '../../cancellation.js';
 import { KaragozError } from '../../errors.js';
 import { displayOf, rotation } from './devicectl.js';
-import { isRecord } from './devices.js';
+import { isRecord } from './record.js';
 import { tree } from './runner.js';
 import { panelScale } from './screenshot.js';
 import { buildVersion, CACHE_HINT, CACHE_ROOT, ownedDir, owns, xcode } from './xcode.js';

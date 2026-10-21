@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { promisify } from 'node:util';
 import { cancellation } from '../../cancellation.js';
 import { KaragozError } from '../../errors.js';
-import { isRecord } from './devices.js';
+import { isRecord } from './record.js';
 import { developerDir } from './simctl.js';
 
 const run = promisify(execFile);
