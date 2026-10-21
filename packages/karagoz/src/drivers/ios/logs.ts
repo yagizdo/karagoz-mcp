@@ -3,11 +3,11 @@ import { closeSync, existsSync, openSync, readSync, rmSync } from 'node:fs';
 import { mkdir, mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { basename, join } from 'node:path';
-import { createInterface } from 'node:readline';
 import { cancellation } from '../../cancellation.js';
 import { KaragozError } from '../../errors.js';
+import { readLines } from '../../tool.js';
 import { bundleOf, installed } from './app.js';
-import { isRecord } from './devices.js';
+import { isRecord } from './record.js';
 import { archive, relay } from './lockdown.js';
 import { simctlLines, TIMEOUT_MS } from './simctl.js';
 
@@ -231,8 +231,7 @@ export async function logs(udid: string, pkg: string | undefined, since: string 
 // Also doctor's text for a tool its PATH walk does not find (K30 4.7).
 export const notOnPath = (name: 'tar' | 'log') => `${name} not found on PATH`;
 
-// simctlLines' twin for macOS's own log (K44): listeners before any await, the first throw kills it and wins, K37's
-// 30 s.
+// macOS's own log, read through readLines() as simctlLines() reads simctl (K44), with K37's 30 s.
 // ponytail: log and tar are found on PATH, so smoke 4.6 can put a fake log first; a user's own earlier `log` would be
 // called instead of macOS's.
 async function logLines(args: string[], onLine: (line: string) => void): Promise<void> {
@@ -243,40 +242,11 @@ async function logLines(args: string[], onLine: (line: string) => void): Promise
     timeout: TIMEOUT_MS,
     ...(signal && { signal }),
   });
-  let failure: Error | undefined;
-  child.on('error', (err) => {
-    failure = err;
-  });
-  let stderr = '';
-  child.stderr.setEncoding('utf8');
-  child.stderr.on('data', (chunk: string) => {
-    if (stderr.length < 4096) stderr += chunk;
-  });
-  const reader = createInterface({ input: child.stdout, crlfDelay: Infinity });
-  let thrown: { err: unknown } | undefined;
-  const read = (line: string) => {
-    try {
-      onLine(line);
-    } catch (err) {
-      // Already killed by the timeout or an abort: this is the cut last line, and that result wins.
-      if (child.killed) return;
-      thrown = { err };
-      child.kill();
-      reader.off('line', read);
-    }
-  };
-  reader.on('line', read);
-  const [code, ended] = await new Promise<[number | null, NodeJS.Signals | null]>((done) => {
-    child.on('close', (exit, by) => done([exit, by]));
-  });
-  // The SDK sends no response for a cancelled call, so the abort passes through unmapped (K31).
-  signal?.throwIfAborted();
-  if (failure) {
+  const { code, ended, killed, stderr } = await readLines(child, onLine, (failure) => {
     const missing = 'code' in failure && failure.code === 'ENOENT';
-    throw new KaragozError('HELPER_FAILED', missing ? notOnPath('log') : `log did not start (${failure.message})`);
-  }
-  if (thrown) throw thrown.err;
-  if (child.killed) {
+    return new KaragozError('HELPER_FAILED', missing ? notOnPath('log') : `log did not start (${failure.message})`);
+  });
+  if (killed) {
     throw new KaragozError(
       'HELPER_FAILED',
       `log show did not finish within ${TIMEOUT_MS / 1000} s. Pass a later --since, or --package, to read less of the iPhone log.`,

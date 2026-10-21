@@ -81,7 +81,7 @@ async function socket(): Promise<Entry> {
 
 // iPhone logs spawns tar and log by bare name, so libuv walks PATH (unset: /usr/bin:/bin; an empty entry is the cwd):
 // ENOENT and ENOTDIR go on, a file it cannot run is remembered and passed over, any other error stops (R3, K30 4.7).
-async function onPath(name: 'tar' | 'log'): Promise<Entry> {
+async function executable(name: 'tar' | 'log'): Promise<Entry> {
   let denied: string | undefined;
   for (const dir of (process.env.PATH ?? '/usr/bin:/bin').split(':')) {
     const path = resolve(dir, name);
@@ -220,8 +220,8 @@ export async function doctor(): Promise<Report> {
     iosRunner(dev),
     builder ? tool(builder.bin, builder.missing) : ({ status: 'missing', message: NO_XCODE } satisfies Entry),
     socket(),
-    onPath('tar'),
-    onPath('log'),
+    executable('tar'),
+    executable('log'),
   ]);
   const version = plistString(plist, 'CFBundleShortVersionString');
   const build = plistString(plist, 'ProductBuildVersion');

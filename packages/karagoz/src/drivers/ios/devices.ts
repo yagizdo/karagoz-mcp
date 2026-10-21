@@ -1,12 +1,10 @@
 import { KaragozError } from '../../errors.js';
+import { isRecord } from './record.js';
 import { simctl } from './simctl.js';
 
 // iPads share the iOS runtime. watchOS, tvOS and visionOS (xrOS-) runtimes are dropped: no karagoz command acts on
 // them (K18 3.1 note).
 const IOS_RUNTIME = 'com.apple.CoreSimulator.SimRuntime.iOS-';
-
-export const isRecord = (value: unknown): value is Record<string, unknown> =>
-  typeof value === 'object' && value !== null && !Array.isArray(value);
 
 // `list devices --json` is {devices: {<runtime id>: [device, ...]}} since Xcode 10.2 (K32). Only running, available
 // simulators are listed: karagoz cannot boot one, and adb lists only running devices too (K18 3.1 note).
@@ -30,6 +28,11 @@ export async function listSimulators() {
       const { udid, name, state, isAvailable } = device;
       if (typeof udid !== 'string' || typeof name !== 'string' || typeof state !== 'string') return [];
       if (isAvailable !== true || state === 'Shutdown') return [];
-      return [{ id: udid, platform: 'ios', kind: 'simulator', state, name }];
+      return [{ id: udid, platform: 'ios' as const, kind: 'simulator' as const, state, name }];
     });
+}
+
+// undefined once the simulator can take commands; karagoz knows no step that helps with another state.
+export function notReady(state: string): string | undefined {
+  return state === 'Booted' ? undefined : '';
 }

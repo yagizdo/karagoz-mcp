@@ -1,11 +1,8 @@
-import { execFile, spawn } from 'node:child_process';
+import { spawn } from 'node:child_process';
 import { dirname, join, resolve } from 'node:path';
-import { createInterface } from 'node:readline';
-import { promisify } from 'node:util';
 import { cancellation } from '../../cancellation.js';
 import { KaragozError } from '../../errors.js';
-
-const run = promisify(execFile);
+import { readLines, runTool } from '../../tool.js';
 
 // The first call after login starts CoreSimulatorService: 8.9 s in one report, and 15 s was too short in two
 // projects (K32).
@@ -56,8 +53,7 @@ function timedOut(timeout: number): KaragozError {
   );
 }
 
-// The bytes form keeps err.stderr a Buffer, so SIMCTL_FAILED carries simctl's own text; simctl() decodes the same
-// result, as adb() does (K32, K33). simctl's stderr on success ("Wrote screenshot to: <path>") is dropped: it is noise
+// simctl() decodes the bytes, as adb() does (K32, K33). simctl's stderr on success ("Wrote screenshot to: <path>") is dropped: it is noise
 // on every capture.
 async function simctlBytes(
   args: string[],
@@ -65,41 +61,25 @@ async function simctlBytes(
   refusal?: 'INSTALL_FAILED' | 'UNINSTALL_FAILED',
 ): Promise<Buffer> {
   const { bin, missing } = binary();
-  const signal = cancellation.getStore();
-  // An aborted signal still spawns simctl and kills it a tick later.
-  signal?.throwIfAborted();
-  try {
-    return (
-      await run(bin, args, {
-        timeout,
-        encoding: 'buffer',
-        maxBuffer: MAX_BUFFER,
-        ...(signal && { signal }),
-      })
-    ).stdout;
-  } catch (err) {
-    if (!(err instanceof Error)) throw err;
-    // The SDK sends no response for a cancelled call, so the abort passes through unmapped (K31).
-    if (signal?.aborted) throw err;
-    if ('code' in err && err.code === 'ENOENT') {
-      throw new KaragozError('SIMCTL_NOT_FOUND', missing);
-    }
-    if ('killed' in err && err.killed) throw timedOut(timeout);
-    const stderr = 'stderr' in err && Buffer.isBuffer(err.stderr) ? err.stderr.toString('utf8').trim() : '';
-    const match = refusal ? HEADER.exec(stderr) : null;
-    if (refusal && match) {
-      // The description lines sit between the header and the first Underlying error block. Not cut: a device build's
-      // refusal runs past 300 characters (K36).
-      const lines = stderr.slice(match.index + match[0].length).split('\n');
-      const end = lines.findIndex((line) => /^\s*Underlying error \(/.test(line));
-      const message = (end < 0 ? lines : lines.slice(0, end))
-        .map((line) => line.trim())
-        .filter(Boolean)
-        .join(' ');
-      throw new KaragozError(refusal, message || match[0], `${match[1]}:${Number(match[2])}`);
-    }
-    throw new KaragozError('SIMCTL_FAILED', (stderr || err.message).slice(0, 300));
+  const result = await runTool(bin, args, { timeout, maxBuffer: MAX_BUFFER });
+  if (result.ok) return result.stdout;
+  const { failure } = result;
+  if (failure.kind === 'missing') throw new KaragozError('SIMCTL_NOT_FOUND', missing);
+  if (failure.kind === 'timeout') throw timedOut(timeout);
+  const { stderr } = failure;
+  const match = refusal ? HEADER.exec(stderr) : null;
+  if (refusal && match) {
+    // The description lines sit between the header and the first Underlying error block. Not cut: a device build's
+    // refusal runs past 300 characters (K36).
+    const lines = stderr.slice(match.index + match[0].length).split('\n');
+    const end = lines.findIndex((line) => /^\s*Underlying error \(/.test(line));
+    const message = (end < 0 ? lines : lines.slice(0, end))
+      .map((line) => line.trim())
+      .filter(Boolean)
+      .join(' ');
+    throw new KaragozError(refusal, message || match[0], `${match[1]}:${Number(match[2])}`);
   }
+  throw new KaragozError('SIMCTL_FAILED', (stderr || failure.message).slice(0, 300));
 }
 
 export async function simctl(
@@ -130,38 +110,8 @@ export async function simctlLines(args: string[], onLine: (line: string) => void
     if (!(err instanceof Error)) throw err;
     throw spawnFailed(err, missing);
   }
-  // Listeners go on before any await: readline drops lines that arrive while nothing listens (K37).
-  let failure: Error | undefined;
-  child.on('error', (err) => {
-    failure = err;
-  });
-  let stderr = '';
-  child.stderr.setEncoding('utf8');
-  child.stderr.on('data', (chunk: string) => {
-    if (stderr.length < 4096) stderr += chunk;
-  });
-  const reader = createInterface({ input: child.stdout, crlfDelay: Infinity });
-  let thrown: { err: unknown } | undefined;
-  const read = (line: string) => {
-    try {
-      onLine(line);
-    } catch (err) {
-      // Already killed by the timeout or an abort: this is the cut last line, and that result wins.
-      if (child.killed) return;
-      thrown = { err };
-      child.kill();
-      reader.off('line', read);
-    }
-  };
-  reader.on('line', read);
-  const [code, ended] = await new Promise<[number | null, NodeJS.Signals | null]>((done) => {
-    child.on('close', (exit, by) => done([exit, by]));
-  });
-  // The SDK sends no response for a cancelled call, so the abort passes through unmapped (K31).
-  signal?.throwIfAborted();
-  if (failure) throw spawnFailed(failure, missing);
-  if (thrown) throw thrown.err;
-  if (child.killed) throw timedOut(TIMEOUT_MS);
+  const { code, ended, killed, stderr } = await readLines(child, onLine, (err) => spawnFailed(err, missing));
+  if (killed) throw timedOut(TIMEOUT_MS);
   if (code === 0) return;
   // Every log call prints this line and exits 0 (K37).
   const text = stderr

@@ -10,7 +10,7 @@ import { promisify } from 'node:util';
 import { cancellation } from '../../cancellation.js';
 import { KaragozError, type ErrorCode } from '../../errors.js';
 import { apps, installApp, PHONE_TIMEOUT_MS, profiles, removeProfile, uninstallApp } from './devicectl.js';
-import { isRecord } from './devices.js';
+import { isRecord } from './record.js';
 import { connect } from './usbmux.js';
 import { buildVersion, CACHE_HINT, CACHE_ROOT, noTeam, ownedDir, teams, xcode } from './xcode.js';
 

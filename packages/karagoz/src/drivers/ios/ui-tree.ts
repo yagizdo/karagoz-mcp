@@ -1,18 +1,15 @@
-import { execFile } from 'node:child_process';
 import { createHash, randomUUID } from 'node:crypto';
 import { access, constants, readFile, rename, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { promisify } from 'node:util';
 import { cancellation } from '../../cancellation.js';
 import { KaragozError } from '../../errors.js';
+import { runTool } from '../../tool.js';
 import { displayOf, rotation } from './devicectl.js';
-import { isRecord } from './devices.js';
+import { isRecord } from './record.js';
 import { tree } from './runner.js';
 import { panelScale } from './screenshot.js';
 import { buildVersion, CACHE_HINT, CACHE_ROOT, ownedDir, owns, xcode } from './xcode.js';
-
-const run = promisify(execFile);
 
 // 2.8 s measured warm; a cold module cache on a slow Mac can take far longer (K34).
 const COMPILE_TIMEOUT_MS = 120_000;
@@ -81,23 +78,22 @@ export async function helper(dev: string): Promise<string> {
   const sdk = join(dev, 'Platforms', 'MacOSX.platform', 'Developer', 'SDKs', 'MacOSX.sdk');
   // A unique name and a rename: two first calls never run a half-written binary, and the slower one just replaces it.
   const tmp = join(dir, `ax.${process.pid}.${randomUUID()}.tmp`);
-  const signal = cancellation.getStore();
-  signal?.throwIfAborted();
   try {
-    await run(compiler.bin, [...FLAGS, '-sdk', sdk, SOURCE, '-o', tmp], {
+    const result = await runTool(compiler.bin, [...FLAGS, '-sdk', sdk, SOURCE, '-o', tmp], {
       timeout: COMPILE_TIMEOUT_MS,
-      ...(signal && { signal }),
     });
-    await rename(tmp, bin);
-  } catch (err) {
-    // The SDK sends no response for a cancelled call, so the abort passes through (K31).
-    if (signal?.aborted) throw err;
-    if (!(err instanceof Error)) throw err;
-    if ('killed' in err && err.killed) {
-      throw new KaragozError('HELPER_FAILED', `swiftc did not finish within ${COMPILE_TIMEOUT_MS / 1000} s`);
+    if (!result.ok) {
+      const { failure } = result;
+      if (failure.kind === 'timeout') {
+        throw new KaragozError('HELPER_FAILED', `swiftc did not finish within ${COMPILE_TIMEOUT_MS / 1000} s`);
+      }
+      throw new KaragozError('HELPER_FAILED', (failure.stderr || failure.message).slice(0, 300));
     }
-    const stderr = 'stderr' in err && typeof err.stderr === 'string' ? err.stderr.trim() : '';
-    throw new KaragozError('HELPER_FAILED', (stderr || err.message).slice(0, 300));
+    await rename(tmp, bin).catch((err: unknown) => {
+      // The SDK sends no response for a cancelled call, so the abort passes through (K31).
+      if (cancellation.getStore()?.aborted || !(err instanceof Error)) throw err;
+      throw new KaragozError('HELPER_FAILED', err.message.slice(0, 300));
+    });
   } finally {
     await rm(tmp, { force: true });
   }
@@ -106,37 +102,29 @@ export async function helper(dev: string): Promise<string> {
 
 // Exit codes and stderr per the contract at the top of ax-helper.swift.
 async function read(bin: string, dev: string, udid: string): Promise<string> {
-  const signal = cancellation.getStore();
-  signal?.throwIfAborted();
-  try {
-    return (await run(bin, [dev, udid], { timeout: RUN_TIMEOUT_MS, maxBuffer: MAX_BUFFER, ...(signal && { signal }) }))
-      .stdout;
-  } catch (err) {
-    if (signal?.aborted) throw err;
-    if (!(err instanceof Error)) throw err;
-    const stderr = 'stderr' in err && typeof err.stderr === 'string' ? err.stderr.trim().slice(0, 300) : '';
-    const code = 'code' in err ? err.code : undefined;
-    if ('killed' in err && err.killed) {
-      throw new KaragozError('CAPTURE_FAILED', `the simulator did not answer within ${RUN_TIMEOUT_MS / 1000} s`);
-    }
-    if (typeof code === 'string' && code.startsWith('ERR_CHILD_PROCESS_STDIO_MAXBUFFER')) {
-      throw new KaragozError('CAPTURE_FAILED', `the tree is larger than ${MAX_BUFFER / 1024 / 1024} MiB`);
-    }
-    if (code === 2) {
-      throw new KaragozError(
-        'HELPER_FAILED',
-        `${stderr}; this Xcode changed a private interface karagoz uses; update karagoz`,
-      );
-    }
-    if (code === 3) throw new KaragozError('CAPTURE_FAILED', stderr || 'the helper could not read this screen');
-    if ('signal' in err && typeof err.signal === 'string') {
-      throw new KaragozError('HELPER_FAILED', `the helper crashed (${err.signal})`);
-    }
-    if (code === 'EACCES' || code === 'ENOENT') {
-      throw new KaragozError('HELPER_FAILED', `cannot run ${bin} (${code}); ${CACHE_HINT}`);
-    }
-    throw new KaragozError('HELPER_FAILED', stderr || err.message.slice(0, 300));
+  const result = await runTool(bin, [dev, udid], { timeout: RUN_TIMEOUT_MS, maxBuffer: MAX_BUFFER });
+  if (result.ok) return result.stdout.toString('utf8');
+  const { failure } = result;
+  const { code } = failure;
+  const stderr = failure.stderr.slice(0, 300);
+  if (failure.kind === 'timeout') {
+    throw new KaragozError('CAPTURE_FAILED', `the simulator did not answer within ${RUN_TIMEOUT_MS / 1000} s`);
   }
+  if (typeof code === 'string' && code.startsWith('ERR_CHILD_PROCESS_STDIO_MAXBUFFER')) {
+    throw new KaragozError('CAPTURE_FAILED', `the tree is larger than ${MAX_BUFFER / 1024 / 1024} MiB`);
+  }
+  if (code === 2) {
+    throw new KaragozError(
+      'HELPER_FAILED',
+      `${stderr}; this Xcode changed a private interface karagoz uses; update karagoz`,
+    );
+  }
+  if (code === 3) throw new KaragozError('CAPTURE_FAILED', stderr || 'the helper could not read this screen');
+  if (failure.signal) throw new KaragozError('HELPER_FAILED', `the helper crashed (${failure.signal})`);
+  if (code === 'EACCES' || code === 'ENOENT') {
+    throw new KaragozError('HELPER_FAILED', `cannot run ${bin} (${code}); ${CACHE_HINT}`);
+  }
+  throw new KaragozError('HELPER_FAILED', stderr || failure.message.slice(0, 300));
 }
 
 const text = (value: unknown) => (typeof value === 'string' && value !== '' ? value : undefined);

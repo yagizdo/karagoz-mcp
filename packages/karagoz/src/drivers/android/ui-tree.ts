@@ -1,5 +1,6 @@
 import { KaragozError } from '../../errors.js';
 import { cancellation } from '../../cancellation.js';
+import { ENTITIES } from '../../xml.js';
 import { adb } from './adb.js';
 
 // uiautomator's own idle failure arrives after 11.3-12.2 s (measured), and a client killed at 10 s leaves the device
@@ -24,13 +25,6 @@ const FLAGS = [
   'selected',
   'password',
 ];
-const ENTITIES = new Map([
-  ['amp', '&'],
-  ['lt', '<'],
-  ['gt', '>'],
-  ['quot', '"'],
-  ['apos', "'"],
-]);
 
 // KXmlSerializer's grammar only (K13 note): elements, attributes in " or ' quotes, self-closing tags and whitespace
 // between tags. Anything else fails the match and throws.

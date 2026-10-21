@@ -1,7 +1,6 @@
 import { resolveTarget } from './devices.js';
 import {
   key as androidKey,
-  keyCode,
   swipe as androidSwipe,
   tap as androidTap,
   text as androidText,
@@ -15,10 +14,12 @@ import {
   swipePhone,
   tap as iosTap,
   tapElement,
+  tapElementPhone,
   tapPhone,
   text as iosText,
   textPhone,
 } from './drivers/ios/input.js';
+import { keyCode } from './keys.js';
 
 export type { Target };
 
@@ -35,7 +36,11 @@ export async function tap(device: string | undefined, target: Target, duration: 
   const resolved = await resolveTarget(device);
   const { id } = resolved;
   if (resolved.platform === 'android') return androidTap(id, target, duration, timeout);
-  if (target.kind !== 'point') return tapElement(id, target, duration, timeout, resolved.kind);
+  if (target.kind !== 'point') {
+    return resolved.kind === 'physical'
+      ? tapElementPhone(id, target, duration, timeout)
+      : tapElement(id, target, duration, timeout);
+  }
   return resolved.kind === 'physical'
     ? tapPhone(id, target.x, target.y, duration)
     : iosTap(id, target.x, target.y, duration);

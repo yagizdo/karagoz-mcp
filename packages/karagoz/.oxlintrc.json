@@ -1,6 +1,8 @@
 {
   "plugins": ["typescript"],
-  "options": { "typeAware": true },
+  "options": {
+    "typeAware": true
+  },
   "rules": {
     "typescript/no-floating-promises": "error",
     "typescript/no-misused-promises": "error",
@@ -14,5 +16,73 @@
     "typescript/no-unnecessary-condition": "error",
     "typescript/ban-ts-comment": "error",
     "no-empty": "error"
-  }
+  },
+  "overrides": [
+    {
+      "files": ["src/drivers/android/**"],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "group": [
+                  "../ios/**",
+                  "../../**",
+                  "!../../errors.js",
+                  "!../../cancellation.js",
+                  "!../../png.js",
+                  "!../../tool.js",
+                  "!../../keys.js",
+                  "!../../xml.js"
+                ],
+                "message": "a driver imports shared modules and files of its own platform only (AGENTS.md, Code layout)"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": ["src/drivers/ios/**"],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "group": [
+                  "../android/**",
+                  "../../**",
+                  "!../../errors.js",
+                  "!../../cancellation.js",
+                  "!../../png.js",
+                  "!../../tool.js",
+                  "!../../keys.js",
+                  "!../../xml.js"
+                ],
+                "message": "a driver imports shared modules and files of its own platform only (AGENTS.md, Code layout)"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": ["src/cli.ts", "src/mcp.ts", "src/commands.ts"],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "group": ["./drivers/**"],
+                "message": "front ends and commands.ts import no driver (AGENTS.md, Code layout)"
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ]
 }

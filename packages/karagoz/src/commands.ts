@@ -1,12 +1,11 @@
 import { install, launch, terminate, uninstall } from './app.js';
-import { doctor as adbDoctor } from './drivers/android/doctor.js';
-import { doctor as xcodeDoctor } from './drivers/ios/doctor.js';
+import { doctor } from './doctor.js';
 import { key, swipe, tap, text, type Target } from './input.js';
 import { logs } from './logs.js';
 import { installRunnerOn, uninstallRunnerFrom } from './runner.js';
 import { screenshot } from './screenshot.js';
 import { uiTree } from './ui-tree.js';
-import { IS_MAC, listAll } from './devices.js';
+import { listAll } from './devices.js';
 import { KaragozError, type ErrorCode } from './errors.js';
 
 // Every command option takes a value, so a command receives its options as strings. args names the positional
@@ -156,14 +155,7 @@ export const commands: Record<string, Command> = {
         lines === undefined ? undefined : count('--lines', lines),
       ),
   },
-  doctor: {
-    options: {},
-    args: [],
-    run: async () => {
-      const [adb, xcode] = await Promise.all([adbDoctor(), IS_MAC ? xcodeDoctor() : undefined]);
-      return { ...adb, ...xcode };
-    },
-  },
+  doctor: { options: {}, args: [], run: () => doctor() },
   'install-runner': {
     options: { device: { type: 'string' }, team: { type: 'string' } },
     args: [],
