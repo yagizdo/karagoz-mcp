@@ -66,7 +66,6 @@ Paths below are relative to `packages/karagoz/src/`.
 Do not copy these. The refactor step in brackets fixes each one, and its PR deletes the line.
 
 - `tar` in `drivers/ios/logs.ts` has no timeout; it ends with its input stream or the abort. [Q5]
-- `drivers/android/ui-tree.ts` and `drivers/ios/usbmux.ts` each hold the same XML entity table. [Q6]
 
 ## Conventions
 

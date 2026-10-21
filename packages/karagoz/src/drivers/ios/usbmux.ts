@@ -1,6 +1,7 @@
 import { createConnection, type Socket } from 'node:net';
 import { cancellation } from '../../cancellation.js';
 import { KaragozError } from '../../errors.js';
+import { ENTITIES } from '../../xml.js';
 import { TRUST } from './devicectl.js';
 import { isRecord } from './record.js';
 
@@ -47,14 +48,6 @@ function message(fields: Record<string, string | number>): Buffer {
   return Buffer.concat([header, body]);
 }
 
-const ENTITIES = new Map([
-  ['&lt;', '<'],
-  ['&gt;', '>'],
-  ['&amp;', '&'],
-  ['&quot;', '"'],
-  ['&apos;', "'"],
-]);
-
 // The XML plist usbmuxd answers with: dict, array, string, integer, real, true, false, data (kept as its text).
 export function parse(xml: string): Plist {
   const tokens = [...xml.matchAll(/<[?!][^>]*>|<(\/?)(\w+)[^>]*?(\/?)>|([^<]+)/g)].filter(
@@ -65,7 +58,7 @@ export function parse(xml: string): Plist {
     const token = tokens[at];
     if (token?.[4] === undefined) return '';
     at++;
-    return token[4].replace(/&\w+;/g, (entity) => ENTITIES.get(entity) ?? entity);
+    return token[4].replace(/&(\w+);/g, (entity, name: string) => ENTITIES.get(name) ?? entity);
   };
   const close = (tag: string) => {
     if (tokens[at]?.[1] !== '/' || tokens[at]?.[2] !== tag) throw new Error(`no </${tag}>`);
