@@ -1,18 +1,46 @@
 {
-  "name": "karagoz",
-  "version": "0.0.0",
+  "name": "karagoz-mcp",
+  "version": "0.1.0",
+  "description": "Device automation for Android emulators and phones, iOS simulators and iPhones: a CLI and an MCP server.",
+  "keywords": [
+    "mcp",
+    "mcp-server",
+    "model-context-protocol",
+    "android",
+    "ios",
+    "adb",
+    "emulator",
+    "simulator",
+    "iphone",
+    "accessibility",
+    "automation",
+    "cli"
+  ],
   "license": "MIT",
   "homepage": "https://karagozmcp.com",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/yagizdo/karagoz-mcp.git",
+    "directory": "packages/karagoz"
+  },
+  "bugs": {
+    "url": "https://github.com/yagizdo/karagoz-mcp/issues"
+  },
+  "mcpName": "io.github.yagizdo/karagoz-mcp",
   "type": "module",
   "bin": {
     "karagoz": "dist/cli.js"
   },
+  "files": [
+    "dist",
+    "THIRD_PARTY_NOTICES.txt"
+  ],
   "engines": {
     "node": ">=22"
   },
   "scripts": {
     "build": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\" && esbuild src/cli.ts --bundle --platform=node --format=esm --target=node22 --splitting --outdir=dist && node -e \"const fs = require('fs'); fs.copyFileSync('src/drivers/ios/ax-helper.swift', 'dist/ax-helper.swift'); for (const d of ['KaragozRunner.xcodeproj', 'KaragozRunner']) fs.cpSync('../ios-runner/' + d, 'dist/ios-runner/' + d, { recursive: true, filter: (f) => !f.includes('xcuserdata') })\"",
-    "prepack": "node -e \"for (const f of ['README.md', 'LICENSE']) require('fs').copyFileSync('../../' + f, f)\"",
+    "prepack": "npm run build && node -e \"for (const f of ['README.md', 'LICENSE']) require('fs').copyFileSync('../../' + f, f)\"",
     "typecheck": "tsc",
     "lint": "oxlint src && prettier --check src",
     "format": "prettier --write src"
