@@ -268,23 +268,14 @@ function underKeyboard(node: IosNode, target: IosNode, x: number, y: number): bo
 
 // Only "no match" reads again; a failed read or an ambiguous match ends it. --timeout waits for the element to appear
 // and never repeats the tap (K26, K11 note).
-// ponytail: the keyboard-cover check runs on an iPhone only: this simulator never showed a software keyboard (its
-// hardware keyboard state), so where its keys sit was never measured (K35).
-export async function tapElement(
-  udid: string,
-  selector: Selector,
-  duration: number | undefined,
-  timeout: number,
-  kind: 'simulator' | 'physical',
-) {
+async function find<T extends { root: IosNode }>(selector: Selector, timeout: number, read: () => Promise<T>) {
   const what = selector.kind === 'text' ? `label or value '${selector.label}'` : `identifier '${selector.id}'`;
   const start = performance.now();
   for (let reads = 1; ; reads++) {
     // Without it a cancelled wait keeps reading for its whole timeout (K31).
     cancellation.getStore()?.throwIfAborted();
-    const read = kind === 'physical' ? await readPhoneTree(udid) : { ...(await readTree(udid)), display: undefined };
-    const { rotation: rotated, root } = read;
-    const found = collect(root, selector, []);
+    const tree = await read();
+    const found = collect(tree.root, selector, []);
     if (found.length > 1) {
       const shown = found.slice(0, 5).map((node) => `${node.role} [${node.bounds.join(',')}]`);
       const more = found.length > shown.length ? `, and ${found.length - shown.length} more` : '';
@@ -296,19 +287,9 @@ export async function tapElement(
     const [match] = found;
     if (match) {
       const [l = 0, t = 0, r = 0, b = 0] = match.bounds;
-      const [x, y] = [(l + r) / 2, (t + b) / 2];
-      if (read.display && underKeyboard(root, match, x, y)) {
-        throw new KaragozError(
-          'ELEMENT_COVERED',
-          `the software keyboard covers the center of the node with ${what} at (${x}, ${y}); hide the keyboard first, then tap again`,
-        );
-      }
       const element = { ...match };
       delete element.children;
-      const tapped = read.display
-        ? await tapPhone(udid, x, y, duration, read.display)
-        : await tap(udid, x, y, duration, rotated);
-      return { ...tapped, element };
+      return { tree, match, element, x: (l + r) / 2, y: (t + b) / 2, what };
     }
     const elapsed = performance.now() - start;
     if (elapsed >= timeout) {
@@ -318,6 +299,24 @@ export async function tapElement(
       );
     }
   }
+}
+
+export async function tapElement(udid: string, selector: Selector, duration: number | undefined, timeout: number) {
+  const { tree, element, x, y } = await find(selector, timeout, () => readTree(udid));
+  return { ...(await tap(udid, x, y, duration, tree.rotation)), element };
+}
+
+// ponytail: the keyboard-cover check runs on an iPhone only: this simulator never showed a software keyboard (its
+// hardware keyboard state), so where its keys sit was never measured (K35).
+export async function tapElementPhone(udid: string, selector: Selector, duration: number | undefined, timeout: number) {
+  const { tree, match, element, x, y, what } = await find(selector, timeout, () => readPhoneTree(udid));
+  if (underKeyboard(tree.root, match, x, y)) {
+    throw new KaragozError(
+      'ELEMENT_COVERED',
+      `the software keyboard covers the center of the node with ${what} at (${x}, ${y}); hide the keyboard first, then tap again`,
+    );
+  }
+  return { ...(await tapPhone(udid, x, y, duration, tree.display)), element };
 }
 
 async function appAccessibility(udid: string): Promise<boolean> {

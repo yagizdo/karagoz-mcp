@@ -65,7 +65,6 @@ Paths below are relative to `packages/karagoz/src/`.
 
 Do not copy these. The refactor step in brackets fixes each one, and its PR deletes the line.
 
-- `tapElement()` in `drivers/ios/input.ts` takes `kind` and branches between simulator and iPhone itself. [Q4]
 - `simctlLines()` in `drivers/ios/simctl.ts` and `logLines()` in `drivers/ios/logs.ts` are the same streaming reader. [Q5]
 - `tar` in `drivers/ios/logs.ts` has no timeout; it ends with its input stream or the abort. [Q5]
 - `drivers/android/ui-tree.ts` and `drivers/ios/usbmux.ts` each hold the same XML entity table. [Q6]
