@@ -48,6 +48,8 @@ cat > "$tmp/dev/usr/bin/simctl" <<FAKE
 #!/bin/sh
 case "\$*" in
   "list devices --json") /bin/cat "$fake/list.json" ;;
+  "spawn A1 defaults read com.apple.Accessibility ApplicationAccessibilityEnabled") echo read >> "$fake/seq"; /bin/cat "$fake/appax" ;;
+  "spawn A1 defaults write com.apple.Accessibility ApplicationAccessibilityEnabled -bool true") echo write >> "$fake/appax.log"; echo write >> "$fake/seq" ;;
   *) exit 1 ;;
 esac
 FAKE
@@ -211,6 +213,27 @@ out=$(k ui-tree --device A1) && st=0 || st=$?
 refuses HELPER_FAILED "crashed helper" "$out" "$st"
 says "crashed helper" "$out" "SIGSEGV"
 
+# 7b. An app opened while app accessibility was off reads as a root with no size and no children: karagoz turns the
+# setting back on and asks for a restart. With the setting on, the same root comes back as it is; a real root is
+# never checked.
+rot rot0
+empty='{"screen":{"width":1206,"height":2622,"scale":3},"root":{"role":"AXApplication","frame":[0,0,0,0]}}'
+helper "echo '$empty'"
+rm -f "$fake/seq" "$fake/appax.log"; echo 0 > "$fake/appax"
+out=$(k ui-tree --device A1) && st=0 || st=$?
+refuses CAPTURE_FAILED "empty root, setting off" "$out" "$st"
+says "empty root, setting off" "$out" "restart the app"
+[ "$(cat "$fake/appax.log" 2>/dev/null)" = write ] || fail "empty root, setting off: not written back"
+rm -f "$fake/seq" "$fake/appax.log"; echo 1 > "$fake/appax"
+out=$(k ui-tree --device A1) && st=0 || st=$?
+[ "$st" = 0 ] && [ "$out" = '{"device":"A1","rotation":0,"root":{"role":"Application","bounds":[0,0,0,0]}}' ] \
+  || fail "empty root, setting on: exit $st, $out"
+[ ! -e "$fake/appax.log" ] || fail "empty root, setting on: written"
+helper "echo '{\"screen\":{\"width\":1206,\"height\":2622,\"scale\":3},\"root\":{\"role\":\"AXApplication\",\"frame\":[0,0,402,874]}}'"
+rm -f "$fake/seq"; echo 0 > "$fake/appax"
+out=$(k ui-tree --device A1) && st=0 || st=$?
+[ "$st" = 0 ] && [ ! -e "$fake/seq" ] || fail "a sized root read the setting: exit $st, $out"
+
 # 8. A hung helper ends at the 30 s timeout and leaves no process behind.
 helper "exec /bin/sleep 97.47"
 start=$(date +%s)
@@ -234,4 +257,4 @@ sims "$a1"; helper "/bin/cat '$fake/tree.json'"; rm "$tmp/dev/usr/bin/devicectl"
 line=$(k ui-tree --device A1 | node -e 'console.log(JSON.stringify(JSON.parse(require("fs").readFileSync(0, "utf8")).rotation))')
 [ "$line" = null ] || fail "no devicectl gave rotation $line"
 
-echo "ok: $ok, mapping, mini, cache, no compiler, compile failure, helper exits, hung (${took}s), booting, no devicectl"
+echo "ok: $ok, mapping, mini, cache, no compiler, compile failure, helper exits, empty root, hung (${took}s), booting, no devicectl"

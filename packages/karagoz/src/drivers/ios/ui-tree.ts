@@ -9,6 +9,7 @@ import { displayOf, rotation } from './devicectl.js';
 import { isRecord } from './record.js';
 import { tree } from './runner.js';
 import { panelScale } from './screenshot.js';
+import { simctl } from './simctl.js';
 import { buildVersion, CACHE_HINT, CACHE_ROOT, ownedDir, owns, xcode } from './xcode.js';
 
 // 2.8 s measured warm; a cold module cache on a slow Mac can take far longer (K34).
@@ -172,12 +173,40 @@ function parse(stdout: string): IosNode {
   }
 }
 
+// An XCUI session (text's, or an Xcode UI test's) turns app accessibility off when it ends, whatever it was, and apps
+// opened after that give an empty tree until the simulator restarts (K35 3.4 build).
+const APP_AX = ['com.apple.Accessibility', 'ApplicationAccessibilityEnabled'];
+
+export async function appAccessibility(udid: string): Promise<boolean> {
+  try {
+    return (await simctl(['spawn', udid, 'defaults', 'read', ...APP_AX])).trim() === '1';
+  } catch (err) {
+    // A missing key fails the read and means off: there is nothing to write back.
+    if (!(err instanceof KaragozError)) throw err;
+    return false;
+  }
+}
+
+// Outside the call's cancellation: a cancelled call must still leave app accessibility on (K31).
+export const restoreAppAccessibility = (udid: string) =>
+  cancellation.exit(() => simctl(['spawn', udid, 'defaults', 'write', ...APP_AX, '-bool', 'true']));
+
 // The frontmost app of a booted simulator. The compile runs first, so HELPER_FAILED wins over a read failure.
 export async function readTree(udid: string): Promise<{ rotation: number | null; root: IosNode }> {
   const dev = await xcode();
   const bin = await helper(dev);
   const [stdout, rotated] = await Promise.all([read(bin, dev, udid), rotation(udid)]);
-  return { rotation: rotated, root: parse(stdout) };
+  const root = parse(stdout);
+  // The simulator's bridge turns the setting on at the first read after boot; with it off, karagoz does the same, and
+  // only an app started afterwards reads in full (K47).
+  if (!root.children && root.bounds.every((value) => value === 0) && !(await appAccessibility(udid))) {
+    await restoreAppAccessibility(udid);
+    throw new KaragozError(
+      'CAPTURE_FAILED',
+      "the app in front opened while the simulator's app accessibility was off (a UI test turns it off when it ends); karagoz turned it back on: restart the app (terminate, then launch) and read again",
+    );
+  }
+  return { rotation: rotated, root };
 }
 
 // XCUIElement.ElementType raw values (Xcode 27.1's XCUIElementTypes.h) by name. XCTest's `other` is the simulator's

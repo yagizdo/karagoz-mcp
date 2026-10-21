@@ -6,7 +6,15 @@ import { runtimeOf } from './devices.js';
 import { input } from './runner.js';
 import { panelScale } from './screenshot.js';
 import { simctl } from './simctl.js';
-import { helper, readPhoneTree, readTree, RUN_TIMEOUT_MS, type IosNode } from './ui-tree.js';
+import {
+  appAccessibility,
+  helper,
+  readPhoneTree,
+  readTree,
+  restoreAppAccessibility,
+  RUN_TIMEOUT_MS,
+  type IosNode,
+} from './ui-tree.js';
 import { CACHE_HINT, shortVersion, xcode } from './xcode.js';
 
 // Android's swipe default, so both platforms state the same duration (K25, K35).
@@ -15,10 +23,6 @@ const SWIPE_MS = 300;
 // Characters per second for typeText: 300 characters came out exact 3 of 3 times at 60 (6.0 s a call) and at 120
 // (3.5 s) (K35).
 const TYPE_SPEED = 120;
-
-// The XCUI session turns app accessibility off when it ends, whatever it was, and apps opened after that give an empty
-// tree until the simulator restarts. text writes back a 1 it read before (user decision, K35 3.4 build).
-const APP_AX = ['com.apple.Accessibility', 'ApplicationAccessibilityEnabled'];
 
 // From Xcode 27, text's session comes only from simulators on iOS 27 or later: Xcode's own device tool allows no
 // older ones, and a 26.2 simulator never answered within the helper's 15 s (K47).
@@ -325,20 +329,6 @@ export async function tapElementPhone(udid: string, selector: Selector, duration
   return { ...(await tapPhone(udid, x, y, duration, tree.display)), element };
 }
 
-async function appAccessibility(udid: string): Promise<boolean> {
-  try {
-    return (await simctl(['spawn', udid, 'defaults', 'read', ...APP_AX])).trim() === '1';
-  } catch (err) {
-    // A missing key fails the read and means off: there is nothing to write back.
-    if (!(err instanceof KaragozError)) throw err;
-    return false;
-  }
-}
-
-// Outside the call's cancellation: a cancelled text must still leave app accessibility as it found it (K31).
-const restore = (udid: string) =>
-  cancellation.exit(() => simctl(['spawn', udid, 'defaults', 'write', ...APP_AX, '-bool', 'true']));
-
 // Each simulator's last text. testmanagerd turns app accessibility off when a session ends and the server runs calls
 // in parallel, so a text that read the setting during another's write-back would leave it off: texts of one simulator
 // wait in arrival order (K35). Another process typing at the same time still races.
@@ -393,10 +383,10 @@ async function typeText(udid: string, value: string) {
     await send('text', udid, ['type', String(TYPE_SPEED), value], typing);
   } catch (err) {
     // The typing error says what went wrong; a failed write-back on top of it would only hide it.
-    if (wasOn) await restore(udid).catch(() => undefined);
+    if (wasOn) await restoreAppAccessibility(udid).catch(() => undefined);
     throw err;
   }
-  if (wasOn) await restore(udid);
+  if (wasOn) await restoreAppAccessibility(udid);
   return { device: udid, text: value };
 }
 
