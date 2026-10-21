@@ -1,7 +1,6 @@
 import { resolveTarget } from './devices.js';
 import {
   key as androidKey,
-  keyCode,
   swipe as androidSwipe,
   tap as androidTap,
   text as androidText,
@@ -19,6 +18,7 @@ import {
   text as iosText,
   textPhone,
 } from './drivers/ios/input.js';
+import { keyCode } from './keys.js';
 
 export type { Target };
 
