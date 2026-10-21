@@ -1,15 +1,17 @@
 import { access, constants, readdir, readFile, stat } from 'node:fs/promises';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import { KaragozError } from '../../errors.js';
 import { devicectlPath } from './devicectl.js';
-import { runnerBuild, xctestrun } from './runner.js';
+import { notOnPath } from './logs.js';
+import { runnerBuild, xcodebuild, xctestrun } from './runner.js';
 import { binary, FRAMEWORK_PLIST } from './simctl.js';
 import { helperPath, swiftc } from './ui-tree.js';
+import { daemonPath, unreachable } from './usbmux.js';
 import { NO_XCODE, noTeam, owns, selected, teams, type Team } from './xcode.js';
 
 // doctor reads files, and runs nothing but plutil, which only converts Xcode's preference file. simctl would start
 // CoreSimulatorService and rewrite device_set.plist, and a shim under DEVELOPER_DIR can start Xcode's first launch, which
-// waits for a password (K30 3.7 note, K32, K41).
+// waits for a password (K30 3.7 note, K32, K41). xcodebuild can do the same, and usbmuxd is not connected to (K30 4.7).
 
 type Entry = { status: 'ok' | 'missing' | 'failed'; path?: string; version?: string; message?: string };
 type Helper = { status: 'ok' | 'not built' | 'failed'; path?: string; message?: string };
@@ -29,6 +31,10 @@ type Report = {
     helper: Helper;
     signing: Signing;
     iosRunner: RunnerBuild;
+    xcodebuild: Entry;
+    usbmuxd: Entry;
+    tar: Entry;
+    log: Entry;
   };
 };
 
@@ -54,6 +60,47 @@ async function tool(path: string, missing: string): Promise<Entry> {
     if (code === 'ENOENT') return { status: 'missing', path, message: missing };
     return { status: 'failed', path, message: `cannot run ${path} (${code})` };
   }
+}
+
+const errCode = (err: Error) => ('code' in err ? String(err.code) : err.message);
+
+// The socket the runner and an iPhone's logs connect to, judged without connecting: connect() gives ENOTSOCK for
+// anything but a socket (measured on a file and a directory).
+async function socket(): Promise<Entry> {
+  const path = daemonPath();
+  try {
+    if (!(await stat(path)).isSocket()) return { status: 'failed', path, message: unreachable(path, 'ENOTSOCK') };
+    await access(path, constants.R_OK | constants.W_OK);
+    return { status: 'ok', path };
+  } catch (err) {
+    if (!(err instanceof Error)) throw err;
+    const status = errCode(err) === 'ENOENT' ? 'missing' : 'failed';
+    return { status, path, message: unreachable(path, errCode(err)) };
+  }
+}
+
+// iPhone logs spawns tar and log by bare name, so libuv walks PATH (unset: /usr/bin:/bin; an empty entry is the cwd):
+// ENOENT and ENOTDIR go on, a file it cannot run is remembered and passed over, any other error stops (R3, K30 4.7).
+async function onPath(name: 'tar' | 'log'): Promise<Entry> {
+  let denied: string | undefined;
+  for (const dir of (process.env.PATH ?? '/usr/bin:/bin').split(':')) {
+    const path = resolve(dir, name);
+    try {
+      if ((await stat(path)).isFile()) {
+        await access(path, constants.X_OK);
+        return { status: 'ok', path };
+      }
+      denied ??= path;
+    } catch (err) {
+      if (!(err instanceof Error)) throw err;
+      if (errCode(err) === 'EACCES') denied ??= path;
+      else if (errCode(err) !== 'ENOENT' && errCode(err) !== 'ENOTDIR')
+        return { status: 'failed', path, message: `cannot run ${path} (${errCode(err)})` };
+    }
+  }
+  return denied
+    ? { status: 'failed', path: denied, message: `cannot run ${denied} (EACCES)` }
+    : { status: 'missing', message: notOnPath(name) };
 }
 
 // Numeric per component, a missing component counting as 0, as the shim's version sort does.
@@ -145,8 +192,21 @@ export async function doctor(): Promise<Report> {
   const found = await selected();
   const dev = found?.dev;
   const compiler = dev ? swiftc(dev) : undefined;
+  const builder = dev ? xcodebuild(dev) : undefined;
   const devicectl = devicectlPath();
-  const [plist, simctlEntry, swiftcEntry, devicectlEntry, helperEntry, signingEntry, runnerEntry] = await Promise.all([
+  const [
+    plist,
+    simctlEntry,
+    swiftcEntry,
+    devicectlEntry,
+    helperEntry,
+    signingEntry,
+    runnerEntry,
+    xcodebuildEntry,
+    usbmuxdEntry,
+    tarEntry,
+    logEntry,
+  ] = await Promise.all([
     // Text, not join(): join drops '..' lexically, while the kernel resolves a DEVELOPER_DIR symlink to Developer first.
     dev ? text(`${dev}/../version.plist`) : '',
     simctl(dev),
@@ -158,6 +218,10 @@ export async function doctor(): Promise<Report> {
     helper(dev),
     signing(),
     iosRunner(dev),
+    builder ? tool(builder.bin, builder.missing) : ({ status: 'missing', message: NO_XCODE } satisfies Entry),
+    socket(),
+    onPath('tar'),
+    onPath('log'),
   ]);
   const version = plistString(plist, 'CFBundleShortVersionString');
   const build = plistString(plist, 'ProductBuildVersion');
@@ -187,6 +251,11 @@ export async function doctor(): Promise<Report> {
       helper: helperEntry,
       signing: signingEntry,
       iosRunner: runnerEntry,
+      // What the iPhone runner and logs need; like signing and iosRunner, outside status (K30 4.7).
+      xcodebuild: xcodebuildEntry,
+      usbmuxd: usbmuxdEntry,
+      tar: tarEntry,
+      log: logEntry,
     },
   };
 }

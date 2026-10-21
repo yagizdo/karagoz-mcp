@@ -61,7 +61,7 @@ Website: [karagozmcp.com](https://karagozmcp.com/?utm_source=github&utm_medium=r
 | [`install-runner`](#install-runner), [`uninstall-runner`](#uninstall-runner) | | | | done |
 | [MCP server](#mcp-server) | done | done | done | done |
 
-"Done" means tested against a live emulator: macOS, an API 36 image (Android 16), 1080x2400 at 420 dpi. In the iOS simulator column it means the step's smoke passes on macOS: `packages/karagoz/smoke/3.1-devices-ios.sh` for `devices`, `packages/karagoz/smoke/3.2-screenshot-ios.sh` for `screenshot`, `packages/karagoz/smoke/3.3-ui-tree-ios.sh` for `ui-tree`, `packages/karagoz/smoke/3.4-input-ios.sh` for `tap`, `swipe`, `text` and `key`, `packages/karagoz/smoke/3.5-app-lifecycle-ios.sh` for `install`, `launch`, `terminate` and `uninstall`, `packages/karagoz/smoke/3.6-logs-ios.sh` for `logs`. `devices`, `screenshot` and `ui-tree` were tested on a physical Samsung phone (Android 14) over USB, and `tap`, `swipe`, `text`, `key`, `install`, `launch`, `terminate`, `uninstall` and `logs` on an Infinix phone (Android 12) over USB. No other command has been run on one yet. `doctor` touches no device; its row means tested on the same Mac with fake and real `adb` binaries, and, in the iOS simulator column, with fake and real Xcode setups (`packages/karagoz/smoke/3.7-doctor-ios.sh`). For the MCP server, done means `packages/karagoz/smoke/M-mcp.sh` passes against the live emulator and Claude Code and Codex called its tools; in the Android device column it means its tools returned results from a phone over USB, and in the iOS simulator column, its tools returned results from a booted simulator. Windows and Linux have not been run.
+"Done" means tested against a live emulator: macOS, an API 36 image (Android 16), 1080x2400 at 420 dpi. In the iOS simulator column it means the step's smoke passes on macOS: `packages/karagoz/smoke/3.1-devices-ios.sh` for `devices`, `packages/karagoz/smoke/3.2-screenshot-ios.sh` for `screenshot`, `packages/karagoz/smoke/3.3-ui-tree-ios.sh` for `ui-tree`, `packages/karagoz/smoke/3.4-input-ios.sh` for `tap`, `swipe`, `text` and `key`, `packages/karagoz/smoke/3.5-app-lifecycle-ios.sh` for `install`, `launch`, `terminate` and `uninstall`, `packages/karagoz/smoke/3.6-logs-ios.sh` for `logs`. In the iOS device column it means the same for the step's smoke in `packages/karagoz/smoke/` (`4.1` to `4.6`), with its real part run against a paired iPhone over USB. `devices`, `screenshot` and `ui-tree` were tested on a physical Samsung phone (Android 14) over USB, and `tap`, `swipe`, `text`, `key`, `install`, `launch`, `terminate`, `uninstall` and `logs` on an Infinix phone (Android 12) over USB. No other command has been run on one yet. `doctor` touches no device; its row means tested on the same Mac with fake and real `adb` binaries, and, in the iOS simulator and iOS device columns, with fake and real Xcode setups, `xcodebuild`, usbmuxd socket, `tar` and `log` (`packages/karagoz/smoke/3.7-doctor-ios.sh`). For the MCP server, done means `packages/karagoz/smoke/M-mcp.sh` passes against the live emulator and Claude Code and Codex called its tools; in the Android device column it means its tools returned results from a phone over USB, in the iOS simulator column, from a booted simulator, and in the iOS device column, from a paired iPhone over USB. Windows and Linux have not been run.
 
 ## Requirements
 
@@ -1144,7 +1144,7 @@ One record of that result, written by the test app with `Logger.notice` (the dev
 karagoz doctor
 ```
 
-Reports which `adb` karagoz uses, its version, every other `adb` it could use, and how to install platform-tools when adb is missing or too old. On macOS it also reports the Xcode the simulator commands use: its folder and version, `simctl`, `swiftc`, `devicectl` and the helper cache, and what to fix; and for iPhones, the Apple teams karagoz's runner can be signed with and the runner builds this Mac has. It changes nothing. No options.
+Reports which `adb` karagoz uses, its version, every other `adb` it could use, and how to install platform-tools when adb is missing or too old. On macOS it also reports the Xcode the simulator commands use: its folder and version, `simctl`, `swiftc`, `devicectl` and the helper cache, and what to fix; and for iPhones, the Apple teams karagoz's runner can be signed with, the runner builds this Mac has, and the `xcodebuild`, usbmuxd socket, `tar` and `log` the iPhone commands need. It changes nothing. No options.
 
 **Output**
 
@@ -1155,7 +1155,7 @@ Reports which `adb` karagoz uses, its version, every other `adb` it could use, a
 On macOS the same line goes on with `xcode`, shown here alone:
 
 ```json
-{"xcode":{"status":"ok","source":"xcode-select","path":"/Applications/Xcode.app/Contents/Developer","version":"27.0","build":"27A266a","simctl":{"status":"ok","path":"/Library/Developer/PrivateFrameworks/CoreSimulator.framework/Versions/A/Resources/bin/simctl","version":"1171.7"},"swiftc":{"status":"ok","path":"/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc"},"devicectl":{"status":"ok","path":"/Library/Developer/PrivateFrameworks/CoreDevice.framework/Versions/A/Resources/bin/devicectl"},"helper":{"status":"ok","path":"/Users/me/Library/Caches/karagoz/0bad1277ab4f7da7/ax"}}}
+{"xcode":{"status":"ok","source":"xcode-select","path":"/Applications/Xcode.app/Contents/Developer","version":"27.1","build":"27A9275","simctl":{"status":"ok","path":"/Library/Developer/PrivateFrameworks/CoreSimulator.framework/Versions/A/Resources/bin/simctl","version":"1174.9.2"},"swiftc":{"status":"ok","path":"/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc"},"devicectl":{"status":"ok","path":"/Library/Developer/PrivateFrameworks/CoreDevice.framework/Versions/A/Resources/bin/devicectl"},"helper":{"status":"ok","path":"/Users/me/Library/Caches/karagoz/e465b8a54d020f31/ax"},"signing":{"status":"ok","teams":[{"id":"XXXXXXXXXX","name":"Example Team","free":false}]},"iosRunner":{"status":"ok","path":"/Users/me/Library/Caches/karagoz/runner/7daac8e099b4044e","teams":["XXXXXXXXXX"]},"xcodebuild":{"status":"ok","path":"/Applications/Xcode.app/Contents/Developer/usr/bin/xcodebuild"},"usbmuxd":{"status":"ok","path":"/var/run/usbmuxd"},"tar":{"status":"ok","path":"/usr/bin/tar"},"log":{"status":"ok","path":"/usr/bin/log"}}}
 ```
 
 | Field | Type | Meaning |
@@ -1169,7 +1169,7 @@ On macOS the same line goes on with `xcode`, shown here alone:
 | `candidates[].path` | string | When known: the file karagoz would run. For `PATH`, the path adb prints for itself in `adb version`, so it is absent when adb printed none; on Windows, the `adb.exe` found on `PATH`. |
 | `candidates[].version` | string | With `ok` and `outdated`: the `Version` line of `adb version`, as printed. |
 | `candidates[].message` | string | With `failed` and `outdated`: why, cut at 300 characters. |
-| `xcode` | object | macOS only: the Xcode the iOS simulator commands use. |
+| `xcode` | object | macOS only: the Xcode the iOS commands use, and what the iPhone commands need from this Mac. |
 | `xcode.status` | string | `ok`, `outdated`, `failed` or `missing`, see below. |
 | `xcode.source` | string | Which rule picked the developer folder, in the commands' order: `DEVELOPER_DIR`, `xcode-select` (`/var/db/xcode_select_link`), or `default` (`/Applications/Xcode.app/Contents/Developer`). Absent when none is there. |
 | `xcode.path` | string | With `source`: the developer folder. |
@@ -1179,6 +1179,9 @@ On macOS the same line goes on with `xcode`, shown here alone:
 | `xcode.simctl.version` | string | Unless `simctl` is `missing`: this Mac's CoreSimulator version. |
 | `xcode.signing` | object | The teams [`install-runner`](#install-runner) can sign with: `status` `ok` with `teams`, an array of `{id, name, free}` (`free` for a Personal Team), or `missing` with a `message`: no Apple account in Xcode, or an account whose teams Xcode has not saved yet (open a project's Signing & Capabilities tab once, or pass `--team`). `failed` when Xcode's preferences could not be read. |
 | `xcode.iosRunner` | object | The runner builds for this karagoz and Xcode: `status` `ok` with `path` and `teams` (one build per team), `not built` (with `path` when an Xcode is selected), or `failed` with a `message`: the cache folder is not yours, or karagoz's runner sources are missing. |
+| `xcode.xcodebuild` | object | The `xcodebuild` in the developer folder, which builds the runner (`install-runner`) and starts it (`ui-tree` and input on an iPhone). An entry like `swiftc`; `missing` has `install-runner`'s own text. |
+| `xcode.usbmuxd` | object | The socket the runner and iPhone `logs` connect to, `/var/run/usbmuxd` (or `USBMUXD_SOCKET_ADDRESS` in its `UNIX:<path>` form). Read without connecting; its messages are the commands' `cannot reach usbmuxd at <path> (<code>)`. |
+| `xcode.tar`, `xcode.log` | object | The `tar` and `log` iPhone `logs` runs, found on `PATH` as the command finds them (no `PATH`: `/usr/bin:/bin`). `missing` has no `path` and the command's text: `tar not found on PATH`. |
 
 | Status | Means |
 | --- | --- |
@@ -1190,16 +1193,16 @@ On macOS the same line goes on with `xcode`, shown here alone:
 
 | `xcode.status` | Means |
 | --- | --- |
-| `ok` | `simctl`, `swiftc` and `devicectl` are `ok`, and the helper is `ok` or `not built`. `signing` and `iosRunner` do not count: a Mac without iPhones needs neither. |
+| `ok` | `simctl`, `swiftc` and `devicectl` are `ok`, and the helper is `ok` or `not built`. `signing`, `iosRunner`, `xcodebuild`, `usbmuxd`, `tar` and `log` do not count: a Mac without iPhones needs none of them. Check their own `status`. |
 | `outdated` | As `ok`, with an Xcode below 27. |
 | `failed` | `simctl`, `swiftc` or `devicectl` is not `ok`, or the helper is `failed`. |
 | `missing` | `simctl` and `swiftc` are both `missing`: no Xcode karagoz can use, such as the Command Line Tools alone. |
 
 | Entry status | Means |
 | --- | --- |
-| `ok` | `simctl`, `swiftc`, `devicectl`: a file karagoz can run. `helper`: built, and a file you own. |
-| `missing` | Nothing at `path`. With no developer folder, `swiftc` has no `path` and says no Xcode is selected. |
-| `failed` | There but not runnable: `cannot run <path> (EACCES)`. For `simctl`, also when Xcode's first launch has not finished: `the selected Xcode expects CoreSimulator <version>, this Mac has <version>: open Xcode once to finish installing its components`. For `helper`, the cache folder or binary is not yours or not the right type: delete `~/Library/Caches/karagoz`. |
+| `ok` | `simctl`, `swiftc`, `devicectl`, `xcodebuild`, `tar`, `log`: a file karagoz can run. `usbmuxd`: a socket karagoz can read and write. `helper`: built, and a file you own. |
+| `missing` | Nothing at `path`. With no developer folder, `swiftc` and `xcodebuild` have no `path` and say no Xcode is selected. `tar` and `log` have no `path`. |
+| `failed` | There but not runnable: `cannot run <path> (EACCES)`. For `tar` and `log`, the first such file on `PATH` when none after it runs. For `usbmuxd`, not a socket (`ENOTSOCK`) or not yours to use (`EACCES`). For `simctl`, also when Xcode's first launch has not finished: `the selected Xcode expects CoreSimulator <version>, this Mac has <version>: open Xcode once to finish installing its components`. For `helper`, the cache folder or binary is not yours or not the right type: delete `~/Library/Caches/karagoz`. |
 | `not built` | `helper` only: the next `ui-tree`, `tap`, `swipe`, `text` or `key` compiles it. |
 
 The exit code is `0` whenever the report is printed, with adb or Xcode missing or broken as well. Check `adb.status` and `xcode.status`.
@@ -1209,7 +1212,7 @@ The exit code is `0` whenever the report is printed, with adb or Xcode missing o
 **Notes**
 
 - Only `adb version` runs, on every candidate at once. It never connects to the adb server, so server trouble does not show up here; the other commands report it as `ADB_TIMEOUT`.
-- For Xcode, doctor reads files, and runs only `plutil`, which converts Xcode's preference file to read the teams; it cannot start the simulator service or Xcode's first launch. A stuck simulator service shows in the `errors` of `devices`, not here.
+- For Xcode, doctor reads files, and runs only `plutil`, which converts Xcode's preference file to read the teams; it cannot start the simulator service or Xcode's first launch. A stuck simulator service shows in the `errors` of `devices`, not here. It never runs `xcodebuild` and never connects to usbmuxd, so a socket that is there but answers nobody shows up only in the iPhone commands. Paired iPhones are listed by `devices`, not here.
 - `xcode` is absent on Linux and Windows.
 - Nothing is installed.
 - `outdated` means below platform-tools 30.0.0, where `install` fails: it passes `--no-incremental`, which older versions forward to the device, and the device rejects it. Debian 12 ships 29.0.6. The other commands still work.
@@ -1397,15 +1400,15 @@ A real exchange, one line per message, `-->` sent and `<--` received. The `data`
 
 ### Token cost
 
-What the server adds to a Claude Code session, measured on 2026-10-15 with Claude Code 2.1.300 and `claude-opus-5-5`: input tokens of the first API call with karagoz registered, minus the same call with no MCP server.
+What the server adds to a Claude Code session, measured on 2026-10-21 with Claude Code 2.1.306 and `claude-opus-5-5`: input tokens of the first API call with karagoz registered, minus the same call with no MCP server.
 
 | Case | Tokens |
 | --- | --- |
-| Every session, tool search on (the default): the 13 tool names and `instructions` | 337 |
-| All 13 definitions, loaded by one `ToolSearch` call | 2,325 |
-| Every session, tool search off (`ENABLE_TOOL_SEARCH=false`): every definition and `instructions` | 2,213 |
+| Every session, tool search on (the default): the 15 tool names and `instructions` | 370 |
+| All 15 definitions, loaded by one `ToolSearch` call | 2,750 |
+| Every session, tool search off (`ENABLE_TOOL_SEARCH=false`): every definition and `instructions` | 2,632 |
 
-These were measured with 13 tools, before `install_runner` and `uninstall_runner`; the `tools/list` result was 5,878 characters then and is 6,987 now, `instructions` 395. One `ui_tree` of the launcher home screen is 5,383 characters.
+The `tools/list` result is 7,152 characters, `instructions` 398. One `ui_tree` of the launcher home screen is 5,383 characters.
 
 ## Scope
 

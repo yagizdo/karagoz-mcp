@@ -35,6 +35,14 @@ const BUILD_LOCK_MS = BUILD_TIMEOUT_MS + 10_000;
 const MAX_BUFFER = 64 * 1024 * 1024;
 const TEAM = /^[A-Z0-9]{10}$/;
 
+// The xcodebuild that builds and starts the runner, with the message for its absence; doctor reads the same (K30 4.7).
+export function xcodebuild(dev: string): { bin: string; missing: string } {
+  return {
+    bin: join(dev, 'usr', 'bin', 'xcodebuild'),
+    missing: `xcodebuild not found in ${dev}; install Xcode and select it (xcode-select -s <Xcode.app>)`,
+  };
+}
+
 // The test bundle's id for a team; the team keeps it unique on a free account (K41).
 function runnerId(team: string): string {
   return ID_PREFIX + team.toLowerCase();
@@ -122,7 +130,7 @@ export async function installRunner(udid: string, wanted: string | undefined) {
     signal?.throwIfAborted();
     try {
       const { stdout, stderr } = await run(
-        join(dev, 'usr', 'bin', 'xcodebuild'),
+        xcodebuild(dev).bin,
         [
           '-quiet',
           'build-for-testing',
@@ -158,10 +166,7 @@ export async function installRunner(udid: string, wanted: string | undefined) {
         );
       }
       if ('code' in err && err.code === 'ENOENT') {
-        throw new KaragozError(
-          'HELPER_FAILED',
-          `xcodebuild not found in ${dev}; install Xcode and select it (xcode-select -s <Xcode.app>)`,
-        );
+        throw new KaragozError('HELPER_FAILED', xcodebuild(dev).missing);
       }
       const errors = output.split('\n').filter((line) => line.includes('error:'));
       const reason = (
@@ -472,7 +477,7 @@ async function start(udid: string, dev: string): Promise<void> {
   const child = (() => {
     try {
       return spawn(
-        join(dev, 'usr', 'bin', 'xcodebuild'),
+        xcodebuild(dev).bin,
         [
           'test-without-building',
           '-xctestrun',

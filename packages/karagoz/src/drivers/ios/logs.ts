@@ -228,6 +228,9 @@ export async function logs(udid: string, pkg: string | undefined, since: string 
   return pkg === undefined ? { device: udid, records, omitted } : { device: udid, package: pkg, records, omitted };
 }
 
+// Also doctor's text for a tool its PATH walk does not find (K30 4.7).
+export const notOnPath = (name: 'tar' | 'log') => `${name} not found on PATH`;
+
 // simctlLines' twin for macOS's own log (K44): listeners before any await, the first throw kills it and wins, K37's
 // 30 s.
 // ponytail: log and tar are found on PATH, so smoke 4.6 can put a fake log first; a user's own earlier `log` would be
@@ -270,10 +273,7 @@ async function logLines(args: string[], onLine: (line: string) => void): Promise
   signal?.throwIfAborted();
   if (failure) {
     const missing = 'code' in failure && failure.code === 'ENOENT';
-    throw new KaragozError(
-      'HELPER_FAILED',
-      missing ? 'log not found on PATH' : `log did not start (${failure.message})`,
-    );
+    throw new KaragozError('HELPER_FAILED', missing ? notOnPath('log') : `log did not start (${failure.message})`);
   }
   if (thrown) throw thrown.err;
   if (child.killed) {
@@ -313,10 +313,7 @@ async function unpacked(tar: ChildProcess, streaming: Promise<void>, dir: string
   cancellation.getStore()?.throwIfAborted();
   if (failure) {
     const missing = 'code' in failure && failure.code === 'ENOENT';
-    throw new KaragozError(
-      'HELPER_FAILED',
-      missing ? 'tar not found on PATH' : `tar did not start (${failure.message})`,
-    );
+    throw new KaragozError('HELPER_FAILED', missing ? notOnPath('tar') : `tar did not start (${failure.message})`);
   }
   if (streamed instanceof KaragozError) throw streamed;
   if (code !== 0) {

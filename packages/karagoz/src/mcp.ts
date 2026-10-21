@@ -7,7 +7,7 @@ import { cancellation } from './cancellation.js';
 import { KaragozError } from './errors.js';
 
 const INSTRUCTIONS =
-  'karagoz drives Android emulators and phones over adb, and iOS simulators on macOS. To see the screen, call ui_tree first: node bounds are the pixels tap and swipe take; take a screenshot only when you need the image. Pass device only when more than one device is connected. Each result is one JSON object; on failure, branch on error.code. If adb or Xcode is missing, old or broken, call doctor.';
+  'karagoz drives Android emulators and phones, and iOS simulators and iPhones on macOS. To see the screen, call ui_tree first: node bounds are the pixels tap and swipe take; take a screenshot only when you need the image. Pass device only when more than one device is connected. Each result is one JSON object; on failure, branch on error.code. If adb or Xcode is missing, old or broken, call doctor.';
 
 const device = { type: 'string', description: 'Id or name.' };
 
@@ -176,7 +176,7 @@ const TOOLS: Tool[] = [
     name: 'install_runner',
     title: "Install karagoz's iPhone runner",
     description:
-      "Build karagoz's runner with your Apple team and install it on a paired iPhone over USB; ui_tree needs it there. Minutes the first time.",
+      "Build karagoz's runner with your Apple team and install it on a paired iPhone over USB; ui_tree, tap, swipe, text and key need it there.",
     inputSchema: {
       type: 'object',
       properties: {

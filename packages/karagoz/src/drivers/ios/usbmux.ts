@@ -15,10 +15,13 @@ const REFUSED = 3;
 export type Plist = string | number | boolean | Plist[] | { [key: string]: Plist };
 
 // The variable other usbmux clients read; only its UNIX:<path> form is honored, which the smoke's fake daemon uses.
-function daemonPath(): string {
+export function daemonPath(): string {
   const address = process.env.USBMUXD_SOCKET_ADDRESS;
   return address?.startsWith('UNIX:') ? address.slice('UNIX:'.length) : DAEMON;
 }
+
+// Also doctor's text for a socket it cannot use (K30 4.7).
+export const unreachable = (path: string, code: string) => `cannot reach usbmuxd at ${path} (${code})`;
 
 const escape = (text: string) => text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
@@ -171,7 +174,7 @@ function open(timeoutMs: number): Promise<Socket> {
       // The SDK sends no response for a cancelled call, so the abort passes through (K31).
       if (signal?.aborted) return reject(err);
       const code = 'code' in err ? String(err.code) : err.message;
-      reject(new KaragozError('HELPER_FAILED', `cannot reach usbmuxd at ${path} (${code})`));
+      reject(new KaragozError('HELPER_FAILED', unreachable(path, code)));
     };
     socket.once('error', failed);
   });
