@@ -75,7 +75,7 @@ Do not copy these. The refactor step in brackets fixes each one, and its PR dele
 - The key-name table (`KEYS`, `keyCode()`) lives in `drivers/android/input.ts`, and `input.ts` parses every platform's key with it. [Q4]
 - `tapElement()` in `drivers/ios/input.ts` takes `kind` and branches between simulator and iPhone itself. [Q4]
 - `simctlLines()` in `drivers/ios/simctl.ts` and `logLines()` in `drivers/ios/logs.ts` are the same streaming reader. [Q5]
-- `drivers/ios/logs.ts` spawns `log` and `tar` by bare name, and `tar` has no timeout. [Q5]
+- `tar` in `drivers/ios/logs.ts` has no timeout; it ends with its input stream or the abort. [Q5]
 - `drivers/android/ui-tree.ts` and `drivers/ios/usbmux.ts` each hold the same XML entity table. [Q6]
 
 ## Conventions
