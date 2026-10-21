@@ -11,7 +11,9 @@ dist/
 .idea/
 .vscode/
 .codegraph/
-.claude/
+# .claude/* rather than .claude/: git cannot re-include a file inside an ignored directory.
+.claude/*
+!.claude/rules/
 .claude.json
 
 # Local working notes. Design journal, progress tracking, research.
