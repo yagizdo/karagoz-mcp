@@ -19,7 +19,7 @@ One step at a time. A step is one command on one target, and it runs in this ord
 3. **Write** the shortest thing that works.
 4. **Prove** it with one smoke script.
 5. **Record** any decision or surprise in the journal.
-6. **Document** the command in `README.md` in the same PR: usage, flags, one real output example, error codes, supported targets. The journal is untracked and in Turkish, so the README is the only public reference.
+6. **Document** the command on its page `docs/commands/<command>.md` in the same PR: usage, flags, one real output example, error codes, supported targets; a new command also gets a row in the README's command table. The journal is untracked and in Turkish, so `README.md` and `docs/` are the only public reference.
 
 Research is never skipped. When an existing assumption conflicts with what the research turns up, the assumption changes.
 
@@ -68,7 +68,7 @@ Paths below are relative to `packages/karagoz/src/`.
 - One branch per step, `feat/<step>-<topic>` off `main` (`feat/4.7-ios-device-closure`), landing through one PR. A one-line fix or a typo goes straight to `main`.
 - Before calling a change done, run `npm run typecheck` and `npm run lint` from the repository root; both must exit 0. `npm run format` fixes what the format check reports.
 - Merge gate: on the branch head, `npm run typecheck`, `npm run lint` and every `packages/karagoz/smoke/*.sh` with an emulator running; a booted simulator also runs the simulator smokes' real parts. Phone parts SKIP, so the gate never needs a phone, and a review never stands in for the run. After a passing gate, rerun it only when `src/`, `package.json`, the lockfile or a smoke that runs without a phone changed, or `main` moved.
-- README: before adding a sentence, example or note, ask whether a caller would do something wrong without it, or whether a sentence already there would be wrong. If neither, it stays out; editing an existing line beats adding one. Which device, OS version or Mac a command was tested on is a test record and never goes in the README.
+- README and `docs/`: the README says what karagoz is and how to start, and sums up each area in a line that links to its `docs/` page; the detail is written once, on that page. Before adding a sentence, example or note to either, ask whether a caller would do something wrong without it, or whether a sentence already there would be wrong. If neither, it stays out; editing an existing line beats adding one. Which device, OS version or Mac a command was tested on is a test record and is added to neither.
 - Study other tools' source to learn how something works, then write karagoz's own; copy no code verbatim or nearly so. Tracked text (comments, README, smoke scripts, commits, PRs) names or links another package or repository only when karagoz calls it or depends on it. Copied code brings license and authorship questions, and a name reads as dependence or advertising.
 - The CLI and the MCP server live in `packages/karagoz/`, their smoke scripts in `packages/karagoz/smoke/`, the iPhone runner's Xcode project in `packages/ios-runner/`. npm scripts run from the repository root.
 
