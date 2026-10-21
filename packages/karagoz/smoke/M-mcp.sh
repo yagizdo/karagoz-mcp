@@ -229,7 +229,7 @@ for (const [i, version] of versions.entries()) {
   }
 }
 
-// List. The cap was 6,000 for 13 tools; the token table is measured again at the end of Kadran 4.
+// List. The cap was 6,000 for 13 tools.
 const list = (await main.request('tools/list', {})).result;
 const names = ['devices', 'screenshot', 'ui_tree', 'tap', 'swipe', 'text', 'key', 'install', 'launch', 'terminate', 'uninstall', 'logs', 'doctor', 'install_runner', 'uninstall_runner'];
 if (JSON.stringify(list?.tools?.map((tool) => tool.name).sort()) !== JSON.stringify([...names].sort())) {
@@ -253,7 +253,7 @@ for (const tool of list.tools) {
   const banned = keys(schema).filter((key) => ['oneOf', 'anyOf', 'allOf', 'pattern', 'minimum', 'maximum', 'format', 'default'].includes(key));
   if (banned.length) fail(`list: ${name} schema has ${banned.join(', ')}`);
 }
-// 7,200 since logs says what an iPhone reads without since and how long a read takes (7,141 then, K44).
+// 7,200 since logs says what an iPhone reads without since and how long a read takes (7,151 then, K44; 7,152 after 4.7).
 if (JSON.stringify(list).length > 7200) fail(`list: ${JSON.stringify(list).length} characters, over 7200`);
 
 // Parity. Fails unless the call fails with exactly the envelope want, and the server logged its message.
