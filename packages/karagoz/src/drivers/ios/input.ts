@@ -1,15 +1,12 @@
-import { execFile } from 'node:child_process';
-import { promisify } from 'node:util';
 import { cancellation } from '../../cancellation.js';
 import { KaragozError } from '../../errors.js';
+import { runTool } from '../../tool.js';
 import { displayOf, rotation } from './devicectl.js';
 import { input } from './runner.js';
 import { panelScale } from './screenshot.js';
 import { simctl } from './simctl.js';
 import { helper, readPhoneTree, readTree, RUN_TIMEOUT_MS, type IosNode } from './ui-tree.js';
 import { CACHE_HINT, xcode } from './xcode.js';
-
-const run = promisify(execFile);
 
 // Android's swipe default, so both platforms state the same duration (K25, K35).
 const SWIPE_MS = 300;
@@ -194,46 +191,38 @@ export async function swipePhone(udid: string, x1: number, y1: number, x2: numbe
 async function send(command: string, udid: string, args: string[], extraMs = 0): Promise<void> {
   const dev = await xcode();
   const bin = await helper(dev);
-  const signal = cancellation.getStore();
-  signal?.throwIfAborted();
   const timeout = RUN_TIMEOUT_MS + extraMs;
-  try {
-    await run(bin, [dev, udid, ...args], { timeout, ...(signal && { signal }) });
-  } catch (err) {
-    // The SDK sends no response for a cancelled call, so the abort passes through (K31).
-    if (signal?.aborted) throw err;
-    if (!(err instanceof Error)) throw err;
-    const stderr = 'stderr' in err && typeof err.stderr === 'string' ? err.stderr.trim().slice(0, 300) : '';
-    const code = 'code' in err ? err.code : undefined;
-    if ('killed' in err && err.killed) {
-      throw new KaragozError('HELPER_FAILED', `the simulator did not answer within ${timeout / 1000} s`);
-    }
-    if (code === 2) {
-      throw new KaragozError(
-        'HELPER_FAILED',
-        `${stderr}; this Xcode changed a private interface karagoz uses; update karagoz`,
-      );
-    }
-    // dtuhidd arrived with CoreSimulator 1155.4 (Xcode 27); the Xcode 26 route waits for its own round (K35).
-    if (code === 4) throw new KaragozError('NOT_SUPPORTED', `'${command}' on iOS simulators needs Xcode 27 or later`);
-    if (code === 6)
-      throw new KaragozError('AUTOMATION_BUSY', stderr || 'another test holds automation on this simulator');
-    if (code === 5) {
-      throw new KaragozError(
-        'DEVICE_NOT_READY',
-        `the simulator's input service did not answer within 4 s; it may still be starting after boot (${stderr})`,
-      );
-    }
-    if (typeof code === 'number')
-      throw new KaragozError('HELPER_FAILED', stderr || `the helper exited with code ${code}`);
-    if ('signal' in err && typeof err.signal === 'string') {
-      throw new KaragozError('HELPER_FAILED', `the helper crashed (${err.signal})`);
-    }
-    if (code === 'EACCES' || code === 'ENOENT') {
-      throw new KaragozError('HELPER_FAILED', `cannot run ${bin} (${code}); ${CACHE_HINT}`);
-    }
-    throw new KaragozError('HELPER_FAILED', stderr || err.message.slice(0, 300));
+  const result = await runTool(bin, [dev, udid, ...args], { timeout });
+  if (result.ok) return;
+  const { failure } = result;
+  const { code } = failure;
+  const stderr = failure.stderr.slice(0, 300);
+  if (failure.kind === 'timeout') {
+    throw new KaragozError('HELPER_FAILED', `the simulator did not answer within ${timeout / 1000} s`);
   }
+  if (code === 2) {
+    throw new KaragozError(
+      'HELPER_FAILED',
+      `${stderr}; this Xcode changed a private interface karagoz uses; update karagoz`,
+    );
+  }
+  // dtuhidd arrived with CoreSimulator 1155.4 (Xcode 27); the Xcode 26 route waits for its own round (K35).
+  if (code === 4) throw new KaragozError('NOT_SUPPORTED', `'${command}' on iOS simulators needs Xcode 27 or later`);
+  if (code === 6)
+    throw new KaragozError('AUTOMATION_BUSY', stderr || 'another test holds automation on this simulator');
+  if (code === 5) {
+    throw new KaragozError(
+      'DEVICE_NOT_READY',
+      `the simulator's input service did not answer within 4 s; it may still be starting after boot (${stderr})`,
+    );
+  }
+  if (typeof code === 'number')
+    throw new KaragozError('HELPER_FAILED', stderr || `the helper exited with code ${code}`);
+  if (failure.signal) throw new KaragozError('HELPER_FAILED', `the helper crashed (${failure.signal})`);
+  if (code === 'EACCES' || code === 'ENOENT') {
+    throw new KaragozError('HELPER_FAILED', `cannot run ${bin} (${code}); ${CACHE_HINT}`);
+  }
+  throw new KaragozError('HELPER_FAILED', stderr || failure.message.slice(0, 300));
 }
 
 // rotated comes from a tree read the caller already made; a plain tap reads it itself.
