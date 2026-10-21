@@ -5,6 +5,7 @@ import { delimiter, isAbsolute, join } from 'node:path';
 import { promisify } from 'node:util';
 import { cancellation } from '../../cancellation.js';
 import { KaragozError } from '../../errors.js';
+import { runTool } from '../../tool.js';
 
 const run = promisify(execFile);
 
@@ -79,37 +80,26 @@ export async function adbBytes(args: string[], timeout = TIMEOUT_MS): Promise<Bu
   // A cached adb that spawns with ENOENT (deleted, SDK moved) falls through to a full lookup in the same call (K19).
   const found = candidates().flatMap(({ bin }) => (bin ? [bin] : []));
   const tried = resolved ? [resolved, ...found.filter((bin) => bin !== resolved)] : found;
-  const signal = cancellation.getStore();
   for (const candidate of tried) {
     const bin = candidate === 'adb' ? onPath() : candidate;
     if (!bin) continue;
-    // An aborted signal still spawns adb and kills it a tick later.
-    signal?.throwIfAborted();
-    try {
-      const { stdout, stderr } = await run(bin, args, {
-        timeout,
-        encoding: 'buffer',
-        maxBuffer: MAX_BUFFER,
-        ...(signal && { signal }),
-      });
+    // A cancelled call's abort leaves runTool() unmapped, so resolved stays (K31).
+    const result = await runTool(bin, args, { timeout, maxBuffer: MAX_BUFFER });
+    if (result.ok) {
       resolved = bin;
-      process.stderr.write(stderr);
-      return stdout;
-    } catch (err) {
-      if (!(err instanceof Error)) throw err;
-      // The SDK sends no response for a cancelled call, so the abort passes through unmapped and resolved stays (K31).
-      if (signal?.aborted) throw err;
-      if (skipped(err)) continue;
-      resolved = bin;
-      if ('killed' in err && err.killed) {
-        throw new KaragozError(
-          'ADB_TIMEOUT',
-          `adb did not answer within ${timeout / 1000}s. Another process may hold the adb server port, or the server is stuck; try \`adb kill-server\`.`,
-        );
-      }
-      const stderr = 'stderr' in err && Buffer.isBuffer(err.stderr) ? err.stderr.toString('utf8').trim() : '';
-      throw new KaragozError('ADB_FAILED', stderr || err.message);
+      process.stderr.write(result.stderr);
+      return result.stdout;
     }
+    const { failure } = result;
+    if (failure.kind === 'missing') continue;
+    resolved = bin;
+    if (failure.kind === 'timeout') {
+      throw new KaragozError(
+        'ADB_TIMEOUT',
+        `adb did not answer within ${timeout / 1000}s. Another process may hold the adb server port, or the server is stuck; try \`adb kill-server\`.`,
+      );
+    }
+    throw new KaragozError('ADB_FAILED', failure.stderr || failure.message);
   }
   resolved = undefined;
   const where = tried.map((bin) => (bin === 'adb' ? 'PATH' : bin)).join(', ');

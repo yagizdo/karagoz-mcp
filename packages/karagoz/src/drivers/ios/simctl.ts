@@ -1,11 +1,9 @@
-import { execFile, spawn } from 'node:child_process';
+import { spawn } from 'node:child_process';
 import { dirname, join, resolve } from 'node:path';
 import { createInterface } from 'node:readline';
-import { promisify } from 'node:util';
 import { cancellation } from '../../cancellation.js';
 import { KaragozError } from '../../errors.js';
-
-const run = promisify(execFile);
+import { runTool } from '../../tool.js';
 
 // The first call after login starts CoreSimulatorService: 8.9 s in one report, and 15 s was too short in two
 // projects (K32).
@@ -56,8 +54,7 @@ function timedOut(timeout: number): KaragozError {
   );
 }
 
-// The bytes form keeps err.stderr a Buffer, so SIMCTL_FAILED carries simctl's own text; simctl() decodes the same
-// result, as adb() does (K32, K33). simctl's stderr on success ("Wrote screenshot to: <path>") is dropped: it is noise
+// simctl() decodes the bytes, as adb() does (K32, K33). simctl's stderr on success ("Wrote screenshot to: <path>") is dropped: it is noise
 // on every capture.
 async function simctlBytes(
   args: string[],
@@ -65,41 +62,25 @@ async function simctlBytes(
   refusal?: 'INSTALL_FAILED' | 'UNINSTALL_FAILED',
 ): Promise<Buffer> {
   const { bin, missing } = binary();
-  const signal = cancellation.getStore();
-  // An aborted signal still spawns simctl and kills it a tick later.
-  signal?.throwIfAborted();
-  try {
-    return (
-      await run(bin, args, {
-        timeout,
-        encoding: 'buffer',
-        maxBuffer: MAX_BUFFER,
-        ...(signal && { signal }),
-      })
-    ).stdout;
-  } catch (err) {
-    if (!(err instanceof Error)) throw err;
-    // The SDK sends no response for a cancelled call, so the abort passes through unmapped (K31).
-    if (signal?.aborted) throw err;
-    if ('code' in err && err.code === 'ENOENT') {
-      throw new KaragozError('SIMCTL_NOT_FOUND', missing);
-    }
-    if ('killed' in err && err.killed) throw timedOut(timeout);
-    const stderr = 'stderr' in err && Buffer.isBuffer(err.stderr) ? err.stderr.toString('utf8').trim() : '';
-    const match = refusal ? HEADER.exec(stderr) : null;
-    if (refusal && match) {
-      // The description lines sit between the header and the first Underlying error block. Not cut: a device build's
-      // refusal runs past 300 characters (K36).
-      const lines = stderr.slice(match.index + match[0].length).split('\n');
-      const end = lines.findIndex((line) => /^\s*Underlying error \(/.test(line));
-      const message = (end < 0 ? lines : lines.slice(0, end))
-        .map((line) => line.trim())
-        .filter(Boolean)
-        .join(' ');
-      throw new KaragozError(refusal, message || match[0], `${match[1]}:${Number(match[2])}`);
-    }
-    throw new KaragozError('SIMCTL_FAILED', (stderr || err.message).slice(0, 300));
+  const result = await runTool(bin, args, { timeout, maxBuffer: MAX_BUFFER });
+  if (result.ok) return result.stdout;
+  const { failure } = result;
+  if (failure.kind === 'missing') throw new KaragozError('SIMCTL_NOT_FOUND', missing);
+  if (failure.kind === 'timeout') throw timedOut(timeout);
+  const { stderr } = failure;
+  const match = refusal ? HEADER.exec(stderr) : null;
+  if (refusal && match) {
+    // The description lines sit between the header and the first Underlying error block. Not cut: a device build's
+    // refusal runs past 300 characters (K36).
+    const lines = stderr.slice(match.index + match[0].length).split('\n');
+    const end = lines.findIndex((line) => /^\s*Underlying error \(/.test(line));
+    const message = (end < 0 ? lines : lines.slice(0, end))
+      .map((line) => line.trim())
+      .filter(Boolean)
+      .join(' ');
+    throw new KaragozError(refusal, message || match[0], `${match[1]}:${Number(match[2])}`);
   }
+  throw new KaragozError('SIMCTL_FAILED', (stderr || failure.message).slice(0, 300));
 }
 
 export async function simctl(

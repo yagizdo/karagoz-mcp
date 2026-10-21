@@ -1,12 +1,9 @@
-import { execFile } from 'node:child_process';
 import { join } from 'node:path';
-import { promisify } from 'node:util';
 import { cancellation } from '../../cancellation.js';
 import { KaragozError } from '../../errors.js';
+import { runTool } from '../../tool.js';
 import { isRecord } from './record.js';
 import { developerDir } from './simctl.js';
-
-const run = promisify(execFile);
 
 // list devices measured at 0.06 s, a simulator's info displays 0.06-0.11 s; the timeout only bounds a stuck CoreDevice
 // service.
@@ -97,41 +94,33 @@ async function devicectl(
   failed?: (chain: Link[]) => KaragozError | null,
 ): Promise<string> {
   const bin = devicectlPath();
-  const signal = cancellation.getStore();
-  // An aborted signal still spawns devicectl and kills it a tick later.
-  signal?.throwIfAborted();
-  try {
-    return (await run(bin, args, { timeout, maxBuffer: MAX_BUFFER, ...(signal && { signal }) })).stdout;
-  } catch (err) {
-    if (!(err instanceof Error)) throw err;
-    // The SDK sends no response for a cancelled call, so the abort passes through unmapped (K31).
-    if (signal?.aborted) throw err;
-    if ('code' in err && err.code === 'ENOENT') {
-      throw new KaragozError(
-        'DEVICECTL_NOT_FOUND',
-        developerDir()
-          ? `devicectl not found (tried ${bin}, from DEVELOPER_DIR). Point DEVELOPER_DIR at an Xcode 15 or later, not the Command Line Tools, or unset it.`
-          : `devicectl not found (tried ${bin}). Install Xcode 15 or later and open it once.`,
-      );
-    }
-    if ('killed' in err && err.killed) {
-      throw new KaragozError(
-        'DEVICECTL_TIMEOUT',
-        `devicectl did not answer within ${timeout / 1000}s. CoreDevice's service may still be starting or be stuck.`,
-      );
-    }
-    const stderr = 'stderr' in err && typeof err.stderr === 'string' ? err.stderr.trim() : '';
-    const lower = stderr.toLowerCase();
-    const state = udid === undefined ? undefined : PHONE_STATES.find(([texts]) => texts.some((t) => lower.includes(t)));
-    if (state) throw new KaragozError('DEVICE_NOT_READY', `device ${udid} is not ready: ${state[1]}`);
-    const chain = failed && 'stdout' in err && typeof err.stdout === 'string' ? links(err.stdout) : [];
-    if (failed && chain.length) {
-      const error = failed(chain);
-      if (error) throw error;
-      return '';
-    }
-    throw new KaragozError('DEVICECTL_FAILED', (stderr || err.message).slice(0, 300));
+  const result = await runTool(bin, args, { timeout, maxBuffer: MAX_BUFFER });
+  if (result.ok) return result.stdout.toString('utf8');
+  const { failure } = result;
+  if (failure.kind === 'missing') {
+    throw new KaragozError(
+      'DEVICECTL_NOT_FOUND',
+      developerDir()
+        ? `devicectl not found (tried ${bin}, from DEVELOPER_DIR). Point DEVELOPER_DIR at an Xcode 15 or later, not the Command Line Tools, or unset it.`
+        : `devicectl not found (tried ${bin}). Install Xcode 15 or later and open it once.`,
+    );
   }
+  if (failure.kind === 'timeout') {
+    throw new KaragozError(
+      'DEVICECTL_TIMEOUT',
+      `devicectl did not answer within ${timeout / 1000}s. CoreDevice's service may still be starting or be stuck.`,
+    );
+  }
+  const lower = failure.stderr.toLowerCase();
+  const state = udid === undefined ? undefined : PHONE_STATES.find(([texts]) => texts.some((t) => lower.includes(t)));
+  if (state) throw new KaragozError('DEVICE_NOT_READY', `device ${udid} is not ready: ${state[1]}`);
+  const chain = failed ? links(failure.stdout) : [];
+  if (failed && chain.length) {
+    const error = failed(chain);
+    if (error) throw error;
+    return '';
+  }
+  throw new KaragozError('DEVICECTL_FAILED', (failure.stderr || failure.message).slice(0, 300));
 }
 
 // Each group is read from Xcode 27's properties dictionary, else from the key it deprecates (Xcode 15-26).
