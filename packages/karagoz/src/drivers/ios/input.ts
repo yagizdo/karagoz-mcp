@@ -2,11 +2,12 @@ import { cancellation } from '../../cancellation.js';
 import { KaragozError } from '../../errors.js';
 import { runTool } from '../../tool.js';
 import { displayOf, rotation } from './devicectl.js';
+import { runtimeOf } from './devices.js';
 import { input } from './runner.js';
 import { panelScale } from './screenshot.js';
 import { simctl } from './simctl.js';
 import { helper, readPhoneTree, readTree, RUN_TIMEOUT_MS, type IosNode } from './ui-tree.js';
-import { CACHE_HINT, xcode } from './xcode.js';
+import { CACHE_HINT, shortVersion, xcode } from './xcode.js';
 
 // Android's swipe default, so both platforms state the same duration (K25, K35).
 const SWIPE_MS = 300;
@@ -18,6 +19,11 @@ const TYPE_SPEED = 120;
 // The XCUI session turns app accessibility off when it ends, whatever it was, and apps opened after that give an empty
 // tree until the simulator restarts. text writes back a 1 it read before (user decision, K35 3.4 build).
 const APP_AX = ['com.apple.Accessibility', 'ApplicationAccessibilityEnabled'];
+
+// From Xcode 27, text's session comes only from simulators on iOS 27 or later: Xcode's own device tool allows no
+// older ones, and a 26.2 simulator never answered within the helper's 15 s (K47).
+const SESSION_FLOOR = 27;
+const RUNTIME = /\.iOS-(\d+)-(\d+)$/;
 
 // Invisible direction marks, Unicode's Bidi_Control set, ignored on both sides as on Android (K26). A copy of the
 // Android driver's, so this driver imports nothing from it.
@@ -373,6 +379,14 @@ export async function text(udid: string, value: string) {
 }
 
 async function typeText(udid: string, value: string) {
+  const [version, runtime] = await Promise.all([xcode().then(shortVersion), runtimeOf(udid)]);
+  const [, major, minor] = RUNTIME.exec(runtime ?? '') ?? [];
+  if (Number(version.split('.')[0]) >= SESSION_FLOOR && major !== undefined && Number(major) < SESSION_FLOOR) {
+    throw new KaragozError(
+      'NOT_SUPPORTED',
+      `'text' on an iOS ${major}.${minor} simulator needs an iOS ${SESSION_FLOOR} or later simulator with Xcode ${SESSION_FLOOR} or later; tap, swipe, key and ui-tree work on it`,
+    );
+  }
   const wasOn = await appAccessibility(udid);
   const typing = Math.ceil(Array.from(value).length / TYPE_SPEED) * 1000;
   try {

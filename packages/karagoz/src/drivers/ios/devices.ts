@@ -6,9 +6,8 @@ import { simctl } from './simctl.js';
 // them (K18 3.1 note).
 const IOS_RUNTIME = 'com.apple.CoreSimulator.SimRuntime.iOS-';
 
-// `list devices --json` is {devices: {<runtime id>: [device, ...]}} since Xcode 10.2 (K32). Only running, available
-// simulators are listed: karagoz cannot boot one, and adb lists only running devices too (K18 3.1 note).
-export async function listSimulators() {
+// `list devices --json` is {devices: {<runtime id>: [device, ...]}} since Xcode 10.2 (K32): the iOS runtimes' lists.
+async function iosRuntimes(): Promise<[string, unknown[]][]> {
   const out = await simctl(['list', 'devices', '--json']);
   let parsed: unknown;
   try {
@@ -22,7 +21,19 @@ export async function listSimulators() {
   }
   return Object.entries(runtimes)
     .filter(([runtime]) => runtime.startsWith(IOS_RUNTIME))
-    .flatMap(([, list]) => (Array.isArray(list) ? list : []))
+    .map(([runtime, list]) => [runtime, Array.isArray(list) ? list : []]);
+}
+
+// The runtime a simulator is listed under, such as com.apple.CoreSimulator.SimRuntime.iOS-26-2.
+export async function runtimeOf(udid: string): Promise<string | undefined> {
+  return (await iosRuntimes()).find(([, list]) => list.some((device) => isRecord(device) && device.udid === udid))?.[0];
+}
+
+// Only running, available simulators are listed: karagoz cannot boot one, and adb lists only running devices too (K18
+// 3.1 note).
+export async function listSimulators() {
+  return (await iosRuntimes())
+    .flatMap(([, list]) => list)
     .flatMap((device: unknown) => {
       if (!isRecord(device)) return [];
       const { udid, name, state, isAvailable } = device;

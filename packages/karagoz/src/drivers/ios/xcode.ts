@@ -46,12 +46,17 @@ export async function xcode(): Promise<string> {
   return found.dev;
 }
 
-// The selected Xcode's build (ProductBuildVersion), or '' when its version.plist is missing. The path is text, not
-// join(): join drops '..' lexically, while the kernel resolves a DEVELOPER_DIR symlink to Developer first.
-export async function buildVersion(dev: string): Promise<string> {
+// One key of the selected Xcode's version.plist, or '' when the file is missing. The path is text, not join(): join
+// drops '..' lexically, while the kernel resolves a DEVELOPER_DIR symlink to Developer first.
+async function versionKey(dev: string, key: string): Promise<string> {
   const plist = await readFile(`${dev}/../version.plist`, 'utf8').catch(() => '');
-  return /<key>ProductBuildVersion<\/key>\s*<string>([^<]*)<\/string>/.exec(plist)?.[1] ?? '';
+  return new RegExp(`<key>${key}</key>\\s*<string>([^<]*)</string>`).exec(plist)?.[1] ?? '';
 }
+
+// The selected Xcode's build, such as 27A9275.
+export const buildVersion = (dev: string) => versionKey(dev, 'ProductBuildVersion');
+// The selected Xcode's version, such as 27.1.
+export const shortVersion = (dev: string) => versionKey(dev, 'CFBundleShortVersionString');
 
 // The cache sits in the user's home, but a directory or binary someone else owns there is refused, as screenshot
 // refuses a shared temp directory (src/screenshot.ts).

@@ -287,6 +287,23 @@ setTimeout(() => { console.log("no answer within 10 s"); process.exit(1); }, 10_
 [ -z "$errors" ] || fail "two texts at once: $errors"
 [ "$(cat "$fake/seq")" = "$(printf 'read\nstart\nend\nwrite\nread\nstart\nend\nwrite')" ] \
   || fail "two texts at once overlapped: $(tr '\n' ' ' < "$fake/seq")"
+# Xcode 27 or later gives a simulator on an older iOS runtime no automation session: text refuses at once, before the
+# setting is read or the helper compiles. Xcode 26 with the same runtime goes on as before.
+rm -f "$fake/seq"
+cp "$fake/list.json" "$tmp/list.saved"
+sed 's/iOS-27-0/iOS-26-2/' "$tmp/list.saved" > "$fake/list.json"
+printf '<plist><dict><key>CFBundleShortVersionString</key><string>27.1</string><key>ProductBuildVersion</key><string>27B1</string></dict></plist>\n' > "$tmp/version.plist"
+run_in "$tmp/home5" text ok --device A1
+refuses NOT_SUPPORTED "text on iOS 26.2 with Xcode 27.1"
+says "text on iOS 26.2 with Xcode 27.1" "'text' on an iOS 26.2 simulator needs an iOS 27 or later simulator"
+[ ! -e "$fake/argv" ] && [ ! -e "$fake/seq" ] && [ ! -e "$tmp/home5/Library" ] \
+  || fail "text on iOS 26.2 with Xcode 27.1 read the setting or reached the helper"
+printf '<plist><dict><key>CFBundleShortVersionString</key><string>26.2</string><key>ProductBuildVersion</key><string>17C52</string></dict></plist>\n' > "$tmp/version.plist"
+logs 'exit 0'
+run_in "$tmp/home5" text ok --device A1
+succeeds "text on iOS 26.2 with Xcode 26.2" '{"device":"A1","text":"ok"}'
+mv "$tmp/list.saved" "$fake/list.json"
+rm "$tmp/version.plist"
 
 # 10. Element tap: the matching node's bounds center, tapped through the same transform; --text is label or value with
 # direction marks ignored, --id is the identifier; zero-area nodes never match (K26 on iOS).
