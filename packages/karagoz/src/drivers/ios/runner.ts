@@ -473,7 +473,7 @@ async function start(udid: string, dev: string): Promise<void> {
   const log = join(CACHE_ROOT, 'runner', `${udid}.log`);
   const fd = openSync(log, 'w', 0o600);
   // Set from the child's events; an object, so the loop below re-reads it.
-  const ended = { exited: false };
+  const ended: { exited: boolean; error?: NodeJS.ErrnoException } = { exited: false };
   const child = (() => {
     try {
       return spawn(
@@ -499,7 +499,10 @@ async function start(udid: string, dev: string): Promise<void> {
       closeSync(fd);
     }
   })();
-  child.once('error', () => (ended.exited = true));
+  child.once('error', (err: NodeJS.ErrnoException) => {
+    ended.exited = true;
+    ended.error = err;
+  });
   child.once('exit', () => (ended.exited = true));
   child.unref();
   const kill = () => {
@@ -517,6 +520,15 @@ async function start(udid: string, dev: string): Promise<void> {
   try {
     for (;;) {
       const output = await readFile(log, 'utf8').catch(() => '');
+      // A binary that cannot start comes as an 'error' event and leaves the log empty.
+      if (ended.error) {
+        throw new KaragozError(
+          'HELPER_FAILED',
+          ended.error.code === 'ENOENT'
+            ? xcodebuild(dev).missing
+            : `xcodebuild could not start karagoz's runner: ${ended.error.message} (log: ${log})`,
+        );
+      }
       if (ended.exited) throw startFailure(udid, log, output);
       // xcodebuild waits, without exiting, for a phone that is not ready and says why (a locked iPhone, measured, K42):
       // a reason startFailure knows ends the start now instead of at the budget.

@@ -286,6 +286,9 @@ runner_installed fffff66666
 refuses "no build here" RUNNER_NOT_INSTALLED "built by another karagoz or Xcode" ui-tree --device P1
 is "never started" "$(starts)" "$before"
 runner_installed abcde12345
+mv "$dev/usr/bin/xcodebuild" "$tmp/xcodebuild.aside"
+refuses "no xcodebuild" HELPER_FAILED "xcodebuild not found in $dev; install Xcode" ui-tree --device P1
+mv "$tmp/xcodebuild.aside" "$dev/usr/bin/xcodebuild"
 
 # Start failures by xcodebuild's text; a start that never answers is killed with its process group.
 echo text > "$fake/start"
