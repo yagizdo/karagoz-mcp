@@ -1,6 +1,9 @@
-import { execFile } from 'node:child_process';
+import { type ChildProcessByStdio, execFile } from 'node:child_process';
+import { createInterface } from 'node:readline';
+import type { Readable } from 'node:stream';
 import { promisify } from 'node:util';
 import { cancellation } from './cancellation.js';
+import type { KaragozError } from './errors.js';
 
 const run = promisify(execFile);
 
@@ -52,4 +55,45 @@ export async function runTool(
       },
     };
   }
+}
+
+// Hands each stdout line of a tool the caller just spawned to onLine; its first throw kills the tool and becomes the
+// result. failed maps a spawn error; the caller maps the timeout and the exit, so each tool keeps its own texts.
+export async function readLines(
+  child: ChildProcessByStdio<null, Readable, Readable>,
+  onLine: (line: string) => void,
+  failed: (err: Error) => KaragozError,
+): Promise<{ code: number | null; ended: NodeJS.Signals | null; killed: boolean; stderr: string }> {
+  // Listeners go on before any await: readline drops lines that arrive while nothing listens (K37).
+  let failure: Error | undefined;
+  child.on('error', (err) => {
+    failure = err;
+  });
+  let stderr = '';
+  child.stderr.setEncoding('utf8');
+  child.stderr.on('data', (chunk: string) => {
+    if (stderr.length < 4096) stderr += chunk;
+  });
+  const reader = createInterface({ input: child.stdout, crlfDelay: Infinity });
+  let thrown: { err: unknown } | undefined;
+  const read = (line: string) => {
+    try {
+      onLine(line);
+    } catch (err) {
+      // Already killed by the timeout or an abort: this is the cut last line, and that result wins.
+      if (child.killed) return;
+      thrown = { err };
+      child.kill();
+      reader.off('line', read);
+    }
+  };
+  reader.on('line', read);
+  const [code, ended] = await new Promise<[number | null, NodeJS.Signals | null]>((done) => {
+    child.on('close', (exit, by) => done([exit, by]));
+  });
+  // The SDK sends no response for a cancelled call, so the abort passes through unmapped (K31).
+  cancellation.getStore()?.throwIfAborted();
+  if (failure) throw failed(failure);
+  if (thrown) throw thrown.err;
+  return { code, ended, killed: child.killed, stderr };
 }

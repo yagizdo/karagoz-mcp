@@ -1,9 +1,8 @@
 import { spawn } from 'node:child_process';
 import { dirname, join, resolve } from 'node:path';
-import { createInterface } from 'node:readline';
 import { cancellation } from '../../cancellation.js';
 import { KaragozError } from '../../errors.js';
-import { runTool } from '../../tool.js';
+import { readLines, runTool } from '../../tool.js';
 
 // The first call after login starts CoreSimulatorService: 8.9 s in one report, and 15 s was too short in two
 // projects (K32).
@@ -111,38 +110,8 @@ export async function simctlLines(args: string[], onLine: (line: string) => void
     if (!(err instanceof Error)) throw err;
     throw spawnFailed(err, missing);
   }
-  // Listeners go on before any await: readline drops lines that arrive while nothing listens (K37).
-  let failure: Error | undefined;
-  child.on('error', (err) => {
-    failure = err;
-  });
-  let stderr = '';
-  child.stderr.setEncoding('utf8');
-  child.stderr.on('data', (chunk: string) => {
-    if (stderr.length < 4096) stderr += chunk;
-  });
-  const reader = createInterface({ input: child.stdout, crlfDelay: Infinity });
-  let thrown: { err: unknown } | undefined;
-  const read = (line: string) => {
-    try {
-      onLine(line);
-    } catch (err) {
-      // Already killed by the timeout or an abort: this is the cut last line, and that result wins.
-      if (child.killed) return;
-      thrown = { err };
-      child.kill();
-      reader.off('line', read);
-    }
-  };
-  reader.on('line', read);
-  const [code, ended] = await new Promise<[number | null, NodeJS.Signals | null]>((done) => {
-    child.on('close', (exit, by) => done([exit, by]));
-  });
-  // The SDK sends no response for a cancelled call, so the abort passes through unmapped (K31).
-  signal?.throwIfAborted();
-  if (failure) throw spawnFailed(failure, missing);
-  if (thrown) throw thrown.err;
-  if (child.killed) throw timedOut(TIMEOUT_MS);
+  const { code, ended, killed, stderr } = await readLines(child, onLine, (err) => spawnFailed(err, missing));
+  if (killed) throw timedOut(TIMEOUT_MS);
   if (code === 0) return;
   // Every log call prints this line and exits 0 (K37).
   const text = stderr
