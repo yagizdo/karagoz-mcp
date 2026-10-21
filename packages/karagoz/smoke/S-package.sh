@@ -2,7 +2,8 @@
 # Step S: the package is ready to publish. npm pack takes only what a user runs (dist/, README, LICENSE and the
 # third-party notices), package.json and the repository's server.json carry the npm and MCP Registry fields and agree on
 # name and version, and THIRD_PARTY_NOTICES.txt has one section per package in the bundle, at the bundled version.
-# Precondition: none, no device. Nothing is written outside a temporary folder.
+# Precondition: none, no device. npm pack's prepack rebuilds dist/ and copies the gitignored README.md and LICENSE into
+# the package folder; everything else goes to a temporary folder.
 set -e
 cd "$(dirname "$0")/.."
 
