@@ -28,6 +28,11 @@ export async function listSimulators() {
       const { udid, name, state, isAvailable } = device;
       if (typeof udid !== 'string' || typeof name !== 'string' || typeof state !== 'string') return [];
       if (isAvailable !== true || state === 'Shutdown') return [];
-      return [{ id: udid, platform: 'ios', kind: 'simulator', state, name }];
+      return [{ id: udid, platform: 'ios' as const, kind: 'simulator' as const, state, name }];
     });
+}
+
+// undefined once the simulator can take commands; karagoz knows no step that helps with another state.
+export function notReady(state: string): string | undefined {
+  return state === 'Booted' ? undefined : '';
 }

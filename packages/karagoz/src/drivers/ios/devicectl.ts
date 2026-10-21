@@ -162,8 +162,16 @@ export async function listPhones() {
     if (device.visibilityClass !== undefined && device.visibilityClass !== 'default') return [];
     if (typeof udid !== 'string' || typeof pairingState !== 'string') return [];
     const name = typeof marketingName === 'string' ? marketingName : null;
-    return [{ id: udid, platform: 'ios', kind: 'physical', state: pairingState, name }];
+    return [{ id: udid, platform: 'ios' as const, kind: 'physical' as const, state: pairingState, name }];
   });
+}
+
+// An iPhone is ready once paired; Developer Mode is not in the listing while its tunnel is idle, so the capture's own
+// failure reports it (K21 4.2 note). undefined when ready; otherwise what the person does, empty when nothing helps.
+export function notReadyPhone(state: string): string | undefined {
+  if (state === 'paired') return undefined;
+  if (state === 'unpaired') return TRUST;
+  return state === 'pairingInProgress' ? 'Finish pairing on the iPhone: tap Trust, then enter the passcode.' : '';
 }
 
 // Apple's rotN and Android's ROTATION_N turn opposite ways: landscapeLeft (turned counter-clockwise) is rot270 in

@@ -1,16 +1,15 @@
-import { describe, entries, listDevices } from './drivers/android/devices.js';
-import { listPhones, TRUST } from './drivers/ios/devicectl.js';
-import { listSimulators } from './drivers/ios/devices.js';
+import { describe, entries, listDevices, notReady as notReadyAndroid } from './drivers/android/devices.js';
+import { listPhones, notReadyPhone } from './drivers/ios/devicectl.js';
+import { listSimulators, notReady as notReadySimulator } from './drivers/ios/devices.js';
 import { runnerStates } from './drivers/ios/runner.js';
 import { KaragozError } from './errors.js';
 
 type Platform = 'android' | 'ios';
-type Row = { id: string; platform: string; kind: string; state: string; name: string | null };
 type Listing<T> = { platform: Platform; rows: T[] } | { platform: Platform; error: KaragozError };
+type Ios = { id: string; platform: 'ios'; kind: 'simulator' | 'physical'; state: string; name: string | null };
 // A device as resolution sees it. Android names stay null until no id matches: each one costs an adb call (K21).
-type Candidate =
-  | { id: string; platform: 'android'; state: string; name: string | null }
-  | { id: string; platform: 'ios'; kind: 'simulator' | 'physical'; state: string; name: string | null };
+type AndroidCandidate = { id: string; platform: 'android'; state: string; name: string | null };
+type Candidate = AndroidCandidate | Ios;
 
 // iOS simulators exist only on macOS (K18 3.1 note).
 export const IS_MAC = process.platform === 'darwin';
@@ -26,12 +25,17 @@ async function attempt<T>(platform: Platform, list: () => Promise<T[]>): Promise
   }
 }
 
+// Every platform's listing, Android first: listAll() and find() fall back to Android's error.
+function listPlatforms<T>(android: () => Promise<T[]>) {
+  return Promise.all([
+    attempt<T | Ios>('android', android),
+    ...(IS_MAC ? [attempt<T | Ios>('ios', listSimulators), attempt<T | Ios>('ios', listPhones)] : []),
+  ]);
+}
+
 // When every platform tried fails, Android's error is the envelope, as before 3.1.
 export async function listAll() {
-  const listings = await Promise.all([
-    attempt<Row>('android', listDevices),
-    ...(IS_MAC ? [attempt<Row>('ios', listSimulators), attempt<Row>('ios', listPhones)] : []),
-  ]);
+  const listings = await listPlatforms(listDevices);
   const failed = listings.flatMap((listing) => ('error' in listing ? [listing] : []));
   const [first] = failed;
   if (first && failed.length === listings.length) throw first.error;
@@ -63,33 +67,9 @@ const NO_DEVICE = IS_MAC
 // Ids first on both platforms, then names: iOS names come with the listing, Android names through describe(), the
 // same function devices prints (K21). A name is case-sensitive and no platform wins a clash (K21 3.1 note).
 async function find(device: string | undefined): Promise<Candidate> {
-  const listings = await Promise.all([
-    attempt<Candidate>('android', async () =>
-      (await entries()).map(({ id, state }) => ({ id, platform: 'android' as const, state, name: null })),
-    ),
-    ...(IS_MAC
-      ? [
-          attempt<Candidate>('ios', async () =>
-            (await listSimulators()).map(({ id, state, name }) => ({
-              id,
-              platform: 'ios' as const,
-              kind: 'simulator' as const,
-              state,
-              name,
-            })),
-          ),
-          attempt<Candidate>('ios', async () =>
-            (await listPhones()).map(({ id, state, name }) => ({
-              id,
-              platform: 'ios' as const,
-              kind: 'physical' as const,
-              state,
-              name,
-            })),
-          ),
-        ]
-      : []),
-  ]);
+  const listings = await listPlatforms<AndroidCandidate>(async () =>
+    (await entries()).map(({ id, state }) => ({ id, platform: 'android' as const, state, name: null })),
+  );
   const listed = listings.flatMap((listing) => ('rows' in listing ? listing.rows : []));
   const failed = listings.flatMap((listing) => ('error' in listing ? [listing.error] : []));
   const request = requested(device);
@@ -136,19 +116,15 @@ async function find(device: string | undefined): Promise<Candidate> {
   return target;
 }
 
-// What a person does on the device for a state that is not ready; adb, simctl and devicectl states do not overlap.
-const HINTS = new Map([
-  ['unauthorized', 'Accept the USB debugging prompt on the device.'],
-  ['unpaired', TRUST],
-  ['pairingInProgress', 'Finish pairing on the iPhone: tap Trust, then enter the passcode.'],
-]);
-
-// An iPhone is ready once paired; Developer Mode is not in the listing while its tunnel is idle, so the capture's own
-// failure reports it (K21 4.2 note).
+// Each driver knows its tool's states: undefined means ready, else the hint, empty when there is none.
 function ready(target: Candidate): string {
-  const usable = target.platform === 'android' ? 'device' : target.kind === 'simulator' ? 'Booted' : 'paired';
-  if (target.state === usable) return target.id;
-  const hint = HINTS.get(target.state);
+  const hint =
+    target.platform === 'android'
+      ? notReadyAndroid(target.state)
+      : target.kind === 'simulator'
+        ? notReadySimulator(target.state)
+        : notReadyPhone(target.state);
+  if (hint === undefined) return target.id;
   throw new KaragozError(
     'DEVICE_NOT_READY',
     `device ${target.id} is not ready (state: ${target.state}).${hint ? ` ${hint}` : ''}`,

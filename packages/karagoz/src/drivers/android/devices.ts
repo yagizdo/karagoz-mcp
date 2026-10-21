@@ -51,6 +51,12 @@ export async function describe({ id, state }: Entry): Promise<Described> {
   return (state === 'device' && (await probe(id))) || { kind: 'physical', name: null };
 }
 
+// undefined once the device can take commands; otherwise what the person does on it, empty when nothing helps.
+export function notReady(state: string): string | undefined {
+  if (state === 'device') return undefined;
+  return state === 'unauthorized' ? 'Accept the USB debugging prompt on the device.' : '';
+}
+
 // Short form is "serial\tstate" per line: a single tab, so spaces in either field cannot break the split.
 export async function entries(): Promise<Entry[]> {
   return (await adb(['devices']))
