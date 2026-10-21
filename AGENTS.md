@@ -2,7 +2,7 @@
 
 Device automation for mobile apps across four targets: Android emulator, Android device, iOS simulator, iOS device. CLI first, MCP server as a thin wrapper over the same core.
 
-Every command runs on all four targets. The code is being refactored one feature at a time into the layout below; `### Not yet in this layout` lists what has not moved yet.
+Every device command runs on all four targets (`install-runner` and `uninstall-runner` only on iPhones). The code is being refactored one feature at a time into the layout below; `### Not yet in this layout` lists what has not moved yet.
 
 These rules are for anyone who changes this repository, person or agent. A decision number such as K5 points into the maintainers' design journal, which is not in the repository, so its reason is always written beside it.
 
@@ -51,7 +51,7 @@ The v1 subpaths do not exist in v2, and v2's root does not bundle the HTTP trans
 Paths below are relative to `packages/karagoz/src/`.
 
 - **Front ends:** `cli.ts` and `mcp.ts`. They own stdout, stderr and process state (`.claude/rules/source.md`), and both call `commands.ts`; neither imports a driver. The CLI and the MCP server return the same JSON for the same call (K1: MCP wraps the CLI's core).
-- **Command table:** `commands.ts`. Each entry declares its flags and its `run` calls one function from a feature file; `check()` validates arguments and `envelope()` builds the K5 error. It imports no driver and never branches on platform.
+- **Command table:** `commands.ts`. Each entry declares its flags and its `run` calls one function from a feature file; `check()` validates arguments and `envelope()` builds the error envelope from `## Hard boundaries`. It imports no driver and never branches on platform.
 - **Feature files:** `screenshot.ts`, `ui-tree.ts`, `input.ts`, `app.ts`, `logs.ts`, `runner.ts`, one per feature, in this order: checks that do not depend on the platform, so `INVALID_ARGS` comes before any device call; `resolveTarget()` from `devices.ts`; exactly one branch between Android, iPhone (`kind === 'physical'`) and iOS simulator; then the work every platform shares, such as writing the PNG. A feature file never runs an external tool and never parses a tool's output. `screenshot.ts` is the example.
 - **Targets:** `devices.ts` lists every platform and resolves `--device`. It is the only top-level file that calls several drivers of one platform.
 - **Shared modules:** `errors.ts`, `cancellation.ts`, `png.ts`. They import nothing from `src/` but each other. Code or a table that two platforms need moves into a module like these (`png.ts` reads the PNG size for both); one platform's driver never hosts it for the other.
