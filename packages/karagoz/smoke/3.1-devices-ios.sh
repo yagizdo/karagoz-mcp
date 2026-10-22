@@ -121,7 +121,7 @@ printf '#!/bin/sh\necho "Install Started"\nprintf "%%s\\n" "$0 $*" >> %s\n' "'$t
 chmod +x "$s/simctl" "$s/devicectl" "$s/xcodebuild"
 out=$(run ANDROID_HOME="$tmp/sdk" DEVELOPER_DIR="$tmp/S.app") || fail "shim exited non-zero: $out"
 [ ! -e "$tmp/shimcalls" ] || fail "shim: karagoz ran $(/usr/bin/tr '\n' ';' < "$tmp/shimcalls")"
-got=$(echo "$out" | node -e '
+got=$(printf '%s' "$out" | node -e '
   const r = JSON.parse(require("fs").readFileSync(0, "utf8"));
   if (r.errors?.some((e) => e.platform === "ios")) { console.log("ios error: " + JSON.stringify(r.errors)); process.exit(); }
   console.log(JSON.stringify(r.devices.filter((d) => d.platform === "ios" && d.kind === "simulator")));

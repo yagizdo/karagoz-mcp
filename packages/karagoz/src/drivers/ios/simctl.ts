@@ -15,7 +15,7 @@ const MAX_BUFFER = 64 * 1024 * 1024;
 
 // ponytail: Apple's private path, the binary Xcode's simctl shim execs. Calling it directly skips xcrun's install
 // dialog and the shim's `xcodebuild -runFirstLaunch`, which hangs without a TTY (K32). If Apple moves it, iOS reads
-// as SIMCTL_NOT_FOUND; the fallback is the selected Xcode's shim after checking its EXPECTED_VERSION.
+// as SIMCTL_NOT_FOUND; the fix is to read the path from the shim's exec line.
 const FRAMEWORK = '/Library/Developer/PrivateFrameworks/CoreSimulator.framework/Versions/A/Resources/bin/simctl';
 // The framework's Info.plist: its CFBundleVersion is the CoreSimulator version a shim's EXPECTED_VERSION names.
 export const FRAMEWORK_PLIST = join(dirname(FRAMEWORK), '..', 'Info.plist');
