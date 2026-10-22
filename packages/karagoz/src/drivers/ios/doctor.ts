@@ -4,7 +4,7 @@ import { KaragozError } from '../../errors.js';
 import { COREDEVICE_PLIST, devicectlPath } from './devicectl.js';
 import { notOnPath } from './logs.js';
 import { runnerBuild, xcodebuild, xctestrun } from './runner.js';
-import { binary, developerDir, EXPECTED, FRAMEWORK_PLIST } from './simctl.js';
+import { binary, EXPECTED, FRAMEWORK_PLIST } from './simctl.js';
 import { helperPath, swiftc } from './ui-tree.js';
 import { daemonPath, unreachable } from './usbmux.js';
 import { bundleVersion, NO_XCODE, noTeam, owns, selected, teams, type Team } from './xcode.js';
@@ -112,20 +112,13 @@ function older(a: string, b: string): boolean {
   return false;
 }
 
-// When the selected Xcode's shim of a tool runs `xcodebuild -runFirstLaunch`, by the shim's own rule. A missing or older
-// framework means the first launch has not finished, shim or not. Xcode 27's simctl shim stops there (version_is_older);
-// Xcode 26.2's simctl shim and every known devicectl shim also run it for a newer framework, on every call, and karagoz
-// runs a shim only under DEVELOPER_DIR (K32, K47).
-function firstLaunch(name: 'simctl' | 'devicectl', framework: string, shim: string, current: string | undefined) {
+// A missing or older framework than the selected Xcode's shim names: its first launch has not finished. A newer one is
+// fine: karagoz runs the framework's binary, never the shim that would run `xcodebuild -runFirstLaunch` for it (K32,
+// K48).
+function firstLaunch(framework: string, shim: string, current: string | undefined) {
   const expected = EXPECTED.exec(shim)?.[1];
-  if (expected === undefined) return undefined;
-  if (!current || older(current, expected)) {
-    return `the selected Xcode expects ${framework} ${expected}, this Mac has ${current ?? 'none'}: open Xcode once to finish installing its components`;
-  }
-  if (current !== expected && developerDir() && !/\bversion_is_older\b/.test(shim)) {
-    return `the Xcode in DEVELOPER_DIR expects ${framework} ${expected} but this Mac has ${current} from a newer Xcode, so its ${name} runs xcodebuild -runFirstLaunch on every call: point DEVELOPER_DIR at the newest Xcode, or unset it`;
-  }
-  return undefined;
+  if (expected === undefined || (current && !older(current, expected))) return undefined;
+  return `the selected Xcode expects ${framework} ${expected}, this Mac has ${current ?? 'none'}: open Xcode once to finish installing its components`;
 }
 
 async function simctl(dev: string | undefined): Promise<Entry> {
@@ -137,7 +130,7 @@ async function simctl(dev: string | undefined): Promise<Entry> {
   ]);
   if (entry.status === 'missing') return entry;
   const version = plistString(framework, 'CFBundleVersion');
-  const problem = entry.status === 'ok' ? firstLaunch('simctl', 'CoreSimulator', shim, version) : undefined;
+  const problem = entry.status === 'ok' ? firstLaunch('CoreSimulator', shim, version) : undefined;
   const message = problem ?? entry.message;
   return {
     status: problem ? 'failed' : entry.status,
@@ -159,7 +152,7 @@ async function devicectl(dev: string | undefined): Promise<Entry> {
   if (entry.status !== 'ok' || !EXPECTED.test(shim)) return entry;
   let problem: string | undefined;
   try {
-    problem = firstLaunch('devicectl', 'CoreDevice', shim, await bundleVersion(COREDEVICE_PLIST));
+    problem = firstLaunch('CoreDevice', shim, await bundleVersion(COREDEVICE_PLIST));
   } catch (err) {
     if (!(err instanceof KaragozError)) throw err;
     problem = err.message;
