@@ -4,7 +4,7 @@ import { KaragozError } from '../../errors.js';
 import { COREDEVICE_PLIST, devicectlPath } from './devicectl.js';
 import { notOnPath } from './logs.js';
 import { runnerBuild, xcodebuild, xctestrun } from './runner.js';
-import { binary, developerDir, FRAMEWORK_PLIST } from './simctl.js';
+import { binary, developerDir, EXPECTED, FRAMEWORK_PLIST } from './simctl.js';
 import { helperPath, swiftc } from './ui-tree.js';
 import { daemonPath, unreachable } from './usbmux.js';
 import { bundleVersion, NO_XCODE, noTeam, owns, selected, teams, type Team } from './xcode.js';
@@ -42,8 +42,6 @@ type Report = {
 // tap, swipe and key need Xcode 27's simulator HID service (K35).
 const FLOOR = 27;
 const OUTDATED = `tap, swipe and key on a simulator need Xcode ${FLOOR} or later`;
-// The line of a simctl or devicectl shim that names the framework version its Xcode was built for (K32).
-const EXPECTED = /^EXPECTED_VERSION="([^"]+)"$/m;
 
 const text = (path: string) => readFile(path, 'utf8').catch(() => '');
 const plistString = (plist: string, key: string) =>
@@ -131,7 +129,7 @@ function firstLaunch(name: 'simctl' | 'devicectl', framework: string, shim: stri
 }
 
 async function simctl(dev: string | undefined): Promise<Entry> {
-  const { bin, missing } = binary();
+  const { bin, missing } = await binary();
   const [entry, framework, shim] = await Promise.all([
     tool(bin, missing),
     text(FRAMEWORK_PLIST),
@@ -150,7 +148,7 @@ async function simctl(dev: string | undefined): Promise<Entry> {
 }
 
 async function devicectl(dev: string | undefined): Promise<Entry> {
-  const path = devicectlPath();
+  const path = await devicectlPath();
   const [entry, shim] = await Promise.all([
     tool(
       path,

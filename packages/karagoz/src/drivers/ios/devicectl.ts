@@ -3,7 +3,7 @@ import { cancellation } from '../../cancellation.js';
 import { KaragozError } from '../../errors.js';
 import { runTool } from '../../tool.js';
 import { isRecord } from './record.js';
-import { developerDir } from './simctl.js';
+import { developerDir, unshimmed } from './simctl.js';
 
 // list devices measured at 0.06 s, a simulator's info displays 0.06-0.11 s; the timeout only bounds a stuck CoreDevice
 // service.
@@ -19,9 +19,9 @@ const FRAMEWORK = '/Library/Developer/PrivateFrameworks/CoreDevice.framework/Ver
 // Its Info.plist: CFBundleVersion is the CoreDevice version a devicectl shim's EXPECTED_VERSION names.
 export const COREDEVICE_PLIST = join(dirname(FRAMEWORK), '..', 'Info.plist');
 
-export function devicectlPath(): string {
+export async function devicectlPath(): Promise<string> {
   const dev = developerDir();
-  return dev ? join(dev, 'usr', 'bin', 'devicectl') : FRAMEWORK;
+  return dev ? unshimmed(join(dev, 'usr', 'bin', 'devicectl'), FRAMEWORK) : FRAMEWORK;
 }
 
 // The first verb on an idle iPhone brings its tunnel up (3.89 s measured) and may mount the developer disk image; 30 s is
@@ -96,14 +96,14 @@ async function devicectl(
   udid?: string,
   failed?: (chain: Link[]) => KaragozError | null,
 ): Promise<string> {
-  const bin = devicectlPath();
+  const bin = await devicectlPath();
   const result = await runTool(bin, args, { timeout, maxBuffer: MAX_BUFFER });
   if (result.ok) return result.stdout.toString('utf8');
   const { failure } = result;
   if (failure.kind === 'missing') {
     throw new KaragozError(
       'DEVICECTL_NOT_FOUND',
-      developerDir()
+      bin !== FRAMEWORK
         ? `devicectl not found (tried ${bin}, from DEVELOPER_DIR). Point DEVELOPER_DIR at an Xcode 15 or later, not the Command Line Tools, or unset it.`
         : `devicectl not found (tried ${bin}). Install Xcode 15 or later and open it once.`,
     );
