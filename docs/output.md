@@ -23,7 +23,7 @@ Branch on `error.code`, not on the message. Messages are for people and can chan
 
 stderr also carries adb's own notices on success, such as `* daemon started successfully` when the adb server was not running. That first call takes about 3 s longer.
 
-`karagoz --version` prints the version as plain text (`0.0.0`) and exits `0`. It wins over any command: `karagoz devices --version` prints the version.
+`karagoz --version` prints the package version as plain text and exits `0`. It wins over any command: `karagoz devices --version` prints the version.
 
 ## Arguments
 
