@@ -46,12 +46,17 @@ export async function xcode(): Promise<string> {
   return found.dev;
 }
 
-// The selected Xcode's build (ProductBuildVersion), or '' when its version.plist is missing. The path is text, not
-// join(): join drops '..' lexically, while the kernel resolves a DEVELOPER_DIR symlink to Developer first.
-export async function buildVersion(dev: string): Promise<string> {
+// One key of the selected Xcode's version.plist, or '' when the file is missing. The path is text, not join(): join
+// drops '..' lexically, while the kernel resolves a DEVELOPER_DIR symlink to Developer first.
+async function versionKey(dev: string, key: string): Promise<string> {
   const plist = await readFile(`${dev}/../version.plist`, 'utf8').catch(() => '');
-  return /<key>ProductBuildVersion<\/key>\s*<string>([^<]*)<\/string>/.exec(plist)?.[1] ?? '';
+  return new RegExp(`<key>${key}</key>\\s*<string>([^<]*)</string>`).exec(plist)?.[1] ?? '';
 }
+
+// The selected Xcode's build, such as 27A9275.
+export const buildVersion = (dev: string) => versionKey(dev, 'ProductBuildVersion');
+// The selected Xcode's version, such as 27.1.
+export const shortVersion = (dev: string) => versionKey(dev, 'CFBundleShortVersionString');
 
 // The cache sits in the user's home, but a directory or binary someone else owns there is refused, as screenshot
 // refuses a shared temp directory (src/screenshot.ts).
@@ -90,15 +95,14 @@ const PLUTIL_TIMEOUT_MS = 5_000;
 
 export type Team = { id: string; name: string; free: boolean };
 
-// One key of Xcode's preferences as JSON, undefined when the file or key is missing. plutil only reads and converts the
-// file; no Xcode process starts (K41).
-async function preference(key: string): Promise<unknown> {
-  const prefs = join(homedir(), 'Library', 'Preferences', 'com.apple.dt.Xcode.plist');
+// One key of a property list in plutil's json or raw form, undefined when the file or key is missing. plutil only reads
+// and converts the file, binary or XML; no Xcode process starts (K41).
+async function plistValue(path: string, key: string, form: 'json' | 'raw'): Promise<string | undefined> {
   const signal = cancellation.getStore();
   signal?.throwIfAborted();
   let stdout: string;
   try {
-    ({ stdout } = await run('/usr/bin/plutil', ['-extract', key, 'json', '-o', '-', prefs], {
+    ({ stdout } = await run('/usr/bin/plutil', ['-extract', key, form, '-o', '-', path], {
       timeout: PLUTIL_TIMEOUT_MS,
       ...(signal && { signal }),
     }));
@@ -107,17 +111,28 @@ async function preference(key: string): Promise<unknown> {
     if (signal?.aborted) throw err;
     if (!(err instanceof Error)) throw err;
     if ('killed' in err && err.killed) {
-      throw new KaragozError('HELPER_FAILED', `plutil did not read ${prefs} within ${PLUTIL_TIMEOUT_MS / 1000} s`);
+      throw new KaragozError('HELPER_FAILED', `plutil did not read ${path} within ${PLUTIL_TIMEOUT_MS / 1000} s`);
     }
     // plutil exits 1 when the file or the key is missing.
     return undefined;
   }
+  return stdout;
+}
+
+async function preference(key: string): Promise<unknown> {
+  const stdout = await plistValue(join(homedir(), 'Library', 'Preferences', 'com.apple.dt.Xcode.plist'), key, 'json');
   try {
-    return JSON.parse(stdout);
+    return stdout === undefined ? undefined : JSON.parse(stdout);
   } catch {
     // plutil printed something other than JSON: read as missing, which the callers explain.
     return undefined;
   }
+}
+
+// A framework's CFBundleVersion, undefined when it cannot be read. CoreDevice's Info.plist is binary, and holds values
+// JSON cannot carry, so plutil's json form refuses it (K47).
+export async function bundleVersion(plist: string): Promise<string | undefined> {
+  return (await plistValue(plist, 'CFBundleVersion', 'raw'))?.trim() || undefined;
 }
 
 // The development teams of the Apple accounts signed in to Xcode. Xcode writes them only once it has shown a team list,

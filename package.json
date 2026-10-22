@@ -7,9 +7,9 @@
     "packages/ios-runner"
   ],
   "scripts": {
-    "build": "npm run build -w karagoz",
-    "typecheck": "npm run typecheck -w karagoz",
-    "lint": "npm run lint -w karagoz",
-    "format": "npm run format -w karagoz"
+    "build": "npm run build -w karagoz-mcp",
+    "typecheck": "npm run typecheck -w karagoz-mcp",
+    "lint": "npm run lint -w karagoz-mcp",
+    "format": "npm run format -w karagoz-mcp"
   }
 }

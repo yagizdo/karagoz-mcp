@@ -6,7 +6,7 @@ How to register `karagoz mcp` with each client, and what its tools take, return 
 
 ## Registration
 
-karagoz is not on npm yet, so every example runs the built file by its absolute path. After the first release, `npx -y karagoz mcp` replaces `node /abs/path/karagoz-mcp/packages/karagoz/dist/cli.js mcp`.
+karagoz is not on npm yet, so every example runs the built file by its absolute path. After the first release, `npx -y karagoz-mcp mcp` replaces `node /abs/path/karagoz-mcp/packages/karagoz/dist/cli.js mcp`.
 
 Claude Code and Codex were run against this server. The Claude Desktop, Cursor and VS Code entries follow their documentation and were not run.
 

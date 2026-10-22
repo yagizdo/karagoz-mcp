@@ -50,6 +50,7 @@ is() { [ "$x" = "$2" ] || { printf 'FAIL: %s: expected %s, got: %s\n' "$1" "$2" 
 framework=/Library/Developer/PrivateFrameworks/CoreSimulator.framework/Versions/A/Resources
 coredevice=/Library/Developer/PrivateFrameworks/CoreDevice.framework/Versions/A/Resources/bin/devicectl
 fw=$(/usr/bin/plutil -extract CFBundleVersion raw "$framework/Info.plist")
+cd_version=$(/usr/bin/plutil -extract CFBundleVersion raw "$(dirname "$coredevice")/../Info.plist")
 newer=$(printf '%s' "$fw" | awk -F. -v OFS=. '{ $NF = $NF + 1; print }')
 helper_path=$tmp/home/Library/Caches/karagoz/KEY/ax
 # No Apple account under the fake HOME; the runner is never built here.
@@ -62,18 +63,27 @@ cat > "$tmp/logger" <<'FAKE'
 printf '%s\n' "$0 $*" >> "$CALLS"
 exit 1
 FAKE
-# fake <app> <version> <build> <EXPECTED_VERSION>: an Xcode.app with version.plist, a simctl shim, devicectl and swiftc.
+# fake <app> <version> <build> <EXPECTED_VERSION> [ne]: an Xcode.app with version.plist, a simctl shim, devicectl and
+# swiftc. The simctl shim has Xcode 27's rule (first launch only for an older framework), or with ne Xcode 26.2's (for
+# any other version).
 fake() {
   dev=$1/Contents/Developer
   bin=$dev/Toolchains/XcodeDefault.xctoolchain/usr/bin
   mkdir -p "$dev/usr/bin" "$bin"
   printf '<plist version="1.0">\n<dict>\n\t<key>CFBundleShortVersionString</key>\n\t<string>%s</string>\n\t<key>ProductBuildVersion</key>\n\t<string>%s</string>\n</dict>\n</plist>\n' \
     "$2" "$3" > "$1/Contents/version.plist"
-  { echo '#!/bin/sh'; printf 'EXPECTED_VERSION="%s"\n' "$4"; cat "$tmp/logger"; } > "$dev/usr/bin/simctl"
+  rule='version_is_older() { :; }'
+  [ "$5" != ne ] || rule='[ "$EXPECTED_VERSION" != "$CURRENT_VERSION" ]'
+  { echo '#!/bin/sh'; printf 'EXPECTED_VERSION="%s"\n%s\n' "$4" "$rule"; cat "$tmp/logger"; } > "$dev/usr/bin/simctl"
   { echo '#!/bin/sh'; cat "$tmp/logger"; } > "$dev/usr/bin/devicectl"
   cp "$dev/usr/bin/devicectl" "$bin/swiftc"
   cp "$dev/usr/bin/devicectl" "$dev/usr/bin/xcodebuild"
   chmod 755 "$dev/usr/bin/simctl" "$dev/usr/bin/devicectl" "$bin/swiftc" "$dev/usr/bin/xcodebuild"
+}
+# dshim <developer dir> <EXPECTED_VERSION>: that Xcode's devicectl becomes a shim with the rule every known devicectl
+# shim has (first launch for any other CoreDevice version).
+dshim() {
+  { echo '#!/bin/sh'; printf 'EXPECTED_VERSION="%s"\n[ "$EXPECTED_VERSION" != "$CURRENT_VERSION" ]\n' "$2"; cat "$tmp/logger"; } > "$1/usr/bin/devicectl"
 }
 # entries <developer dir>: every entry ok and the helper not built, in $sim, $swc, $dctl, $hlp, $sgn, $rnr, and the
 # iPhone ones in $xcb, $mux, $tar and $log.
@@ -166,6 +176,37 @@ entries "$d"
 doc DEVELOPER_DIR="$tmp/Xf.app"
 is newer "$(top ok "$d" 27.0 27A1)"
 ok="$ok, newer"
+
+# r. Xcode 26.2's shim runs first launch for a newer framework too, on every call when DEVELOPER_DIR picks it.
+fake "$tmp/Xr.app" 26.2 17C52 1.0 ne
+d=$tmp/Xr.app/Contents/Developer
+entries "$d"
+every="the Xcode in DEVELOPER_DIR expects CoreSimulator 1.0 but this Mac has $fw from a newer Xcode, so its simctl runs xcodebuild -runFirstLaunch on every call: point DEVELOPER_DIR at the newest Xcode, or unset it"
+sim="{\"status\":\"failed\",\"path\":\"$d/usr/bin/simctl\",\"version\":\"$fw\",\"message\":\"$every\"}"
+doc DEVELOPER_DIR="$tmp/Xr.app"
+is 'every call (simctl)' "$(top failed "$d" 26.2 17C52 "$every")"
+
+# s, t, u. devicectl's shim: a newer CoreDevice fails the same way, the expected one is fine, an older one is a
+# pending first launch.
+fake "$tmp/Xs.app" 27.1 27B1 "$fw"
+d=$tmp/Xs.app/Contents/Developer
+entries "$d"
+dshim "$d" 1.0
+every="the Xcode in DEVELOPER_DIR expects CoreDevice 1.0 but this Mac has $cd_version from a newer Xcode, so its devicectl runs xcodebuild -runFirstLaunch on every call: point DEVELOPER_DIR at the newest Xcode, or unset it"
+dctl="{\"status\":\"failed\",\"path\":\"$d/usr/bin/devicectl\",\"message\":\"$every\"}"
+doc DEVELOPER_DIR="$tmp/Xs.app"
+is 'every call (devicectl)' "$(top failed "$d" 27.1 27B1 "$every")"
+entries "$d"
+dshim "$d" "$cd_version"
+doc DEVELOPER_DIR="$tmp/Xs.app"
+is 'expected CoreDevice' "$(top ok "$d" 27.1 27B1)"
+cd_newer=$(printf '%s' "$cd_version" | awk -F. -v OFS=. '{ $NF = $NF + 1; print }')
+dshim "$d" "$cd_newer"
+first="the selected Xcode expects CoreDevice $cd_newer, this Mac has $cd_version: open Xcode once to finish installing its components"
+dctl="{\"status\":\"failed\",\"path\":\"$d/usr/bin/devicectl\",\"message\":\"$first\"}"
+doc DEVELOPER_DIR="$tmp/Xs.app"
+is 'first launch (devicectl)' "$(top failed "$d" 27.1 27B1 "$first")"
+ok="$ok, every call, devicectl shim"
 
 # g. A Command Line Tools-like dir: no simctl, no swiftc, no version.plist.
 d=$tmp/clt

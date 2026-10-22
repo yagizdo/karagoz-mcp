@@ -1,0 +1,22 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.yagizdo/karagoz-mcp",
+  "title": "Karagöz",
+  "description": "Device automation for Android emulators and phones, iOS simulators and iPhones",
+  "websiteUrl": "https://karagozmcp.com",
+  "repository": {
+    "url": "https://github.com/yagizdo/karagoz-mcp",
+    "source": "github",
+    "subfolder": "packages/karagoz"
+  },
+  "version": "0.1.0",
+  "packages": [
+    {
+      "registryType": "npm",
+      "identifier": "karagoz-mcp",
+      "version": "0.1.0",
+      "transport": { "type": "stdio" },
+      "packageArguments": [{ "type": "positional", "value": "mcp" }]
+    }
+  ]
+}

@@ -94,7 +94,7 @@ The first call compiles the helper ([Requirements](../requirements.md)) and take
 **Errors on iOS**
 
 - `HELPER_FAILED`: this Mac cannot read iOS trees. No Xcode selected, no `swiftc` at the selected Xcode's toolchain path, a failed compile (swiftc's first error lines), a crashed helper, or an Xcode that changed a private interface karagoz uses (`update karagoz`).
-- `CAPTURE_FAILED`: this screen could not be read: no frontmost application, an accessibility request that took over 5 s, no answer within 30 s, or helper output that could not be parsed. With Control Center open, a read ends this way after 30 s.
+- `CAPTURE_FAILED`: this screen could not be read: no frontmost application, an accessibility request that took over 5 s, no answer within 30 s, or helper output that could not be parsed. With Control Center open, a read ends this way after 30 s. An app opened while the simulator's app accessibility setting was off (an Xcode UI test, or another XCUI client, turns it off when it ends) reads as an empty root: karagoz turns the setting back on and fails with `the app in front opened while the simulator's app accessibility was off ...: restart the app (terminate, then launch) and read again`. After `terminate` and `launch` the tree is full.
 - `DEVICE_NOT_READY` for a simulator that is still booting, before anything is compiled.
 - Plus the [device selection](../device-selection.md) errors and the simctl and devicectl errors from listing simulators and iPhones.
 
@@ -123,7 +123,7 @@ Starting the runner and reading the first tree took 3 to 4.4 s; later reads abou
 
 - `RUNNER_NOT_INSTALLED`: no runner to start. The message names `karagoz install-runner --device <UDID>` and the MCP tool `install_runner`.
 - `DEVICE_NOT_READY`: the iPhone is not connected by USB cable; it is locked (the start ends at once); it does not trust the runner's developer yet (free accounts: Settings > General > VPN & Device Management); the runner did not start within 60 s: look at the phone for a passcode prompt to enable UI automation, and check Settings > Developer > Enable UI Automation; something else answers on the runner's port without this Mac's key (another app, or a runner another user of this Mac started, which stops within 10 minutes; restart the iPhone if it stays); or another app holds that port. Plus the pairing states of [Device selection](../device-selection.md).
-- `HELPER_FAILED`: `xcodebuild` could not start the runner for a reason karagoz does not know (its last error line and the log path), or this iOS changed an interface the runner uses (`update karagoz`).
+- `HELPER_FAILED`: the selected Xcode has no `xcodebuild` (`xcodebuild not found in <developer dir>`, as `install-runner` says), `xcodebuild` could not start the runner for a reason karagoz does not know (its last error line and the log path), or this iOS changed an interface the runner uses (`update karagoz`).
 - `CAPTURE_FAILED`: XCTest could not take the snapshot (its message), no answer within 30 s, or the runner closed the connection. A snapshot stuck for 20 s ends the runner; the next call starts a new one.
 - Plus the [device selection](../device-selection.md) errors and the devicectl errors.
 

@@ -2,11 +2,20 @@ import { cancellation } from '../../cancellation.js';
 import { KaragozError } from '../../errors.js';
 import { runTool } from '../../tool.js';
 import { displayOf, rotation } from './devicectl.js';
+import { runtimeOf } from './devices.js';
 import { input } from './runner.js';
 import { panelScale } from './screenshot.js';
 import { simctl } from './simctl.js';
-import { helper, readPhoneTree, readTree, RUN_TIMEOUT_MS, type IosNode } from './ui-tree.js';
-import { CACHE_HINT, xcode } from './xcode.js';
+import {
+  appAccessibility,
+  helper,
+  readPhoneTree,
+  readTree,
+  restoreAppAccessibility,
+  RUN_TIMEOUT_MS,
+  type IosNode,
+} from './ui-tree.js';
+import { CACHE_HINT, shortVersion, xcode } from './xcode.js';
 
 // Android's swipe default, so both platforms state the same duration (K25, K35).
 const SWIPE_MS = 300;
@@ -15,9 +24,10 @@ const SWIPE_MS = 300;
 // (3.5 s) (K35).
 const TYPE_SPEED = 120;
 
-// The XCUI session turns app accessibility off when it ends, whatever it was, and apps opened after that give an empty
-// tree until the simulator restarts. text writes back a 1 it read before (user decision, K35 3.4 build).
-const APP_AX = ['com.apple.Accessibility', 'ApplicationAccessibilityEnabled'];
+// From Xcode 27, text's session comes only from simulators on iOS 27 or later: Xcode's own device tool allows no
+// older ones, and a 26.2 simulator never answered within the helper's 15 s (K47).
+const SESSION_FLOOR = 27;
+const RUNTIME = /\.iOS-(\d+)-(\d+)$/;
 
 // Invisible direction marks, Unicode's Bidi_Control set, ignored on both sides as on Android (K26). A copy of the
 // Android driver's, so this driver imports nothing from it.
@@ -319,20 +329,6 @@ export async function tapElementPhone(udid: string, selector: Selector, duration
   return { ...(await tapPhone(udid, x, y, duration, tree.display)), element };
 }
 
-async function appAccessibility(udid: string): Promise<boolean> {
-  try {
-    return (await simctl(['spawn', udid, 'defaults', 'read', ...APP_AX])).trim() === '1';
-  } catch (err) {
-    // A missing key fails the read and means off: there is nothing to write back.
-    if (!(err instanceof KaragozError)) throw err;
-    return false;
-  }
-}
-
-// Outside the call's cancellation: a cancelled text must still leave app accessibility as it found it (K31).
-const restore = (udid: string) =>
-  cancellation.exit(() => simctl(['spawn', udid, 'defaults', 'write', ...APP_AX, '-bool', 'true']));
-
 // Each simulator's last text. testmanagerd turns app accessibility off when a session ends and the server runs calls
 // in parallel, so a text that read the setting during another's write-back would leave it off: texts of one simulator
 // wait in arrival order (K35). Another process typing at the same time still races.
@@ -373,16 +369,24 @@ export async function text(udid: string, value: string) {
 }
 
 async function typeText(udid: string, value: string) {
+  const [version, runtime] = await Promise.all([xcode().then(shortVersion), runtimeOf(udid)]);
+  const [, major, minor] = RUNTIME.exec(runtime ?? '') ?? [];
+  if (Number(version.split('.')[0]) >= SESSION_FLOOR && major !== undefined && Number(major) < SESSION_FLOOR) {
+    throw new KaragozError(
+      'NOT_SUPPORTED',
+      `'text' on an iOS ${major}.${minor} simulator needs an iOS ${SESSION_FLOOR} or later simulator with Xcode ${SESSION_FLOOR} or later; tap, swipe, key and ui-tree work on it`,
+    );
+  }
   const wasOn = await appAccessibility(udid);
   const typing = Math.ceil(Array.from(value).length / TYPE_SPEED) * 1000;
   try {
     await send('text', udid, ['type', String(TYPE_SPEED), value], typing);
   } catch (err) {
     // The typing error says what went wrong; a failed write-back on top of it would only hide it.
-    if (wasOn) await restore(udid).catch(() => undefined);
+    if (wasOn) await restoreAppAccessibility(udid).catch(() => undefined);
     throw err;
   }
-  if (wasOn) await restore(udid);
+  if (wasOn) await restoreAppAccessibility(udid);
   return { device: udid, text: value };
 }
 
