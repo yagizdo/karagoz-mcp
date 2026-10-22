@@ -2,7 +2,7 @@
 
 Device automation for mobile apps. One tool for four targets: Android emulator, Android physical device, iOS simulator, iOS physical device. It is a CLI, and `karagoz mcp` serves the same commands to an AI agent as an [MCP server](#mcp-server).
 
-Website: [karagozmcp.com](https://karagozmcp.com/?utm_source=github&utm_medium=readme)
+Website: [karagozmcp.com](https://karagozmcp.com/?utm_source=github&utm_medium=readme) · [Docs](https://karagozmcp.com/docs/?utm_source=github&utm_medium=readme)
 
 ## Why karagoz
 
