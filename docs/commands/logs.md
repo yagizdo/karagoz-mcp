@@ -23,15 +23,17 @@ That record was written with `adb shell log -t KaragozManual "hello from karagoz
 
 | Field | Type | Meaning |
 | --- | --- | --- |
-| `device` | string | Serial or UDID of the device read. |
+| `device` | string | The adb serial, or the simulator's or iPhone's UDID. |
 | `package` | string | Only with `--package`: the package as given. |
 | `uid` | number | Only with `--package`, on Android: the uid the records were matched on. `com.android.settings` has 1000, which it shares with the system server. |
 | `records` | array | The matching records, at most `--lines`, oldest first: on Android in the order the device's log daemon received them, on iOS by time. |
 | `records[].time` | number | When the record was written: seconds since the Unix epoch on the device clock, to the microsecond. Rounded up on Android; on iOS as `log` prints it. |
-| `records[].pid`, `records[].tid` | number | Process and thread that wrote it. |
+| `records[].pid` | number | Id of the process that wrote it. |
+| `records[].tid` | number | Id of the thread that wrote it. |
 | `records[].level` | string | `V`, `D`, `I`, `W`, `E` or `F`; `?` for any other priority. On iOS, `D`, `I`, `E`, `F` or `?` (see [On an iOS simulator](#on-an-ios-simulator)). |
 | `records[].tag` | string | On Android the log tag; on iOS the name of the process that wrote it. |
-| `records[].subsystem`, `records[].category` | string | Only on iOS: the record's `os_log` subsystem and category, `""` when it has none. |
+| `records[].subsystem` | string | Only on iOS: the record's `os_log` subsystem, `""` when it has none. |
+| `records[].category` | string | Only on iOS: the record's `os_log` category, `""` when it has none. |
 | `records[].message` | string | The message, newlines kept. |
 | `omitted` | number | How many older matching records `--lines` left out. `0` when `records` holds every match. |
 
