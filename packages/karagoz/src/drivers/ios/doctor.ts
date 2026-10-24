@@ -9,8 +9,8 @@ import { helperPath, swiftc } from './ui-tree.js';
 import { daemonPath, unreachable } from './usbmux.js';
 import { bundleVersion, NO_XCODE, noTeam, owns, selected, teams, type Team } from './xcode.js';
 
-// doctor reads files, and runs nothing but plutil, which only converts Xcode's preference file and CoreDevice's binary
-// Info.plist. simctl would start CoreSimulatorService and rewrite device_set.plist, and a shim under DEVELOPER_DIR can
+// doctor reads files, and runs nothing but plutil, which only converts Xcode's preference file and the CoreSimulator and
+// CoreDevice Info.plists, binary on some Macs. simctl would start CoreSimulatorService and rewrite device_set.plist, and a shim under DEVELOPER_DIR can
 // start Xcode's first launch, which waits for a password (K30 3.7 note, K32, K41). xcodebuild can do the same, and
 // usbmuxd is not connected to (K30 4.7).
 
@@ -125,12 +125,21 @@ async function simctl(dev: string | undefined): Promise<Entry> {
   const { bin, missing } = await binary();
   const [entry, framework, shim] = await Promise.all([
     tool(bin, missing),
-    text(FRAMEWORK_PLIST),
+    // Binary on an Xcode 26 Mac, XML on another; a KaragozError is plutil's timeout, reported like devicectl's.
+    bundleVersion(FRAMEWORK_PLIST).catch((err: unknown) => {
+      if (err instanceof KaragozError) return err;
+      throw err;
+    }),
     dev ? text(join(dev, 'usr', 'bin', 'simctl')) : '',
   ]);
   if (entry.status === 'missing') return entry;
-  const version = plistString(framework, 'CFBundleVersion');
-  const problem = entry.status === 'ok' ? firstLaunch('CoreSimulator', shim, version) : undefined;
+  const version = framework instanceof KaragozError ? undefined : framework;
+  const problem =
+    entry.status !== 'ok'
+      ? undefined
+      : framework instanceof KaragozError
+        ? framework.message
+        : firstLaunch('CoreSimulator', shim, version);
   const message = problem ?? entry.message;
   return {
     status: problem ? 'failed' : entry.status,

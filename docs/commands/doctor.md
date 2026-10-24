@@ -72,7 +72,7 @@ The exit code is `0` whenever the report is printed, with adb or Xcode missing o
 **Notes**
 
 - Only `adb version` runs, on every candidate at once. It never connects to the adb server, so server trouble does not show up here; the other commands report it as `ADB_TIMEOUT`.
-- For Xcode, doctor reads files, and runs only `plutil`, which converts Xcode's preference file to read the teams and reads CoreDevice's version; it cannot start the simulator service or Xcode's first launch. A stuck simulator service shows in the `errors` of `devices`, not here. It never runs `xcodebuild` and never connects to usbmuxd, so a socket that is there but answers nobody shows up only in the iPhone commands. Paired iPhones are listed by `devices`, not here.
+- For Xcode, doctor reads files, and runs only `plutil`, which converts Xcode's preference file to read the teams and reads CoreSimulator's and CoreDevice's versions; it cannot start the simulator service or Xcode's first launch. A stuck simulator service shows in the `errors` of `devices`, not here. It never runs `xcodebuild` and never connects to usbmuxd, so a socket that is there but answers nobody shows up only in the iPhone commands. Paired iPhones are listed by `devices`, not here.
 - `xcode` is absent on Linux and Windows.
 - Nothing is installed.
 - `outdated` means below platform-tools 30.0.0, where `install` fails: it passes `--no-incremental`, which older versions forward to the device, and the device rejects it. Debian 12 ships 29.0.6. The other commands still work.
