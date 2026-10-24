@@ -9,10 +9,10 @@ import { helperPath, swiftc } from './ui-tree.js';
 import { daemonPath, unreachable } from './usbmux.js';
 import { bundleVersion, NO_XCODE, noTeam, owns, selected, teams, type Team } from './xcode.js';
 
-// doctor reads files, and runs nothing but plutil, which only converts Xcode's preference file and the CoreSimulator and
-// CoreDevice Info.plists, binary on some Macs. simctl would start CoreSimulatorService and rewrite device_set.plist, and a shim under DEVELOPER_DIR can
-// start Xcode's first launch, which waits for a password (K30 3.7 note, K32, K41). xcodebuild can do the same, and
-// usbmuxd is not connected to (K30 4.7).
+// doctor reads files, and runs nothing but plutil, which only converts Xcode's preference file and the CoreSimulator
+// and CoreDevice Info.plists, binary on some Macs. simctl would start CoreSimulatorService and rewrite
+// device_set.plist, and a shim under DEVELOPER_DIR can start Xcode's first launch, which waits for a password (K30 3.7
+// note, K32, K41). xcodebuild can do the same, and usbmuxd is not connected to (K30 4.7).
 
 type Entry = { status: 'ok' | 'missing' | 'failed'; path?: string; version?: string; message?: string };
 type Helper = { status: 'ok' | 'not built' | 'failed'; path?: string; message?: string };
