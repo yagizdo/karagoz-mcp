@@ -20,7 +20,7 @@ A node from the same tree:
 
 | Field | Present | Meaning |
 | --- | --- | --- |
-| `device` | always | Serial, or the simulator's or iPhone's UDID. |
+| `device` | always | The adb serial, or the simulator's or iPhone's UDID. |
 | `rotation` | always | `0`, `90`, `180` or `270`. On iOS also `null`, as in [`screenshot`](screenshot.md). |
 | `root` | always | The top node. |
 
@@ -30,9 +30,20 @@ Node fields on Android, in this order:
 | --- | --- | --- |
 | `class` | always | Android class, e.g. `android.widget.Button`. Can be empty. |
 | `package` | on the root, and on any node whose package differs from its parent's | App package. |
-| `text`, `contentDesc`, `resourceId`, `hint` | when not empty | `resourceId` is the full form, `com.example:id/save`. `hint` exists from Android 15 QPR2 (some API 35 images) on. |
-| `checkable`, `checked`, `clickable`, `longClickable`, `focusable`, `focused`, `scrollable`, `selected`, `password` | only when `true` | |
-| `enabled` | only when `false` | |
+| `text` | when not empty | The node's text. |
+| `contentDesc` | when not empty | The node's content description, uiautomator's `content-desc`. |
+| `resourceId` | when not empty | The node's resource id in its full form, `com.example:id/save`. |
+| `hint` | when not empty | The node's hint text, such as an empty text field's placeholder. It exists from Android 15 QPR2 (some API 35 images) on. |
+| `checkable` | only when `true` | The node can be checked, as a checkbox or a switch can. |
+| `checked` | only when `true` | The node is checked. |
+| `clickable` | only when `true` | The node accepts a click. |
+| `longClickable` | only when `true` | The node accepts a long click. |
+| `focusable` | only when `true` | The node can take input focus. |
+| `focused` | only when `true` | The node has input focus. |
+| `scrollable` | only when `true` | The node can scroll. |
+| `selected` | only when `true` | The node is selected. |
+| `password` | only when `true` | The node is a password field. |
+| `enabled` | only when `false` | The node is disabled. |
 | `bounds` | always | `[left, top, right, bottom]` in [screen pixels](../output.md#coordinates). Clipped to the screen: a node wholly off screen is `[0,0,0,0]`, and bottom can be above top. Up to Android 13 the clip also leaves out the status and navigation bars, so a node in the bottom band can be `[0,0,0,0]` while it is visible. |
 | `children` | when the node has any | Nodes, same shape. |
 
@@ -82,8 +93,9 @@ Node fields, in this order:
 | `label` | when not empty | What VoiceOver reads. The home screen's root label is a single space. |
 | `identifier` | when not empty | The app's `accessibilityIdentifier`. |
 | `value` | when not empty | A text field's content, or its placeholder when empty; a switch's `0` or `1`; a slider's text. |
-| `focused`, `selected` | only when `true` | |
-| `enabled` | only when `false` | |
+| `focused` | only when `true` | The element has focus. |
+| `selected` | only when `true` | The element is selected. |
+| `enabled` | only when `false` | The element is disabled. |
 | `bounds` | always | `[left, top, right, bottom]` in [screen pixels](../output.md#coordinates): the frame in points times `screenshot`'s `scale`, rounded to 0.01. Not clipped to the screen: an element below the fold has a bottom past the screen's height. |
 | `children` | when the node has any | Nodes, same shape. |
 
