@@ -21,7 +21,7 @@ Early development. Every command runs on all four targets, except `install-runne
 
 - Node 22 or newer.
 - **Android:** `adb` from Android platform-tools, and a running emulator or a phone with USB debugging on.
-- **iOS simulator** (macOS): Xcode, opened once, and a booted simulator. `tap`, `swipe` and `key` need Xcode 27 or newer.
+- **iOS simulator** (macOS): Xcode, opened once, and a booted simulator. `tap`, `swipe`, `text` and `key` need Xcode 27 or newer.
 - **iPhone** (macOS): Xcode 15 or newer (27 for `screenshot`) and the iPhone paired with the Mac. `screenshot`, `install`, `launch`, `terminate` and `uninstall` need Developer Mode on; `logs` needs a USB cable; `ui-tree`, `tap`, `swipe`, `text` and `key` need both, plus UI Automation on and karagoz's runner, which [`install-runner`](https://github.com/yagizdo/karagoz-mcp/blob/main/docs/commands/install-runner.md) installs.
 
 [What each command needs, and how karagoz finds `adb` and Xcode](https://github.com/yagizdo/karagoz-mcp/blob/main/docs/requirements.md).
@@ -79,7 +79,7 @@ $ karagoz screenshot --out home.png
 | [`uninstall-runner`](https://github.com/yagizdo/karagoz-mcp/blob/main/docs/commands/uninstall-runner.md) | Remove karagoz's runner from an iPhone |
 | [`mcp`](#mcp-server) | Start the MCP server on stdio |
 
-Every command except `devices` works on one device. When more than one is listed, pick it with `--device <id or name>` or `KARAGOZ_DEVICE`: [Device selection](https://github.com/yagizdo/karagoz-mcp/blob/main/docs/device-selection.md).
+Every command except `devices`, `doctor` and `mcp` works on one device. When more than one is listed, pick it with `--device <id or name>` or `KARAGOZ_DEVICE`: [Device selection](https://github.com/yagizdo/karagoz-mcp/blob/main/docs/device-selection.md).
 
 ## Output and errors
 
@@ -105,15 +105,15 @@ claude mcp add karagoz -- node /abs/path/karagoz-mcp/packages/karagoz/dist/cli.j
 
 ### Token cost
 
-What the server adds to a Claude Code session, measured on 2026-10-21 with Claude Code 2.1.306 and `claude-opus-5-5`: input tokens of the first API call with karagoz registered, minus the same call with no MCP server.
+What the server adds to a Claude Code session, measured on 2026-10-24 with Claude Code 2.1.306 and `claude-opus-5-5`: input tokens of the first API call with karagoz registered, minus the same call with no MCP server.
 
 | Case | Tokens |
 | --- | --- |
 | Every session, tool search on (the default): the 15 tool names and `instructions` | 370 |
-| All 15 definitions, loaded by one `ToolSearch` call | 2,750 |
-| Every session, tool search off (`ENABLE_TOOL_SEARCH=false`): every definition and `instructions` | 2,632 |
+| All 15 definitions, loaded by one `ToolSearch` call | 2,736 |
+| Every session, tool search off (`ENABLE_TOOL_SEARCH=false`): every definition and `instructions` | 2,618 |
 
-The `tools/list` result is 7,152 characters, `instructions` 398. One `ui_tree` of the launcher home screen is 5,383 characters.
+The `tools/list` result is 7,115 characters, `instructions` 398. One `ui_tree` of the launcher home screen is 5,383 characters.
 
 ## Scope
 

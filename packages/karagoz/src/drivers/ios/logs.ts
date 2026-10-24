@@ -188,11 +188,16 @@ async function collect(
   if (!read.done) throw new KaragozError(code, 'log show ended without its summary line');
 }
 
-// log show has no record count: without --since, the window is the last minute, or the whole store for one app (K37).
+// What a timed-out read can narrow: --package only when it was not given.
+const narrower = (pkg: string | undefined, where: 'simulator' | 'iPhone') =>
+  `Pass a later --since${pkg === undefined ? ', or --package,' : ''} to read less of the ${where} log.`;
+
+// log show has no record count: without --since, the window is the last minute, or the last hour for one app, as on an
+// iPhone; the whole store of a long-used simulator outran the 30 s (K37, K44).
 export async function logs(udid: string, pkg: string | undefined, since: string | undefined, lines: number) {
   // --start takes whole seconds; karagoz keeps only records after the exact value (K37).
   const bound =
-    since !== undefined ? ['--start', `@${since.split('.')[0]}`] : pkg === undefined ? ['--last', '1m'] : [];
+    since !== undefined ? ['--start', `@${since.split('.')[0]}`] : ['--last', pkg === undefined ? '1m' : '1h'];
   const app = pkg === undefined ? undefined : await installed(udid, pkg);
   // Processes started from a bundle with the app's folder name, and launchd's exit line, the only trace of a signal
   // crash (K37).
@@ -218,10 +223,7 @@ export async function logs(udid: string, pkg: string | undefined, since: string 
     },
   ).catch((err: unknown) => {
     if (!(err instanceof KaragozError) || err.code !== 'SIMCTL_TIMEOUT') throw err;
-    throw new KaragozError(
-      'SIMCTL_TIMEOUT',
-      'log show did not finish within 30s. Pass a later --since, or --package, to read less of the simulator log.',
-    );
+    throw new KaragozError('SIMCTL_TIMEOUT', `log show did not finish within 30s. ${narrower(pkg, 'simulator')}`);
   });
   const records = ring.records.slice(-lines);
   const omitted = ring.matched - records.length;
@@ -234,7 +236,7 @@ export const notOnPath = (name: 'tar' | 'log') => `${name} not found on PATH`;
 // macOS's own log, read through readLines() as simctlLines() reads simctl (K44), with K37's 30 s.
 // ponytail: log and tar are found on PATH, so smoke 4.6 can put a fake log first; a user's own earlier `log` would be
 // called instead of macOS's.
-async function logLines(args: string[], onLine: (line: string) => void): Promise<void> {
+async function logLines(args: string[], onLine: (line: string) => void, hint: string): Promise<void> {
   const signal = cancellation.getStore();
   signal?.throwIfAborted();
   const child = spawn('log', args, {
@@ -247,10 +249,7 @@ async function logLines(args: string[], onLine: (line: string) => void): Promise
     return new KaragozError('HELPER_FAILED', missing ? notOnPath('log') : `log did not start (${failure.message})`);
   });
   if (killed) {
-    throw new KaragozError(
-      'HELPER_FAILED',
-      `log show did not finish within ${TIMEOUT_MS / 1000} s. Pass a later --since, or --package, to read less of the iPhone log.`,
-    );
+    throw new KaragozError('HELPER_FAILED', `log show did not finish within ${TIMEOUT_MS / 1000} s. ${hint}`);
   }
   if (code === 0) return;
   throw new KaragozError(
@@ -348,7 +347,7 @@ export async function logsPhone(udid: string, pkg: string | undefined, since: st
       const after = since === undefined ? -Infinity : Number(since);
       const ring: Ring = { records: [], matched: 0 };
       await collect(
-        (onLine) => logLines([...show, ...bound, '--predicate', 'type == logEvent'], onLine),
+        (onLine) => logLines([...show, ...bound, '--predicate', 'type == logEvent'], onLine, narrower(pkg, 'iPhone')),
         'HELPER_FAILED',
         ({ record }) => {
           if (record.time > after) keep(ring, record, lines);
@@ -365,7 +364,7 @@ export async function logsPhone(udid: string, pkg: string | undefined, since: st
     const tied = new Set<number>();
     const predicate = `type == logEvent AND (processImagePath CONTAINS ${quoted(folder)} OR (process == "launchd" AND subsystem CONTAINS "UIKitApplication:${pkg ?? ''}["))`;
     await collect(
-      (onLine) => logLines([...show, '--predicate', predicate], onLine),
+      (onLine) => logLines([...show, '--predicate', predicate], onLine, narrower(pkg, 'iPhone')),
       'HELPER_FAILED',
       ({ record, image }) => {
         const at = image.indexOf(folder);

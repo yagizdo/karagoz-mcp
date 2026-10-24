@@ -238,7 +238,7 @@ out=$(env -i HOME="$tmp/home" PATH=/usr/bin:/bin TMPDIR="$tmp" ANDROID_HOME="$tm
 no_android
 out=$(env -i HOME="$tmp/home" PATH=/usr/bin:/bin TMPDIR="$tmp" ANDROID_HOME="$tmp/sdk" DEVELOPER_DIR="$tmp/empty" "$node_bin" dist/cli.js screenshot 2>/dev/null) && st=0 || st=$?
 refuses NO_DEVICE "no simctl, no emulator" "$out" "$st"
-case "$(printf '%s' "$out" | message_of)" in *"emulator -avd"*"USB debugging"*"open -a Simulator"*"xcrun simctl boot <name>"*) ;; *) fail "NO_DEVICE text: $out" ;; esac
+case "$(printf '%s' "$out" | message_of)" in *"emulator -avd"*"USB debugging"*"(xcrun simctl boot <name>; on Xcode 26 and older, open -a Simulator also boots one)"*) ;; *) fail "NO_DEVICE text: $out" ;; esac
 emulator; sims "$a1"; touch "$fake/list-fails"
 out=$(k key HOME) && st=0 || st=$?
 refuses SIMCTL_FAILED "broken simctl, bare key" "$out" "$st"

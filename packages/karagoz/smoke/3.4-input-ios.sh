@@ -287,8 +287,8 @@ setTimeout(() => { console.log("no answer within 10 s"); process.exit(1); }, 10_
 [ -z "$errors" ] || fail "two texts at once: $errors"
 [ "$(cat "$fake/seq")" = "$(printf 'read\nstart\nend\nwrite\nread\nstart\nend\nwrite')" ] \
   || fail "two texts at once overlapped: $(tr '\n' ' ' < "$fake/seq")"
-# Xcode 27 or later gives a simulator on an older iOS runtime no automation session: text refuses at once, before the
-# setting is read or the helper compiles. Xcode 26 with the same runtime goes on as before.
+# Xcode 27 or later gives a simulator on an older iOS runtime no automation session, and Xcode 26 gives none at all: text
+# refuses at once, before the setting is read or the helper compiles. With no version.plist, as above, it goes on.
 rm -f "$fake/seq"
 cp "$fake/list.json" "$tmp/list.saved"
 sed 's/iOS-27-0/iOS-26-2/' "$tmp/list.saved" > "$fake/list.json"
@@ -299,9 +299,11 @@ says "text on iOS 26.2 with Xcode 27.1" "'text' on an iOS 26.2 simulator needs a
 [ ! -e "$fake/argv" ] && [ ! -e "$fake/seq" ] && [ ! -e "$tmp/home5/Library" ] \
   || fail "text on iOS 26.2 with Xcode 27.1 read the setting or reached the helper"
 printf '<plist><dict><key>CFBundleShortVersionString</key><string>26.2</string><key>ProductBuildVersion</key><string>17C52</string></dict></plist>\n' > "$tmp/version.plist"
-logs 'exit 0'
 run_in "$tmp/home5" text ok --device A1
-succeeds "text on iOS 26.2 with Xcode 26.2" '{"device":"A1","text":"ok"}'
+refuses NOT_SUPPORTED "text with Xcode 26.2"
+says "text with Xcode 26.2" "'text' on iOS simulators needs Xcode 27 or later"
+[ ! -e "$fake/argv" ] && [ ! -e "$fake/seq" ] && [ ! -e "$tmp/home5/Library" ] \
+  || fail "text with Xcode 26.2 read the setting or reached the helper"
 mv "$tmp/list.saved" "$fake/list.json"
 rm "$tmp/version.plist"
 
@@ -377,8 +379,9 @@ out=$(real tap "$1" "$2" --device "$booted") && st=0 || st=$?
 if [ "$(printf '%s' "$out" | code_of)" = NOT_SUPPORTED ]; then
   echo "note: no dtuhidd (Xcode < 27), touch and key not checked"
   out=$(real text "çğş it's -- ok" --device "$booted") && st=0 || st=$?
-  echo "note: text on Xcode < 27 exited $st, echo not checked (no focus without dtuhidd)"
-  real_ok="real: no dtuhidd"
+  refuses NOT_SUPPORTED "real text on Xcode < 27"
+  says "real text on Xcode < 27" "'text' on iOS simulators needs Xcode 27 or later"
+  real_ok="real: no dtuhidd, text NOT_SUPPORTED"
 else
   succeeds "real tap" "{\"device\":\"$booted\",\"x\":$1,\"y\":$2}"
   wait_for "real tap" "Tap me 1" label tap-button

@@ -61,7 +61,7 @@ function requested(device: string | undefined) {
 }
 
 const NO_DEVICE = IS_MAC
-  ? 'no device found. Start an emulator (emulator -avd <name>), connect a phone with USB debugging on, or boot a simulator (open -a Simulator; on Xcode 27, xcrun simctl boot <name>).'
+  ? 'no device found. Start an emulator (emulator -avd <name>), connect a phone with USB debugging on, or boot a simulator (xcrun simctl boot <name>; on Xcode 26 and older, open -a Simulator also boots one).'
   : 'no device found. Start an emulator (emulator -avd <name>) or connect a phone with USB debugging on.';
 
 // Ids first on both platforms, then names: iOS names come with the listing, Android names through describe(), the

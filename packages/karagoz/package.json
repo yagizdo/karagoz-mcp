@@ -46,7 +46,7 @@
     "format": "prettier --write src"
   },
   "devDependencies": {
-    "@modelcontextprotocol/server": "2.2.0",
+    "@modelcontextprotocol/server": "2.3.1",
     "@types/node": "^22.20.4",
     "esbuild": "^0.28.2",
     "oxlint": "^1.85.0",

@@ -72,11 +72,11 @@ The exit code is `0` whenever the report is printed, with adb or Xcode missing o
 **Notes**
 
 - Only `adb version` runs, on every candidate at once. It never connects to the adb server, so server trouble does not show up here; the other commands report it as `ADB_TIMEOUT`.
-- For Xcode, doctor reads files, and runs only `plutil`, which converts Xcode's preference file to read the teams and reads CoreDevice's version; it cannot start the simulator service or Xcode's first launch. A stuck simulator service shows in the `errors` of `devices`, not here. It never runs `xcodebuild` and never connects to usbmuxd, so a socket that is there but answers nobody shows up only in the iPhone commands. Paired iPhones are listed by `devices`, not here.
+- For Xcode, doctor reads files, and runs only `plutil`, which converts Xcode's preference file to read the teams and reads CoreSimulator's and CoreDevice's versions; it cannot start the simulator service or Xcode's first launch. A stuck simulator service shows in the `errors` of `devices`, not here. It never runs `xcodebuild` and never connects to usbmuxd, so a socket that is there but answers nobody shows up only in the iPhone commands. Paired iPhones are listed by `devices`, not here.
 - `xcode` is absent on Linux and Windows.
 - Nothing is installed.
 - `outdated` means below platform-tools 30.0.0, where `install` fails: it passes `--no-incremental`, which older versions forward to the device, and the device rejects it. Debian 12 ships 29.0.6. The other commands still work.
-- `xcode.status` `outdated` means below Xcode 27, where `tap`, `swipe` and `key` return `NOT_SUPPORTED` on a simulator. The other commands work.
+- `xcode.status` `outdated` means below Xcode 27, where `tap`, `swipe`, `text` and `key` return `NOT_SUPPORTED` on a simulator. The other commands work.
 - `version` keeps the builder's suffix: digits from Google, `-debian`, `-android-tools`. Debian's 8.1.0 package prints its package version, `1:8.1.0+r23-8`, and is `outdated`. `1.0.41` in `Android Debug Bridge version 1.0.41` is adb's protocol number and is not shown.
 - For `PATH`, `path` is the symlink as invoked on macOS (`/opt/homebrew/bin/adb`) and the resolved file on Linux.
 - A candidate that is there but fails to start with `ENOENT` (a script whose interpreter is missing, a broken link) is shown `failed`, and karagoz moves on to the next one, as every command does. Any other failure stops the lookup at that candidate. The exception is `PATH` on macOS and Linux: `adb` runs by name there, the error does not say which file failed, and the candidate is shown `missing`.

@@ -11,7 +11,7 @@ Every command prints exactly one line of JSON on stdout and exits, except `mcp`,
 
   The same message goes to stderr as `karagoz: <message>`. It can span more than one line when it quotes adb or Node output; the stdout line never does.
 
-  `INSTALL_FAILED` and `UNINSTALL_FAILED` add a `reason` field with the platform's own code for the failure: Android's code, or on an iOS simulator simctl's `<domain>:<code>` (`IXUserPresentableErrorDomain:4`), or `SYSTEM_APP` when `uninstall` is asked to remove a simulator's system app:
+  `INSTALL_FAILED` from `install` and `UNINSTALL_FAILED` from `uninstall` add a `reason` field with the platform's own code for the failure: Android's code; on an iOS simulator simctl's `<domain>:<code>` (`IXUserPresentableErrorDomain:4`); on an iPhone the `<domain>:<code>` of the deepest error devicectl reports (`MIInstallerErrorDomain:13`); or `SYSTEM_APP` when `uninstall` is asked to remove an iOS system app:
 
   ```json
   {"error":{"code":"INSTALL_FAILED","message":"adb: failed to install /Users/me/app-v1.apk: Failure [INSTALL_FAILED_VERSION_DOWNGRADE: Downgrade detected: Update version code 1 is older than current 2]","reason":"INSTALL_FAILED_VERSION_DOWNGRADE"}}
