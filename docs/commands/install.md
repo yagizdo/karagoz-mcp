@@ -17,7 +17,12 @@ Installs an app from one APK file, or on an iOS simulator or iPhone from a `.app
 {"device":"emulator-5554","path":"/Users/me/app/build/outputs/apk/debug/app-debug.apk"}
 ```
 
-`path` is the absolute path of the app, as given (symlinks are not followed). The package name is not reported.
+| Field | Type | Meaning |
+| --- | --- | --- |
+| `device` | string | The adb serial, or the simulator's or iPhone's UDID. |
+| `path` | string | The absolute path of the app, as given (symlinks are not followed). |
+
+The package name is not reported.
 
 **Errors**
 
