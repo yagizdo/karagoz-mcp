@@ -182,7 +182,7 @@ printf '%s\n' '/c/Pro"b\e.app' > "$fake/container"
 pp='type == logEvent AND (processImagePath CONTAINS "/Pro\"b\\e.app/" OR (process == "launchd_sim" AND subsystem CONTAINS "UIKitApplication:dev.karagoz.probe[" AND composedMessage BEGINSWITH "exited "))'
 call logs --package dev.karagoz.probe --device A1
 succeeds "--package" '{"device":"A1","package":"dev.karagoz.probe","records":[],"omitted":0}'
-argv_is "--package" $(show) --predicate "$pp"
+argv_is "--package" $(show) --last 1h --predicate "$pp"
 call logs --package dev.karagoz.probe --since 1792047461 --device A1
 argv_is "--package --since" $(show) --start @1792047461 --predicate "$pp"
 
@@ -266,13 +266,19 @@ answer '{"timestamp":"2026-10-15 09:57:41.000001+0300","processID":1,"threadID":
 call logs --device A1
 refuses SIMCTL_FAILED "no summary line" "log show ended without its summary line"
 
-# i. A hung read is killed after 30 s, also when it leaves half a line behind.
+# i. A hung read is killed after 30 s, also when it leaves half a line behind. The message suggests --package only
+# when it was not given.
 answer "$finished"
-timeout_text='log show did not finish within 30s. Pass a later --since, or --package, to read less of the simulator log.'
 for part in '' '{"timestamp":"2026'; do
   printf '%s' "$part" > "$fake/hang"
   start=$(date +%s)
-  call logs --device A1
+  if [ -z "$part" ]; then
+    call logs --device A1
+    timeout_text='log show did not finish within 30s. Pass a later --since, or --package, to read less of the simulator log.'
+  else
+    call logs --package dev.karagoz.probe --device A1
+    timeout_text='log show did not finish within 30s. Pass a later --since to read less of the simulator log.'
+  fi
   took=$(($(date +%s) - start))
   refuses SIMCTL_TIMEOUT "hung log show '$part'" "$timeout_text"
   [ "$took" -ge 29 ] && [ "$took" -le 40 ] || fail "hung log show '$part' took ${took}s"
