@@ -81,6 +81,6 @@ Same arguments and output. karagoz's runner plays the touch; it is started and s
 ```
 
 - `--text` and `--id` match as on the simulator. Unlike there, a node whose center the on-screen keyboard covers is refused with `ELEMENT_COVERED` (a key of the keyboard itself can be tapped); hide the keyboard first, for example with `key ENTER` in a single-line field.
-- `--duration` holds for that long: on a test app with a 0.5 s long press, 500 ms did not trigger it and 550 ms did.
+- `--duration` holds for that long. For a long press, pass more than the app's press time: with a 0.5 s long press, 500 ms did not trigger it and 550 ms did.
 - A tap takes about 0.6 s; the first after the runner stopped about 3.3 s.
 - Errors: those of [`ui-tree` on an iPhone](ui-tree.md#on-an-iphone), with `HELPER_FAILED` for a touch the runner could not play.

@@ -1,6 +1,6 @@
 # Device selection
 
-Every command except `devices` works on one device, picked in this order:
+Every command except `devices`, `doctor` and `mcp` works on one device, picked in this order:
 
 1. `--device <id>`
 2. the `KARAGOZ_DEVICE` environment variable

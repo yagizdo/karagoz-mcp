@@ -79,7 +79,7 @@ $ karagoz screenshot --out home.png
 | [`uninstall-runner`](https://github.com/yagizdo/karagoz-mcp/blob/main/docs/commands/uninstall-runner.md) | Remove karagoz's runner from an iPhone |
 | [`mcp`](#mcp-server) | Start the MCP server on stdio |
 
-Every command except `devices` works on one device. When more than one is listed, pick it with `--device <id or name>` or `KARAGOZ_DEVICE`: [Device selection](https://github.com/yagizdo/karagoz-mcp/blob/main/docs/device-selection.md).
+Every command except `devices`, `doctor` and `mcp` works on one device. When more than one is listed, pick it with `--device <id or name>` or `KARAGOZ_DEVICE`: [Device selection](https://github.com/yagizdo/karagoz-mcp/blob/main/docs/device-selection.md).
 
 ## Output and errors
 
