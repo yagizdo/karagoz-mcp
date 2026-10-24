@@ -7,11 +7,21 @@ karagoz text [--device <id>] -- <text starting with ->
 
 Types into whatever has focus, as Android's `input text` does.
 
+| Option | Default | Meaning |
+| --- | --- | --- |
+| `<text>` | | The text to type, not empty. Text that starts with `-` goes after `--`. |
+| `--device <id>` | see [Device selection](../device-selection.md) | |
+
 **Output**
 
 ```json
 {"device":"emulator-5554","text":"hello"}
 ```
+
+| Field | Type | Meaning |
+| --- | --- | --- |
+| `device` | string | The adb serial, or the simulator's or iPhone's UDID. |
+| `text` | string | The text that was sent, as given. |
 
 **Characters.** Printable ASCII, newline (sent as Enter), tab (sent as Tab), `ç`, `Ç` and `ß`. Anything else fails before anything is typed:
 

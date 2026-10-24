@@ -18,7 +18,14 @@ Moves one finger from `(x1, y1)` to `(x2, y2)`.
 {"device":"emulator-5554","x1":540,"y1":1800,"x2":540,"y2":600,"duration":300}
 ```
 
-`duration` is always present, including the default.
+| Field | Type | Meaning |
+| --- | --- | --- |
+| `device` | string | The adb serial, or the simulator's or iPhone's UDID. |
+| `x1` | number | The x of the start point used, in [screen pixels](../output.md#coordinates). |
+| `y1` | number | The y of the start point used, in screen pixels. |
+| `x2` | number | The x of the end point used, in screen pixels. |
+| `y2` | number | The y of the end point used, in screen pixels. |
+| `duration` | number | Time from start to end, in milliseconds. Always present, including the default `300`. |
 
 **Duration matters.** A fast swipe flings a list and a slow one drags it. Measured on a 1200 px drag: 300 ms scrolled a further 1059 px after the finger lifted, 1000 ms scrolled 131 px further, 3000 ms 19 px.
 

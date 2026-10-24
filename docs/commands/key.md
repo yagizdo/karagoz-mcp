@@ -17,7 +17,11 @@ Presses one key.
 {"device":"emulator-5554","key":"KEYCODE_HOME","code":3}
 ```
 
-`key` is the resolved name and `code` its number.
+| Field | Type | Meaning |
+| --- | --- | --- |
+| `device` | string | The adb serial, or the simulator's or iPhone's UDID. |
+| `key` | string | The resolved KeyEvent name, with `KEYCODE_`. |
+| `code` | number | The resolved KeyEvent code. |
 
 **Errors**
 
