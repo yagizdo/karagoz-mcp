@@ -39,9 +39,9 @@ type Report = {
   };
 };
 
-// tap, swipe and key need Xcode 27's simulator HID service (K35).
+// tap, swipe and key need Xcode 27's simulator HID service (K35), text its automation session (K47).
 const FLOOR = 27;
-const OUTDATED = `tap, swipe and key on a simulator need Xcode ${FLOOR} or later`;
+const OUTDATED = `tap, swipe, text and key on a simulator need Xcode ${FLOOR} or later`;
 
 const text = (path: string) => readFile(path, 'utf8').catch(() => '');
 const plistString = (plist: string, key: string) =>

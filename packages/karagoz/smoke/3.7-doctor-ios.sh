@@ -123,7 +123,7 @@ fi
 version=$(/usr/bin/plutil -extract CFBundleShortVersionString raw "$dev/../version.plist")
 build=$(/usr/bin/plutil -extract ProductBuildVersion raw "$dev/../version.plist")
 status=ok message=
-if [ "${version%%.*}" -lt 27 ]; then status=outdated message='tap, swipe and key on a simulator need Xcode 27 or later'; fi
+if [ "${version%%.*}" -lt 27 ]; then status=outdated message='tap, swipe, text and key on a simulator need Xcode 27 or later'; fi
 fields=$(printf '%s' "$x" | node -e '
   const o = JSON.parse(require("fs").readFileSync(0, "utf8"));
   console.log([o.status, o.source, o.path, o.version, o.build, o.message, o.simctl.status, o.simctl.path, o.simctl.version,
@@ -157,7 +157,7 @@ fake "$tmp/X26.app" 26.2 17C52 "$fw"
 d=$tmp/X26.app/Contents/Developer
 entries "$d"
 doc DEVELOPER_DIR="$tmp/X26.app"
-is outdated "$(top outdated "$d" 26.2 17C52 'tap, swipe and key on a simulator need Xcode 27 or later')"
+is outdated "$(top outdated "$d" 26.2 17C52 'tap, swipe, text and key on a simulator need Xcode 27 or later')"
 ok="$ok, outdated"
 
 # e. First launch pending: the shim expects a newer CoreSimulator than this Mac has.
@@ -184,7 +184,7 @@ fake "$tmp/Xr.app" 26.2 17C52 1.0 ne
 d=$tmp/Xr.app/Contents/Developer
 entries "$d"
 doc DEVELOPER_DIR="$tmp/Xr.app"
-is 'newer framework (simctl)' "$(top outdated "$d" 26.2 17C52 'tap, swipe and key on a simulator need Xcode 27 or later')"
+is 'newer framework (simctl)' "$(top outdated "$d" 26.2 17C52 'tap, swipe, text and key on a simulator need Xcode 27 or later')"
 
 # s, t, u. devicectl's shim: a newer CoreDevice is fine too, as is the expected one; an older one is a pending first
 # launch.

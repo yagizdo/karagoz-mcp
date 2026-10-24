@@ -46,7 +46,7 @@ Any Unicode text is typed exactly, at the cursor; iOS's auto-capitalization and 
 - It types 120 characters a second after about 1 s of setup: 300 characters took 3.5 s.
 - A cancelled or timed-out call can still type the whole text: the simulator gets it in one piece.
 - An app opened while the call ends can read as an empty tree until it is opened again ([Requirements](../requirements.md)).
-- With Xcode 27 or newer it needs a simulator on iOS 27 or newer: Xcode 27 grants no automation session to an older one. On an older runtime it fails at once with `NOT_SUPPORTED` (`'text' on an iOS 26.2 simulator needs an iOS 27 or later simulator with Xcode 27 or later; tap, swipe, key and ui-tree work on it`).
+- It needs Xcode 27 or newer and a simulator on iOS 27 or newer: Xcode 26 grants no automation session, and Xcode 27 none to an older runtime. Either fails at once with `NOT_SUPPORTED`: `'text' on iOS simulators needs Xcode 27 or later`, or `'text' on an iOS 26.2 simulator needs an iOS 27 or later simulator with Xcode 27 or later; tap, swipe, key and ui-tree work on it`.
 - Errors: `AUTOMATION_BUSY` when a UI test holds the simulator, `HELPER_FAILED` when the session is not granted or the typing fails.
 
 ## On an iPhone

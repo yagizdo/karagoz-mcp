@@ -24,8 +24,8 @@ const SWIPE_MS = 300;
 // (3.5 s) (K35).
 const TYPE_SPEED = 120;
 
-// From Xcode 27, text's session comes only from simulators on iOS 27 or later: Xcode's own device tool allows no
-// older ones, and a 26.2 simulator never answered within the helper's 15 s (K47).
+// text's session needs Xcode 27, and then a simulator on iOS 27 or later: Xcode 26 formed none in 3 of 3 tries, Xcode
+// 27's own device tool allows no older runtime, and a 26.2 simulator never answered within the helper's 15 s (K47).
 const SESSION_FLOOR = 27;
 const RUNTIME = /\.iOS-(\d+)-(\d+)$/;
 
@@ -371,6 +371,10 @@ export async function text(udid: string, value: string) {
 async function typeText(udid: string, value: string) {
   const [version, runtime] = await Promise.all([xcode().then(shortVersion), runtimeOf(udid)]);
   const [, major, minor] = RUNTIME.exec(runtime ?? '') ?? [];
+  // An unreadable version ('') takes the helper's path, which reports what it finds.
+  if (version !== '' && Number(version.split('.')[0]) < SESSION_FLOOR) {
+    throw new KaragozError('NOT_SUPPORTED', `'text' on iOS simulators needs Xcode ${SESSION_FLOOR} or later`);
+  }
   if (Number(version.split('.')[0]) >= SESSION_FLOOR && major !== undefined && Number(major) < SESSION_FLOOR) {
     throw new KaragozError(
       'NOT_SUPPORTED',

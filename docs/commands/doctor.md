@@ -76,7 +76,7 @@ The exit code is `0` whenever the report is printed, with adb or Xcode missing o
 - `xcode` is absent on Linux and Windows.
 - Nothing is installed.
 - `outdated` means below platform-tools 30.0.0, where `install` fails: it passes `--no-incremental`, which older versions forward to the device, and the device rejects it. Debian 12 ships 29.0.6. The other commands still work.
-- `xcode.status` `outdated` means below Xcode 27, where `tap`, `swipe` and `key` return `NOT_SUPPORTED` on a simulator. The other commands work.
+- `xcode.status` `outdated` means below Xcode 27, where `tap`, `swipe`, `text` and `key` return `NOT_SUPPORTED` on a simulator. The other commands work.
 - `version` keeps the builder's suffix: digits from Google, `-debian`, `-android-tools`. Debian's 8.1.0 package prints its package version, `1:8.1.0+r23-8`, and is `outdated`. `1.0.41` in `Android Debug Bridge version 1.0.41` is adb's protocol number and is not shown.
 - For `PATH`, `path` is the symlink as invoked on macOS (`/opt/homebrew/bin/adb`) and the resolved file on Linux.
 - A candidate that is there but fails to start with `ENOENT` (a script whose interpreter is missing, a broken link) is shown `failed`, and karagoz moves on to the next one, as every command does. Any other failure stops the lookup at that candidate. The exception is `PATH` on macOS and Linux: `adb` runs by name there, the error does not say which file failed, and the candidate is shown `missing`.

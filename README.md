@@ -21,7 +21,7 @@ Early development. Every command runs on all four targets, except `install-runne
 
 - Node 22 or newer.
 - **Android:** `adb` from Android platform-tools, and a running emulator or a phone with USB debugging on.
-- **iOS simulator** (macOS): Xcode, opened once, and a booted simulator. `tap`, `swipe` and `key` need Xcode 27 or newer.
+- **iOS simulator** (macOS): Xcode, opened once, and a booted simulator. `tap`, `swipe`, `text` and `key` need Xcode 27 or newer.
 - **iPhone** (macOS): Xcode 15 or newer (27 for `screenshot`) and the iPhone paired with the Mac. `screenshot`, `install`, `launch`, `terminate` and `uninstall` need Developer Mode on; `logs` needs a USB cable; `ui-tree`, `tap`, `swipe`, `text` and `key` need both, plus UI Automation on and karagoz's runner, which [`install-runner`](https://github.com/yagizdo/karagoz-mcp/blob/main/docs/commands/install-runner.md) installs.
 
 [What each command needs, and how karagoz finds `adb` and Xcode](https://github.com/yagizdo/karagoz-mcp/blob/main/docs/requirements.md).
