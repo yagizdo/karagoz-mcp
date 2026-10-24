@@ -20,28 +20,50 @@ On macOS the same line goes on with `xcode`, shown here alone:
 
 | Field | Type | Meaning |
 | --- | --- | --- |
+| `adb` | object | The adb karagoz uses, and every place it looked for one. |
 | `adb.status` | string | `ok`, `outdated` or `failed`: the status of the candidate karagoz uses. `missing`: no candidate can be used. |
-| `adb.source`, `adb.path`, `adb.version`, `adb.message` | string | Copied from the candidate karagoz uses, when it has them. |
+| `adb.source` | string | The `source` of the candidate karagoz uses. Absent with `missing`. |
+| `adb.path` | string | The `path` of the candidate karagoz uses, when it has one. |
+| `adb.version` | string | The `version` of the candidate karagoz uses, when it has one. |
+| `adb.message` | string | The `message` of the candidate karagoz uses, when it has one. |
 | `adb.install` | string | Only when `status` is not `ok`: how to install platform-tools on this OS, the same text `ADB_NOT_FOUND` prints. |
 | `adb.candidates` | array | The four places karagoz looks, in lookup order (see [Requirements](../requirements.md)). |
-| `candidates[].source` | string | `ANDROID_HOME`, `ANDROID_SDK_ROOT`, `PATH`, or `default` for Android Studio's default SDK. |
-| `candidates[].status` | string | See below. |
-| `candidates[].path` | string | When known: the file karagoz would run. For `PATH`, the path adb prints for itself in `adb version`, so it is absent when adb printed none; on Windows, the `adb.exe` found on `PATH`. |
-| `candidates[].version` | string | With `ok` and `outdated`: the `Version` line of `adb version`, as printed. |
-| `candidates[].message` | string | With `failed` and `outdated`: why, cut at 300 characters. |
+| `adb.candidates[].source` | string | `ANDROID_HOME`, `ANDROID_SDK_ROOT`, `PATH`, or `default` for Android Studio's default SDK. |
+| `adb.candidates[].status` | string | See below. |
+| `adb.candidates[].path` | string | When known: the file karagoz would run. For `PATH`, the path adb prints for itself in `adb version`, so it is absent when adb printed none; on Windows, the `adb.exe` found on `PATH`. |
+| `adb.candidates[].version` | string | With `ok` and `outdated`: the `Version` line of `adb version`, as printed. |
+| `adb.candidates[].message` | string | With `failed` and `outdated`: why, cut at 300 characters. |
 | `xcode` | object | macOS only: the Xcode the iOS commands use, and what the iPhone commands need from this Mac. |
 | `xcode.status` | string | `ok`, `outdated`, `failed` or `missing`, see below. |
 | `xcode.source` | string | Which rule picked the developer folder, in the commands' order: `DEVELOPER_DIR`, `xcode-select` (`/var/db/xcode_select_link`), or `default` (`/Applications/Xcode.app/Contents/Developer`). Absent when none is there. |
 | `xcode.path` | string | With `source`: the developer folder. |
-| `xcode.version`, `xcode.build` | string | From that Xcode's `version.plist`, when it has them: `27.0`, `27A266a`. |
+| `xcode.version` | string | The Xcode version from that Xcode's `version.plist`, when it has one: `27.0`. |
+| `xcode.build` | string | The Xcode build from that Xcode's `version.plist`, when it has one: `27A266a`. |
 | `xcode.message` | string | When `status` is not `ok`: the first entry's message in the order `simctl`, `swiftc`, `devicectl`, `helper`, or for `outdated`, which commands need a newer Xcode. |
-| `xcode.simctl`, `xcode.swiftc`, `xcode.devicectl`, `xcode.helper` | object | One entry each: `status`, `path` when known, and `message` when not `ok`: why. For `simctl` and `swiftc` `missing`, it is the text the command itself would fail with. |
+| `xcode.simctl` | object | The `simctl` the simulator commands run. An entry, as described under `xcode.<entry>`. |
+| `xcode.swiftc` | object | The `swiftc` that compiles the simulator helper. An entry. |
+| `xcode.devicectl` | object | The `devicectl` karagoz runs. An entry. |
+| `xcode.helper` | object | The simulator helper in karagoz's cache, which `ui-tree`, `tap`, `swipe`, `text` and `key` run. An entry. |
+| `xcode.<entry>.status` | string | The entry's state, see the entry status table below. `<entry>` is `simctl`, `swiftc`, `devicectl`, `helper`, `xcodebuild`, `usbmuxd`, `tar` or `log`. |
+| `xcode.<entry>.path` | string | When known: the file or socket that was checked. |
+| `xcode.<entry>.message` | string | With `missing` and `failed`: why. For `simctl` and `swiftc` `missing`, it is the text the command itself would fail with. |
 | `xcode.simctl.version` | string | Unless `simctl` is `missing`: this Mac's CoreSimulator version. |
-| `xcode.signing` | object | The teams [`install-runner`](install-runner.md) can sign with: `status` `ok` with `teams`, an array of `{id, name, free}` (`free` for a Personal Team), or `missing` with a `message`: no Apple account in Xcode, or an account whose teams Xcode has not saved yet (open a project's Signing & Capabilities tab once, or pass `--team`). `failed` when Xcode's preferences could not be read. |
-| `xcode.iosRunner` | object | The runner builds for this karagoz and Xcode: `status` `ok` with `path` and `teams` (one build per team), `not built` (with `path` when an Xcode is selected), or `failed` with a `message`: the cache folder is not yours, or karagoz's runner sources are missing. |
+| `xcode.signing` | object | The Apple teams [`install-runner`](install-runner.md) can sign with. |
+| `xcode.signing.status` | string | `ok` when Xcode has saved at least one team. `missing` when it has none: no Apple account in Xcode, or an account whose teams Xcode has not saved yet (open a project's Signing & Capabilities tab once, or pass `--team`). `failed` when Xcode's preferences could not be read. |
+| `xcode.signing.teams` | array | With `ok`: one object per team. |
+| `xcode.signing.teams[].id` | string | The team ID, the value `install-runner --team` takes. |
+| `xcode.signing.teams[].name` | string | The team's name as Xcode saved it, `""` when it saved none. |
+| `xcode.signing.teams[].free` | boolean | `true` for a Personal Team, the free team of an Apple account; `false` for a paid team. |
+| `xcode.signing.message` | string | With `missing` and `failed`: why. |
+| `xcode.iosRunner` | object | The runner builds this karagoz and Xcode have. |
+| `xcode.iosRunner.status` | string | `ok` when there is at least one build, `not built` when there is none, `failed` when the builds could not be checked. |
+| `xcode.iosRunner.path` | string | The folder of those builds. With `ok`, and with `not built` when an Xcode is selected. |
+| `xcode.iosRunner.teams` | array of strings | With `ok`: the team ID of each build, one build per team. |
+| `xcode.iosRunner.message` | string | With `failed`: why, such as a cache folder that is not yours or missing runner sources. |
 | `xcode.xcodebuild` | object | The `xcodebuild` in the developer folder, which builds the runner (`install-runner`) and starts it (`ui-tree` and input on an iPhone). An entry like `swiftc`; `missing` has `install-runner`'s own text. |
 | `xcode.usbmuxd` | object | The socket the runner and iPhone `logs` connect to, `/var/run/usbmuxd` (or `USBMUXD_SOCKET_ADDRESS` in its `UNIX:<path>` form). Read without connecting; its messages are the commands' `cannot reach usbmuxd at <path> (<code>)`. |
-| `xcode.tar`, `xcode.log` | object | The `tar` and `log` iPhone `logs` runs, found on `PATH` as the command finds them (no `PATH`: `/usr/bin:/bin`). `missing` has no `path` and the command's text: `tar not found on PATH`. |
+| `xcode.tar` | object | The `tar` iPhone `logs` runs, found on `PATH` as the command finds it (no `PATH`: `/usr/bin:/bin`). `missing` has no `path` and the command's text: `tar not found on PATH`. |
+| `xcode.log` | object | The `log` iPhone `logs` runs, found on `PATH` the same way. `missing` has no `path`. |
 
 | Status | Means |
 | --- | --- |

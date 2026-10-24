@@ -17,7 +17,13 @@ Starts an app the way tapping its launcher icon does.
 {"device":"emulator-5554","package":"com.android.settings","activity":"com.android.settings/.homepage.SettingsHomepageActivity"}
 ```
 
-`activity` is the activity Android reports as started, in its `package/.Class` short form, or `null` when Android names none. It is not always the launcher activity:
+| Field | Type | Meaning |
+| --- | --- | --- |
+| `device` | string | The adb serial, or the simulator's or iPhone's UDID. |
+| `package` | string | The package name as given; on iOS, the bundle id. |
+| `activity` | string or `null` | The activity Android reports as started, in its `package/.Class` short form, or `null` when Android names none. Always `null` on iOS. |
+
+`activity` is not always the launcher activity:
 
 - Settings' launcher activity `.Settings` hands off to `.homepage.SettingsHomepageActivity`, and that one is reported.
 - If the app's task is already running, it comes to the front as it is, and its top activity is reported, even one from another package. With the Settings search open, `launch com.android.settings` reports `com.google.android.settings.intelligence/.modules.search.activity.SearchActivity`.

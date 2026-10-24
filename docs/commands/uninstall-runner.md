@@ -12,6 +12,12 @@ Removes every karagoz runner app from the iPhone (`com.karagozmcp.runner.*.xctru
 {"device":"XXXXXXXX-XXXXXXXXXXXXXXXX","apps":["com.karagozmcp.runner.xxxxxxxxxx.xctrunner"],"profiles":[]}
 ```
 
-`apps` are the bundle ids removed, `profiles` the UUIDs of the profiles removed. Nothing to remove is not an error: both lists are empty. A running runner stops with its app. The build cache on the Mac, the certificate in your keychain and the iPhone's registration on your developer account stay. The MCP tool is `uninstall_runner`.
+| Field | Type | Meaning |
+| --- | --- | --- |
+| `device` | string | The iPhone's UDID. |
+| `apps` | array of strings | The bundle ids of the runner apps removed. |
+| `profiles` | array of strings | The UUIDs of the provisioning profiles removed. |
+
+Nothing to remove is not an error: both lists are empty. A running runner stops with its app. The build cache on the Mac, the certificate in your keychain and the iPhone's registration on your developer account stay. The MCP tool is `uninstall_runner`.
 
 **Errors:** `UNINSTALL_FAILED`, `DEVICE_NOT_READY`, `NOT_SUPPORTED`, the devicectl errors and the [device selection](../device-selection.md) errors.

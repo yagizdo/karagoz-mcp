@@ -17,6 +17,11 @@ Removes an app and its data.
 {"device":"emulator-5554","package":"dev.karagoz.smoke"}
 ```
 
+| Field | Type | Meaning |
+| --- | --- | --- |
+| `device` | string | The adb serial, or the simulator's or iPhone's UDID. |
+| `package` | string | The package name as given; on iOS, the bundle id. |
+
 **Errors**
 
 - `INVALID_ARGS`: `'<value>' is not a package name`, as for [`launch`](launch.md).

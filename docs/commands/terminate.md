@@ -17,6 +17,11 @@ Stops an app with `am force-stop`: every process of the package is killed before
 {"device":"emulator-5554","package":"com.android.settings"}
 ```
 
+| Field | Type | Meaning |
+| --- | --- | --- |
+| `device` | string | The adb serial, or the simulator's or iPhone's UDID. |
+| `package` | string | The package name as given; on iOS, the bundle id. |
+
 An app that is installed but not running gives the same output.
 
 **Errors**

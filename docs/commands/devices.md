@@ -32,16 +32,21 @@ An iPhone on USB next to the emulator (macOS, UDID masked, simulator rows left o
 
 | Field | Type | Meaning |
 | --- | --- | --- |
-| `id` | string | The adb serial, or the simulator's or iPhone's UDID. Pass it to `--device`. |
-| `platform` | `"android"` or `"ios"` | |
-| `kind` | `"emulator"`, `"physical"` or `"simulator"` | `simulator` for iOS simulators, `physical` for iPhones. `emulator` when the id is `emulator-<port>`, or when the device reports `ro.boot.qemu` or `ro.kernel.qemu` as `1`, or `ro.hardware` as `ranchu` or `goldfish` (an emulator attached with `adb connect`). Genymotion, and other ids not in state `device`, read as `physical`. |
-| `state` | string | adb's state, unchanged: `device`, `offline`, `unauthorized`, ... Only `device` can be used. For simulators, simctl's state: `Booted`, `Booting`, `Shutting Down`; only `Booted` is usable. For iPhones, devicectl's pairing state: `paired`, `unpaired` (unlock the phone and tap Trust when it asks), `pairingInProgress`. |
-| `name` | string or `null` | The AVD name for emulators, the model (`ro.product.model`) for phones, the simulator's name for simulators, the model (`iPhone 14 Pro Max`) for iPhones, `null` for an unpaired iPhone and for a paired one devicectl is not connected to (right after pairing, or when the connection went idle; pick it by UDID then). `null` when the device does not answer, or when it is not in state `device` and its id is not `emulator-<port>`. |
-| `runner` | string or `null` | iPhones only: karagoz's runner ([`install-runner`](install-runner.md)) on the phone. `running` when it answers, `installed` or `not installed` from the phone's app list, `null` for an iPhone that is not paired or whose app list could not be read. |
+| `devices` | array | One object per device found, in the order given below the table. |
+| `devices[].id` | string | The adb serial, or the simulator's or iPhone's UDID. Pass it to `--device`. |
+| `devices[].platform` | `"android"` or `"ios"` | The device's platform. |
+| `devices[].kind` | `"emulator"`, `"physical"` or `"simulator"` | `simulator` for iOS simulators, `physical` for iPhones. `emulator` when the id is `emulator-<port>`, or when the device reports `ro.boot.qemu` or `ro.kernel.qemu` as `1`, or `ro.hardware` as `ranchu` or `goldfish` (an emulator attached with `adb connect`). Genymotion, and other ids not in state `device`, read as `physical`. |
+| `devices[].state` | string | adb's state, unchanged: `device`, `offline`, `unauthorized`, ... Only `device` can be used. For simulators, simctl's state: `Booted`, `Booting`, `Shutting Down`; only `Booted` is usable. For iPhones, devicectl's pairing state: `paired`, `unpaired` (unlock the phone and tap Trust when it asks), `pairingInProgress`. |
+| `devices[].name` | string or `null` | The AVD name for emulators, the model (`ro.product.model`) for phones, the simulator's name for simulators, the model (`iPhone 14 Pro Max`) for iPhones, `null` for an unpaired iPhone and for a paired one devicectl is not connected to (right after pairing, or when the connection went idle; pick it by UDID then). `null` when the device does not answer, or when it is not in state `device` and its id is not `emulator-<port>`. |
+| `devices[].runner` | string or `null` | iPhones only: karagoz's runner ([`install-runner`](install-runner.md)) on the phone. `running` when it answers, `installed` or `not installed` from the phone's app list, `null` for an iPhone that is not paired or whose app list could not be read. |
+| `errors` | array | Only when a listing failed and another did not: one object per failed listing, two `ios` objects when simctl and devicectl both fail. |
+| `errors[].platform` | `"android"` or `"ios"` | The platform of the failed listing: `android` for adb, `ios` for simctl and devicectl. |
+| `errors[].code` | string | The listing's error code, one of those under **Errors** below. |
+| `errors[].message` | string | The listing's error message, as the error envelope would carry it. |
 
 No devices is not an error: `{"devices":[]}`, exit `0`. Android devices come first in adb's order, then simulators in simctl's order, then iPhones in devicectl's order.
 
-If adb, simctl or devicectl is missing, fails or hangs, the other listings are still printed, `errors` holds one `{"platform","code","message"}` per failed listing (two `ios` entries when simctl and devicectl both fail), and the exit is `0`. When every listing tried fails, Android's error is printed as the usual envelope and the exit is `1`. On Linux and Windows simulators and iPhones are not looked for.
+If adb, simctl or devicectl is missing, fails or hangs, the other listings are still printed with `errors`, and the exit is `0`. When every listing tried fails, Android's error is printed as the usual envelope and the exit is `1`. On Linux and Windows simulators and iPhones are not looked for.
 
 **Errors:** `INVALID_ARGS`, `ADB_NOT_FOUND`, `ADB_TIMEOUT`, `ADB_FAILED`; `SIMCTL_NOT_FOUND`, `SIMCTL_TIMEOUT`, `SIMCTL_FAILED`, `DEVICECTL_NOT_FOUND`, `DEVICECTL_TIMEOUT`, `DEVICECTL_FAILED` inside `errors` only.
 

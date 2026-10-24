@@ -34,9 +34,17 @@ An iPhone 14 Pro Max (macOS, Xcode 27), without `--out`, UDID masked:
 | `path` | string | Absolute path of the PNG. |
 | `device` | string | The adb serial, or the simulator's or iPhone's UDID. |
 | `pixels` | `{width, height}` | Size of the PNG, read from the file itself. |
+| `pixels.width` | number | Width of the PNG in pixels. |
+| `pixels.height` | number | Height of the PNG in pixels. |
 | `logical` | `{width, height}` | `pixels / scale`, not rounded. |
-| `scale` | number | Android: density / 160, using the override density if one is set (`adb shell wm density`). iOS: the simulator's `SIMULATOR_MAINSCREEN_SCALE`, except `2.88` (1080 / 375) for a 1080x2340 or 2340x1080 PNG (iPhone 12 mini, 13 mini): the simulator reports 3 there, but apps lay out 375 points wide. On an iPhone, the `pointScale` that `devicectl device info displays` reports for the primary display, with the same exception. |
+| `logical.width` | number | Width of the screen in dp on Android, in points on iOS. |
+| `logical.height` | number | Height of the screen in dp on Android, in points on iOS. |
+| `scale` | number | Physical pixels per density-independent pixel on Android, per point on iOS. Android: density / 160, using the override density if one is set (`adb shell wm density`). iOS: the simulator's `SIMULATOR_MAINSCREEN_SCALE`, except `2.88` (1080 / 375) for a 1080x2340 or 2340x1080 PNG (iPhone 12 mini, 13 mini): the simulator reports 3 there, but apps lay out 375 points wide. On an iPhone, the `pointScale` that `devicectl device info displays` reports for the primary display, with the same exception. |
 | `safeArea` | `{top, right, bottom, left}` or `null` | Pixels of this PNG covered by the status bar, navigation bar, caption bar or display cutout. A hidden bar counts as 0. The keyboard and gesture areas are not included. `null` on iOS: only the app itself can read its safe area, and neither the simulator nor `devicectl` exposes another source. |
+| `safeArea.top` | number | Pixels covered along the top edge of the PNG. |
+| `safeArea.right` | number | Pixels covered along the right edge of the PNG. |
+| `safeArea.bottom` | number | Pixels covered along the bottom edge of the PNG. |
+| `safeArea.left` | number | Pixels covered along the left edge of the PNG. |
 | `rotation` | `0`, `90`, `180`, `270` or `null` | Screen rotation in degrees. On iOS with Xcode 27, the interface orientation from `devicectl`, in Android's meaning: turned counter-clockwise (landscape left) is `90`. `null` on Xcode 26 and earlier, or when `devicectl` fails. |
 
 On iOS the PNG is exactly what simctl or devicectl wrote; karagoz does not rotate or re-encode it. A simulator's PNG follows the interface orientation with Xcode 27; with Xcode 26 it is the panel in portrait, and a landscape app's UI is drawn sideways in it. Its corners are square, not rounded, and the Dynamic Island area is black pixels. An iPhone's PNG has 16 bits per channel and a Display P3 color profile, about 1 to 5 MB, and follows the interface orientation.
