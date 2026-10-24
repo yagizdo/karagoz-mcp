@@ -31,7 +31,23 @@ With `--duration 10` a `"duration":10` field follows `y`. Node:
 {"device":"emulator-5554","x":667.5,"y":2002.5,"element":{"class":"android.widget.TextView","text":"Chrome","contentDesc":"Chrome","clickable":true,"longClickable":true,"focusable":true,"bounds":[581,1905,754,2100]}}
 ```
 
-`element` is the matched node as [`ui-tree`](ui-tree.md) returns it, without `children`. `x` and `y` are its center.
+| Field | Type | Meaning |
+| --- | --- | --- |
+| `device` | string | The adb serial, or the simulator's or iPhone's UDID. |
+| `x` | number | Where the tap went, in [screen pixels](../output.md#coordinates): the point given, or the matched node's center. |
+| `y` | number | Where the tap went, in screen pixels: the point given, or the matched node's center. |
+| `duration` | number | Only with `--duration`: how long the touch was held, in milliseconds. |
+| `element` | object | Only with `--text` or `--id`: the matched node as [`ui-tree`](ui-tree.md) returns it, without `children`. Its fields are that platform's node fields; the samples on this page show these: |
+| `element.class` | string | Android class, e.g. `android.widget.Button`. Can be empty. |
+| `element.text` | string | The node's text. |
+| `element.contentDesc` | string | The node's content description, uiautomator's `content-desc`. |
+| `element.clickable` | boolean | The node accepts a click. |
+| `element.longClickable` | boolean | The node accepts a long click. |
+| `element.focusable` | boolean | The node can take input focus. |
+| `element.role` | string | The element's role, as [`ui-tree`](ui-tree.md#on-an-ios-simulator) gives it on that target. |
+| `element.label` | string | What VoiceOver reads. |
+| `element.identifier` | string | The app's `accessibilityIdentifier`. |
+| `element.bounds` | array | `[left, top, right, bottom]` in screen pixels, as `ui-tree` gives them on that platform. |
 
 **How a node is found**
 
