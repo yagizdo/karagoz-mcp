@@ -1,4 +1,5 @@
 import { spawn } from 'node:child_process';
+import { readFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { cancellation } from '../../cancellation.js';
 import { KaragozError } from '../../errors.js';
@@ -14,7 +15,7 @@ const MAX_BUFFER = 64 * 1024 * 1024;
 
 // ponytail: Apple's private path, the binary Xcode's simctl shim execs. Calling it directly skips xcrun's install
 // dialog and the shim's `xcodebuild -runFirstLaunch`, which hangs without a TTY (K32). If Apple moves it, iOS reads
-// as SIMCTL_NOT_FOUND; the fallback is the selected Xcode's shim after checking its EXPECTED_VERSION.
+// as SIMCTL_NOT_FOUND; the fix is to read the path from the shim's exec line.
 const FRAMEWORK = '/Library/Developer/PrivateFrameworks/CoreSimulator.framework/Versions/A/Resources/bin/simctl';
 // The framework's Info.plist: its CFBundleVersion is the CoreSimulator version a shim's EXPECTED_VERSION names.
 export const FRAMEWORK_PLIST = join(dirname(FRAMEWORK), '..', 'Info.plist');
@@ -27,11 +28,21 @@ export function developerDir(): string | undefined {
   return dev.endsWith('.app') ? join(dev, 'Contents', 'Developer') : dev;
 }
 
-export function binary(): { bin: string; missing: string } {
+// The line of a simctl or devicectl shim that names the framework version its Xcode was built for (K32).
+export const EXPECTED = /^EXPECTED_VERSION="([^"]+)"$/m;
+
+// An Xcode's usr/bin tool, or the framework binary when the tool is Apple's shim. The shim runs `xcodebuild
+// -runFirstLaunch` before it execs that binary when the versions differ: a timeout kills only the shim and leaves the
+// xcodebuild behind, and its output lands ahead of the tool's own. The binary takes DEVELOPER_DIR as it is (K32, K48).
+export async function unshimmed(path: string, framework: string): Promise<string> {
+  return EXPECTED.test(await readFile(path, 'utf8').catch(() => '')) ? framework : path;
+}
+
+export async function binary(): Promise<{ bin: string; missing: string }> {
   const dev = developerDir();
-  if (!dev)
-    return { bin: FRAMEWORK, missing: `simctl not found (tried ${FRAMEWORK}). Install Xcode and open it once.` };
-  const bin = join(dev, 'usr', 'bin', 'simctl');
+  const bin = dev ? await unshimmed(join(dev, 'usr', 'bin', 'simctl'), FRAMEWORK) : FRAMEWORK;
+  if (bin === FRAMEWORK)
+    return { bin, missing: `simctl not found (tried ${FRAMEWORK}). Install Xcode and open it once.` };
   return {
     bin,
     missing: `simctl not found (tried ${bin}, from DEVELOPER_DIR). Point DEVELOPER_DIR at an Xcode, not the Command Line Tools, or unset it.`,
@@ -60,7 +71,7 @@ async function simctlBytes(
   timeout = TIMEOUT_MS,
   refusal?: 'INSTALL_FAILED' | 'UNINSTALL_FAILED',
 ): Promise<Buffer> {
-  const { bin, missing } = binary();
+  const { bin, missing } = await binary();
   const result = await runTool(bin, args, { timeout, maxBuffer: MAX_BUFFER });
   if (result.ok) return result.stdout;
   const { failure } = result;
@@ -99,7 +110,7 @@ function spawnFailed(err: Error, missing: string): KaragozError {
 // stdout line; its first throw kills simctl and becomes the result. No killSignal: simctl does not pass SIGKILL on and
 // the process inside the simulator is orphaned (WebKit #185164).
 export async function simctlLines(args: string[], onLine: (line: string) => void): Promise<void> {
-  const { bin, missing } = binary();
+  const { bin, missing } = await binary();
   const signal = cancellation.getStore();
   signal?.throwIfAborted();
   let child;

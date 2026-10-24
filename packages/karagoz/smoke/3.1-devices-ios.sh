@@ -107,4 +107,25 @@ echo "$out" | node -e '
 if out=$(run DEVELOPER_DIR="$tmp/empty"); then fail "both missing exited 0: $out"; fi
 is "both missing" "$(echo "$out" | code_of)" ADB_NOT_FOUND
 
-echo "ok: real ($real), parse, .app, missing, failing, not-json, hung (${elapsed}s), no adb, both missing"
+# 9. An Xcode whose simctl and devicectl are Apple's first-launch shims, with a framework version they do not expect:
+# karagoz runs the framework binaries the shims would exec, so neither shim nor the xcodebuild they start ever runs.
+# The fake xcodebuild prints on stdout, as Xcode 27's devicectl shim lets it.
+s=$tmp/S.app/Contents/Developer/usr/bin
+mkdir -p "$s"
+coredevice=/Library/Developer/PrivateFrameworks/CoreDevice.framework/Versions/A/Resources/bin/devicectl
+for tool in simctl:"$framework" devicectl:"$coredevice"; do
+  printf '#!/bin/sh\nEXPECTED_VERSION="0"\nprintf "%%s\\n" "$0 $*" >> %s\n"${0%%/*}/xcodebuild" -runFirstLaunch\nexec %s "$@"\n' \
+    "'$tmp/shimcalls'" "'${tool#*:}'" > "$s/${tool%%:*}"
+done
+printf '#!/bin/sh\necho "Install Started"\nprintf "%%s\\n" "$0 $*" >> %s\n' "'$tmp/shimcalls'" > "$s/xcodebuild"
+chmod +x "$s/simctl" "$s/devicectl" "$s/xcodebuild"
+out=$(run ANDROID_HOME="$tmp/sdk" DEVELOPER_DIR="$tmp/S.app") || fail "shim exited non-zero: $out"
+[ ! -e "$tmp/shimcalls" ] || fail "shim: karagoz ran $(/usr/bin/tr '\n' ';' < "$tmp/shimcalls")"
+got=$(printf '%s' "$out" | node -e '
+  const r = JSON.parse(require("fs").readFileSync(0, "utf8"));
+  if (r.errors?.some((e) => e.platform === "ios")) { console.log("ios error: " + JSON.stringify(r.errors)); process.exit(); }
+  console.log(JSON.stringify(r.devices.filter((d) => d.platform === "ios" && d.kind === "simulator")));
+')
+[ "$got" = "$want" ] || fail "shim: iOS rows $got, simctl says $want"
+
+echo "ok: real ($real), parse, .app, missing, failing, not-json, hung (${elapsed}s), no adb, both missing, shim"

@@ -1,7 +1,8 @@
 #!/bin/sh
 # Step 3.7: on macOS `doctor` adds an `xcode` report: the developer dir the iOS commands use, its version, and one entry
 # each for simctl, swiftc, devicectl and the ui-tree helper cache, with the commands' own paths and messages (K30).
-# Fake Xcode trees prove every status, the first-launch check and the helper states; recording fakes and a scratch HOME
+# Fake Xcode trees prove every status, the first-launch check and the helper states; a simctl or devicectl that is
+# Apple's shim reports the framework binary karagoz runs in its place. Recording fakes and a scratch HOME
 # prove doctor starts no Xcode tool and creates no cache, and that the adb object never changes.
 # Step 4.7 adds what the iPhone commands need: xcodebuild, the usbmuxd socket (a counting listener proves doctor never
 # connects), and tar and log on PATH, found the way spawn finds them; none of them changes xcode.status.
@@ -92,7 +93,7 @@ entries() {
   mux="{\"status\":\"ok\",\"path\":\"$tmp/mux\"}"
   tar='{"status":"ok","path":"/usr/bin/tar"}'
   log='{"status":"ok","path":"/usr/bin/log"}'
-  sim="{\"status\":\"ok\",\"path\":\"$1/usr/bin/simctl\",\"version\":\"$fw\"}"
+  sim="{\"status\":\"ok\",\"path\":\"$framework/bin/simctl\",\"version\":\"$fw\"}"
   swc="{\"status\":\"ok\",\"path\":\"$1/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc\"}"
   dctl="{\"status\":\"ok\",\"path\":\"$1/usr/bin/devicectl\"}"
   hlp="{\"status\":\"not built\",\"path\":\"$helper_path\"}"
@@ -164,7 +165,7 @@ fake "$tmp/X271.app" 27.1 27B1 "$newer"
 d=$tmp/X271.app/Contents/Developer
 entries "$d"
 first="the selected Xcode expects CoreSimulator $newer, this Mac has $fw: open Xcode once to finish installing its components"
-sim="{\"status\":\"failed\",\"path\":\"$d/usr/bin/simctl\",\"version\":\"$fw\",\"message\":\"$first\"}"
+sim="{\"status\":\"failed\",\"path\":\"$framework/bin/simctl\",\"version\":\"$fw\",\"message\":\"$first\"}"
 doc DEVELOPER_DIR="$tmp/X271.app"
 is 'first launch' "$(top failed "$d" 27.1 27B1 "$first")"
 ok="$ok, first launch"
@@ -177,36 +178,33 @@ doc DEVELOPER_DIR="$tmp/Xf.app"
 is newer "$(top ok "$d" 27.0 27A1)"
 ok="$ok, newer"
 
-# r. Xcode 26.2's shim runs first launch for a newer framework too, on every call when DEVELOPER_DIR picks it.
+# r. Xcode 26.2's shim would run first launch for a newer framework too, on every call; karagoz runs the framework's
+# binary in its place, so a newer framework is fine.
 fake "$tmp/Xr.app" 26.2 17C52 1.0 ne
 d=$tmp/Xr.app/Contents/Developer
 entries "$d"
-every="the Xcode in DEVELOPER_DIR expects CoreSimulator 1.0 but this Mac has $fw from a newer Xcode, so its simctl runs xcodebuild -runFirstLaunch on every call: point DEVELOPER_DIR at the newest Xcode, or unset it"
-sim="{\"status\":\"failed\",\"path\":\"$d/usr/bin/simctl\",\"version\":\"$fw\",\"message\":\"$every\"}"
 doc DEVELOPER_DIR="$tmp/Xr.app"
-is 'every call (simctl)' "$(top failed "$d" 26.2 17C52 "$every")"
+is 'newer framework (simctl)' "$(top outdated "$d" 26.2 17C52 'tap, swipe and key on a simulator need Xcode 27 or later')"
 
-# s, t, u. devicectl's shim: a newer CoreDevice fails the same way, the expected one is fine, an older one is a
-# pending first launch.
+# s, t, u. devicectl's shim: a newer CoreDevice is fine too, as is the expected one; an older one is a pending first
+# launch.
 fake "$tmp/Xs.app" 27.1 27B1 "$fw"
 d=$tmp/Xs.app/Contents/Developer
 entries "$d"
+dctl="{\"status\":\"ok\",\"path\":\"$coredevice\"}"
 dshim "$d" 1.0
-every="the Xcode in DEVELOPER_DIR expects CoreDevice 1.0 but this Mac has $cd_version from a newer Xcode, so its devicectl runs xcodebuild -runFirstLaunch on every call: point DEVELOPER_DIR at the newest Xcode, or unset it"
-dctl="{\"status\":\"failed\",\"path\":\"$d/usr/bin/devicectl\",\"message\":\"$every\"}"
 doc DEVELOPER_DIR="$tmp/Xs.app"
-is 'every call (devicectl)' "$(top failed "$d" 27.1 27B1 "$every")"
-entries "$d"
+is 'newer framework (devicectl)' "$(top ok "$d" 27.1 27B1)"
 dshim "$d" "$cd_version"
 doc DEVELOPER_DIR="$tmp/Xs.app"
 is 'expected CoreDevice' "$(top ok "$d" 27.1 27B1)"
 cd_newer=$(printf '%s' "$cd_version" | awk -F. -v OFS=. '{ $NF = $NF + 1; print }')
 dshim "$d" "$cd_newer"
 first="the selected Xcode expects CoreDevice $cd_newer, this Mac has $cd_version: open Xcode once to finish installing its components"
-dctl="{\"status\":\"failed\",\"path\":\"$d/usr/bin/devicectl\",\"message\":\"$first\"}"
+dctl="{\"status\":\"failed\",\"path\":\"$coredevice\",\"message\":\"$first\"}"
 doc DEVELOPER_DIR="$tmp/Xs.app"
 is 'first launch (devicectl)' "$(top failed "$d" 27.1 27B1 "$first")"
-ok="$ok, every call, devicectl shim"
+ok="$ok, newer framework, devicectl shim"
 
 # g. A Command Line Tools-like dir: no simctl, no swiftc, no version.plist.
 d=$tmp/clt
@@ -234,9 +232,10 @@ doc DEVELOPER_DIR="$tmp/Xh.app"
 is 'no swiftc' "$(top failed "$d" 27.0 27A1 "$text")"
 ok="$ok, no swiftc"
 
-# i. simctl there but not executable.
+# i. simctl there but not executable. A plain script, not a shim: a shim is passed over for the framework's binary.
 fake "$tmp/Xi.app" 27.0 27A1 "$fw"
 d=$tmp/Xi.app/Contents/Developer
+{ echo '#!/bin/sh'; cat "$tmp/logger"; } > "$d/usr/bin/simctl"
 chmod 644 "$d/usr/bin/simctl"
 entries "$d"
 text="cannot run $d/usr/bin/simctl (EACCES)"
