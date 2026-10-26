@@ -3,7 +3,7 @@ import { KaragozError } from '../../errors.js';
 import { runTool } from '../../tool.js';
 import { displayOf, rotation } from './devicectl.js';
 import { runtimeOf } from './devices.js';
-import { input } from './runner.js';
+import { input, type On } from './runner.js';
 import { panelScale } from './screenshot.js';
 import { simctl } from './simctl.js';
 import {
@@ -15,7 +15,7 @@ import {
   RUN_TIMEOUT_MS,
   type IosNode,
 } from './ui-tree.js';
-import { CACHE_HINT, shortVersion, xcode } from './xcode.js';
+import { CACHE_HINT, runnerOnSimulators, shortVersion, xcode } from './xcode.js';
 
 // Android's swipe default, so both platforms state the same duration (K25, K35).
 const SWIPE_MS = 300;
@@ -92,6 +92,9 @@ const PHONE_BUTTONS = new Map([
   ['VOLUME_UP', 'volumeUp'],
   ['VOLUME_DOWN', 'volumeDown'],
 ]);
+// In a simulator the runner has HOME only: the lock event answers but locks nothing (measured on Xcode 26.2 and 27.1),
+// and the simulator SDK has no volume buttons (K49).
+const SIMULATOR_BUTTONS = new Map([['HOME', 'home']]);
 // ponytail: keys that type no character (arrows, F-keys, page and line keys, forward delete, modifiers) have no iPhone
 // route: XCTest's typeKey goes through the hardware-keyboard path and was never shown to work on a phone (K42).
 const PHONE_CHARACTERS = new Map<string, string>([
@@ -115,14 +118,14 @@ const PHONE_CHARACTERS = new Map<string, string>([
   ['SLASH', '/'],
 ]);
 
-// The portrait panel in the tree's pixels, the size dtuhidd's ratios divide (K35).
-async function panelSide(udid: string, side: 'WIDTH' | 'HEIGHT'): Promise<number> {
+// The portrait panel in the tree's pixels, the size dtuhidd's ratios divide (K35), or its scale.
+async function panelSide(udid: string, side: 'WIDTH' | 'HEIGHT' | 'SCALE'): Promise<number> {
   const text = (await simctl(['getenv', udid, `SIMULATOR_MAINSCREEN_${side}`])).trim();
   const value = Number(text);
   if (!Number.isFinite(value) || value <= 0) {
     throw new KaragozError(
       'SIMCTL_FAILED',
-      `cannot read the panel size from 'simctl getenv' (got '${text.slice(0, 100)}')`,
+      `cannot read the panel ${side === 'SCALE' ? 'scale' : 'size'} from 'simctl getenv' (got '${text.slice(0, 100)}')`,
     );
   }
   return value;
@@ -182,17 +185,52 @@ function points({ scale, rotation: turn, panel: native }: Display) {
   };
 }
 
-// display comes from a tree read the caller already made; a plain tap reads it itself.
-export async function tapPhone(udid: string, x: number, y: number, duration: number | undefined, display?: Display) {
-  const { at, orientation } = points(display ?? (await displayOf(udid)));
-  await input(udid, '/tap', { ...at(x, y), ...(duration !== undefined && { duration }), orientation }, duration ?? 0);
+// A simulator's panel as the runner needs it, from simctl; the rotation is null on Xcode 26, whose devicectl cannot read a
+// simulator, and counts as portrait as the tree does (K49). rotated comes from a tree read the caller already made.
+async function simulatorDisplay(udid: string, rotated?: number | null): Promise<Display> {
+  const [scale, width, height, turn] = await Promise.all([
+    panelSide(udid, 'SCALE'),
+    panelSide(udid, 'WIDTH'),
+    panelSide(udid, 'HEIGHT'),
+    rotated === undefined ? rotation(udid) : rotated,
+  ]);
+  return { scale, rotation: turn, panel: { width, height } };
+}
+
+async function runnerTap(on: On, udid: string, x: number, y: number, duration: number | undefined, display: Display) {
+  const { at, orientation } = points(display);
+  await input(
+    udid,
+    on,
+    '/tap',
+    { ...at(x, y), ...(duration !== undefined && { duration }), orientation },
+    duration ?? 0,
+  );
   return duration === undefined ? { device: udid, x, y } : { device: udid, x, y, duration };
 }
 
+// display comes from a tree read the caller already made; a plain tap reads it itself.
+export async function tapPhone(udid: string, x: number, y: number, duration: number | undefined, display?: Display) {
+  return runnerTap('iphone', udid, x, y, duration, display ?? (await displayOf(udid)));
+}
+
 export async function swipePhone(udid: string, x1: number, y1: number, x2: number, y2: number, duration = SWIPE_MS) {
-  const { at, orientation } = points(await displayOf(udid));
+  return runnerSwipe('iphone', udid, x1, y1, x2, y2, duration, await displayOf(udid));
+}
+
+async function runnerSwipe(
+  on: On,
+  udid: string,
+  x1: number,
+  y1: number,
+  x2: number,
+  y2: number,
+  duration: number,
+  display: Display,
+) {
+  const { at, orientation } = points(display);
   const [from, to] = [at(x1, y1), at(x2, y2)];
-  await input(udid, '/swipe', { x1: from.x, y1: from.y, x2: to.x, y2: to.y, duration, orientation }, duration);
+  await input(udid, on, '/swipe', { x1: from.x, y1: from.y, x2: to.x, y2: to.y, duration, orientation }, duration);
   return { device: udid, x1, y1, x2, y2, duration };
 }
 
@@ -237,12 +275,18 @@ async function send(command: string, udid: string, args: string[], extraMs = 0):
 
 // rotated comes from a tree read the caller already made; a plain tap reads it itself.
 export async function tap(udid: string, x: number, y: number, duration: number | undefined, rotated?: number | null) {
+  if (await runnerOnSimulators()) {
+    return runnerTap('simulator', udid, x, y, duration, await simulatorDisplay(udid, rotated));
+  }
   const ratio = await panel(udid, rotated);
   await send('tap', udid, ['tap', ...ratio(x, y), String(duration ?? 0)], duration);
   return duration === undefined ? { device: udid, x, y } : { device: udid, x, y, duration };
 }
 
 export async function swipe(udid: string, x1: number, y1: number, x2: number, y2: number, duration = SWIPE_MS) {
+  if (await runnerOnSimulators()) {
+    return runnerSwipe('simulator', udid, x1, y1, x2, y2, duration, await simulatorDisplay(udid));
+  }
   const ratio = await panel(udid);
   await send('swipe', udid, ['swipe', ...ratio(x1, y1), ...ratio(x2, y2), String(duration)], duration);
   return { device: udid, x1, y1, x2, y2, duration };
@@ -352,6 +396,8 @@ function typable(value: string, where: string) {
 // Typed into whatever has focus; with none, nothing is typed and the call still succeeds, as on Android (K35).
 export async function text(udid: string, value: string) {
   typable(value, 'an iOS simulator');
+  // The runner holds its session for minutes and turns app accessibility back on when it stops: nothing to wait for.
+  if (await runnerOnSimulators()) return runnerText('simulator', udid, value);
   const signal = cancellation.getStore();
   const turn = (turns.get(udid) ?? Promise.resolve()).then(() => {
     signal?.throwIfAborted();
@@ -399,30 +445,41 @@ async function typeText(udid: string, value: string) {
 // Check the length here when a caller sends that much.
 export async function textPhone(udid: string, value: string) {
   typable(value, 'an iPhone');
+  return runnerText('iphone', udid, value);
+}
+
+async function runnerText(on: On, udid: string, value: string) {
   const typing = Math.ceil((Array.from(value).length / TYPE_SPEED) * 1000);
-  await input(udid, '/text', { text: value, speed: TYPE_SPEED }, typing);
+  await input(udid, on, '/text', { text: value, speed: TYPE_SPEED }, typing);
   return { device: udid, text: value };
 }
 
-// The name check runs before the runner starts: a key an iPhone lacks is wrong for this target and stays wrong (K42).
+// The name check runs before the runner starts: a key the target lacks is wrong for it and stays wrong (K42).
 export async function keyPhone(udid: string, name: string, code: number) {
-  const button = PHONE_BUTTONS.get(name);
+  return runnerKey('iphone', udid, name, code);
+}
+
+async function runnerKey(on: On, udid: string, name: string, code: number) {
+  const button = (on === 'iphone' ? PHONE_BUTTONS : SIMULATOR_BUTTONS).get(name);
   const character = PHONE_CHARACTERS.get(name);
   if (button === undefined && character === undefined) {
     const hint = name === 'BACK' ? "; tap the app's back button or swipe from the left edge" : '';
     throw new KaragozError(
       'INVALID_ARGS',
-      `'${name}' has no iPhone key; an iPhone takes HOME, POWER, VOLUME_UP, VOLUME_DOWN and keys that type a character (letters, digits, SPACE, ENTER, TAB, DEL, ESCAPE, punctuation)${hint}`,
+      on === 'iphone'
+        ? `'${name}' has no iPhone key; an iPhone takes HOME, POWER, VOLUME_UP, VOLUME_DOWN and keys that type a character (letters, digits, SPACE, ENTER, TAB, DEL, ESCAPE, punctuation)${hint}`
+        : `'${name}' has no key on this simulator: with a CoreSimulator older than Xcode 27's, karagoz's runner takes HOME and keys that type a character (letters, digits, SPACE, ENTER, TAB, DEL, ESCAPE, punctuation)${hint}`,
     );
   }
   await (button === undefined
-    ? input(udid, '/text', { text: character, speed: TYPE_SPEED }, 0)
-    : input(udid, '/button', { button }, 0));
+    ? input(udid, on, '/text', { text: character, speed: TYPE_SPEED }, 0)
+    : input(udid, on, '/button', { button }, 0));
   return { device: udid, key: `KEYCODE_${name}`, code };
 }
 
 // The name check runs before anything compiles: an iOS-less key is wrong for this target and stays wrong (K35).
 export async function key(udid: string, name: string, code: number) {
+  if (await runnerOnSimulators()) return runnerKey('simulator', udid, name, code);
   const button = BUTTONS.get(name);
   const usage = KEYBOARD.get(name);
   if (button === undefined && usage === undefined) {

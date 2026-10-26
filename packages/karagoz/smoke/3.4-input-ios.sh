@@ -4,7 +4,9 @@
 # turned into the unrotated portrait panel for every rotation (K35). Fakes prove the helper's argv, each helper exit's
 # K5 code, the timeout, DEVICE_NOT_READY and the iOS-less key before any compile, text's character check, that it
 # puts app accessibility back and that two texts on one server run in turn, and element matching on a fake tree; the
-# real part drives a test app and reads every effect back with ui-tree.
+# real part drives a test app and reads every effect back with ui-tree. Below CoreSimulator 1155.4 the four go to
+# karagoz's runner inside the simulator instead (K49): fakes prove its unsigned build, start, points, keys, ports, the
+# accessibility write-back and uninstall-runner; on such a Mac the real part runs through it and removes it after.
 # Precondition: macOS with Xcode. A booted simulator on its home screen is used when one is running and no phone is
 # attached, else the real part prints SKIP. It builds smoke/fixtures/input-ios, installs, drives and uninstalls it,
 # presses HOME and checks that the home screen is on the page it recorded and the app is gone. Fake swiftc, simctl and devicectl come through
@@ -18,6 +20,13 @@ npm run --silent build
 node_bin=$(command -v node)
 tmp=$(mktemp -d)
 framework=/Library/Developer/PrivateFrameworks/CoreSimulator.framework/Versions/A/Resources/bin/simctl
+# Below CoreSimulator 1155.4 the real part goes through karagoz's runner, which restore() removes again (K49).
+runner_mac=no
+if node -e 'const [a, b] = [process.argv[1], "1155.4"].map((v) => v.split(".").map(Number));
+  const i = [0, 1, 2].find((k) => (a[k] ?? 0) !== (b[k] ?? 0)); process.exit(i !== undefined && (a[i] ?? 0) < (b[i] ?? 0) ? 0 : 1)' \
+  "$(/usr/bin/plutil -extract CFBundleVersion raw "${framework%/bin/simctl}/Info.plist" 2>/dev/null)"; then
+  runner_mac=yes
+fi
 booted=
 installed=
 home=
@@ -79,8 +88,15 @@ restore() {
     return 0
   fi
   home_back
+  back=$?
+  if [ "$runner_mac" = yes ]; then
+    out=$(real uninstall-runner --device "$booted")
+    [ "$out" = "{\"device\":\"$booted\",\"apps\":[\"com.karagozmcp.runner.xctrunner\"],\"profiles\":[]}" ] \
+      || { echo "FAIL: uninstall-runner on $booted: $out"; return 1; }
+  fi
+  return $back
 }
-trap 'set +e; pkill -f "sleep 97\.48"; restore; st=$?; rm -rf "$tmp"; [ "$st" = 0 ] || exit 1' EXIT
+trap 'set +e; pkill -f "sleep 97\.48"; pkill -f "runner\.cjs $fake"; restore; st=$?; rm -rf "$tmp"; [ "$st" = 0 ] || exit 1' EXIT
 
 # Fakes. Scripts call /bin tools by absolute path: env -i leaves no PATH for them. Files under $fake steer them. The
 # fake swiftc logs each compile and writes a binary that runs $fake/helper.
@@ -345,9 +361,134 @@ call tap --text Press --device A1
 refuses CAPTURE_FAILED "unreadable tree"
 [ ! -e "$fake/argv" ] || fail "an unreadable tree tapped"
 
-fakes="fakes: ratios, rotations, swipe, keys, iOS-less key, exits, hung (${took}s), booting, no compiler, text, element tap"
+# 11. Runner path: below CoreSimulator 1155.4 tap, swipe, text and key go to karagoz's runner inside the simulator,
+# built without signing and started by the first call, on a loopback port of its own per simulator; its xcodebuild runs
+# under sh, which turns app accessibility back on when it exits. uninstall-runner takes such a simulator (K49). The fake
+# xcodebuild builds as in 4.4 and becomes the fake runner.
+rdev="$tmp/rdev"
+runner_fixtures=$(pwd)/smoke/fixtures/runner
+mkdir -p "$rdev/usr/bin" "$tmp/rhome"
+printf '<plist><dict><key>CFBundleVersion</key><string>1051.17.7</string></dict></plist>\n' > "$rdev/usr/Info.plist"
+cp "$tmp/dev/usr/bin/devicectl" "$rdev/usr/bin/devicectl"
+cat > "$rdev/usr/bin/simctl" <<FAKE
+#!/bin/sh
+echo "\$*" >> "$fake/rsimctl"
+case "\$*" in
+  "list devices --json") /bin/cat "$fake/list.json" ;;
+  "getenv "*" SIMULATOR_MAINSCREEN_WIDTH") echo 1206 ;;
+  "getenv "*" SIMULATOR_MAINSCREEN_HEIGHT") echo 2622 ;;
+  "getenv "*" SIMULATOR_MAINSCREEN_SCALE") echo 3.000000 ;;
+  "spawn "*" defaults write com.apple.Accessibility ApplicationAccessibilityEnabled -bool true") ;;
+  "listapps A1") /bin/cat "$fake/listapps" ;;
+  "uninstall A1 com.karagozmcp.runner.xctrunner") ;;
+  *) exit 1 ;;
+esac
+FAKE
+cat > "$rdev/usr/bin/xcodebuild" <<FAKE
+#!/bin/sh
+echo "\$*" >> "$fake/xcodebuild"
+case "\$*" in
+  *build-for-testing*)
+    [ ! -e "$fake/build-fails" ] || { echo "error: the fake build failed"; exit 65; }
+    while [ \$# -gt 0 ]; do [ "\$1" = -derivedDataPath ] && dd=\$2; shift; done
+    /bin/mkdir -p "\$dd/Build/Products/Debug-iphonesimulator/KaragozRunner-Runner.app"
+    /bin/cp "$runner_fixtures/KaragozRunner.xctestrun" "\$dd/Build/Products/KaragozRunner_iphonesimulator26.2-arm64.xctestrun"
+    ;;
+  *test-without-building*)
+    while [ \$# -gt 0 ]; do [ "\$1" = -xctestrun ] && xr=\$2; shift; done
+    exec "$node_bin" "$runner_fixtures/runner.cjs" "$fake" "\$xr"
+    ;;
+esac
+FAKE
+chmod +x "$rdev/usr/bin/simctl" "$rdev/usr/bin/devicectl" "$rdev/usr/bin/xcodebuild"
+cp "$fake/list.json" "$tmp/list.saved"
+echo '{"devices":{"com.apple.CoreSimulator.SimRuntime.iOS-26-2":[{"udid":"A1","name":"iPhone 17","state":"Booted","isAvailable":true},{"udid":"A3","name":"iPhone 17 Pro","state":"Booted","isAvailable":true}]}}' > "$fake/list.json"
+rot rot0
+: > "$fake/inputs"
+rcall() { # <home> <karagoz arguments>: karagoz with the runner fakes; sets $out and $st
+  home_dir=$1
+  shift
+  out=$(env -i HOME="$home_dir" PATH=/usr/bin:/bin TMPDIR="$tmp" ANDROID_HOME="$tmp/sdk" DEVELOPER_DIR="$rdev" \
+    "$node_bin" dist/cli.js "$@" 2>/dev/null) && st=0 || st=$?
+}
+sent() { /usr/bin/tail -1 "$fake/inputs"; }
+count() { /usr/bin/grep -c -- "$1" "$fake/$2" 2>/dev/null || true; }
+port_of() { cat "$tmp/rhome/Library/Caches/karagoz/runner/$1.port"; }
+rcall "$tmp/rhome" tap 603 1311 --device A1
+succeeds "runner tap" '{"device":"A1","x":603,"y":1311}'
+[ "$(sent)" = '/tap {"x":201,"y":437,"orientation":1}' ] || fail "runner tap sent: $(sent)"
+[ "$(count build-for-testing xcodebuild)" = 1 ] && [ "$(count test-without-building xcodebuild)" = 1 ] \
+  || fail "runner tap: expected one build and one start: $(cat "$fake/xcodebuild")"
+build_line=$(/usr/bin/grep build-for-testing "$fake/xcodebuild")
+case $build_line in *"-destination id=A1"*) ;; *) fail "runner build: no simulator destination: $build_line" ;; esac
+case $build_line in *DEVELOPMENT_TEAM* | *-allowProvisioning*) fail "runner build: signing settings: $build_line" ;; esac
+rcall "$tmp/rhome" tap 603 1311 --duration 700 --device A1
+[ "$(sent)" = '/tap {"x":201,"y":437,"duration":700,"orientation":1}' ] || fail "runner long press sent: $(sent)"
+[ "$(count build-for-testing xcodebuild)" = 1 ] && [ "$(count test-without-building xcodebuild)" = 1 ] \
+  || fail "second runner call built or started again: $(cat "$fake/xcodebuild")"
+rcall "$tmp/rhome" swipe 603 2000 603 600 --duration 500 --device A1
+succeeds "runner swipe" '{"device":"A1","x1":603,"y1":2000,"x2":603,"y2":600,"duration":500}'
+[ "$(sent)" = '/swipe {"x1":201,"y1":666.667,"x2":201,"y2":200,"duration":500,"orientation":1}' ] \
+  || fail "runner swipe sent: $(sent)"
+printf '<plist><dict><key>CFBundleShortVersionString</key><string>26.2</string><key>ProductBuildVersion</key><string>17C52</string></dict></plist>\n' > "$tmp/version.plist"
+rcall "$tmp/rhome" text "çğş 😀" --device A1
+succeeds "runner text on Xcode 26.2" '{"device":"A1","text":"çğş 😀"}'
+[ "$(sent)" = '/text {"text":"çğş 😀","speed":120}' ] || fail "runner text sent: $(sent)"
+rm "$tmp/version.plist"
+rcall "$tmp/rhome" key HOME --device A1
+succeeds "runner key HOME" '{"device":"A1","key":"KEYCODE_HOME","code":3}'
+[ "$(sent)" = '/button {"button":"home"}' ] || fail "runner key HOME sent: $(sent)"
+rcall "$tmp/rhome" key A --device A1
+[ "$(sent)" = '/text {"text":"a","speed":120}' ] || fail "runner key A sent: $(sent)"
+before=$(/usr/bin/wc -l < "$fake/inputs")
+for name in POWER VOLUME_UP DPAD_UP; do
+  rcall "$tmp/rhome" key "$name" --device A1
+  refuses INVALID_ARGS "runner key $name"
+  says "runner key $name" "'$name' has no key on this simulator"
+done
+[ "$(/usr/bin/wc -l < "$fake/inputs")" = "$before" ] || fail "a key the runner lacks was sent: $(sent)"
+# A second simulator gets a runner and a port of its own; the first one's still answers.
+rcall "$tmp/rhome" tap 603 1311 --device A3
+succeeds "runner tap on A3" '{"device":"A3","x":603,"y":1311}'
+[ "$(port_of A1)" != "$(port_of A3)" ] || fail "A1 and A3 share port $(port_of A1)"
+rcall "$tmp/rhome" key HOME --device A1
+[ "$st" = 0 ] && [ "$(count test-without-building xcodebuild)" = 2 ] || fail "A1 after A3: exit $st, $(cat "$fake/xcodebuild")"
+# A runner that ended leaves its port behind: the sh around xcodebuild writes app accessibility back, and the next call
+# starts a runner on a new port.
+old_port=$(port_of A1)
+pkill -f "runner\.cjs $fake .*session-A1\.xctestrun"
+i=0
+until /usr/bin/grep -q '^spawn A1 defaults write com.apple.Accessibility ApplicationAccessibilityEnabled -bool true$' "$fake/rsimctl"; do
+  i=$((i + 1))
+  [ "$i" -lt 20 ] || fail "no accessibility write-back after the runner ended: $(cat "$fake/rsimctl")"
+  sleep 0.25
+done
+rcall "$tmp/rhome" tap 603 1311 --device A1
+succeeds "runner tap after the runner ended" '{"device":"A1","x":603,"y":1311}'
+[ "$(count test-without-building xcodebuild)" = 3 ] && [ "$(port_of A1)" != "$old_port" ] \
+  || fail "no new start on a new port: port $(port_of A1), $(cat "$fake/xcodebuild")"
+touch "$fake/build-fails"
+rcall "$tmp/rhome2" tap 603 1311 --device A1
+refuses HELPER_FAILED "runner build fails"
+says "runner build fails" "the runner build failed: error: the fake build failed (log: "
+rm "$fake/build-fails"
+printf '    "com.karagozmcp.runner.xctrunner" =     {\n        CFBundleIdentifier = "com.karagozmcp.runner.xctrunner";\n    };\n' > "$fake/listapps"
+rcall "$tmp/rhome" uninstall-runner --device A1
+succeeds "runner uninstall" '{"device":"A1","apps":["com.karagozmcp.runner.xctrunner"],"profiles":[]}'
+/usr/bin/grep -q '^uninstall A1 com.karagozmcp.runner.xctrunner$' "$fake/rsimctl" || fail "runner uninstall ran no simctl uninstall"
+: > "$fake/listapps"
+rcall "$tmp/rhome" uninstall-runner --device A1
+succeeds "runner uninstall, nothing there" '{"device":"A1","apps":[],"profiles":[]}'
+rcall "$tmp/rhome" install-runner --device A1
+refuses NOT_SUPPORTED "install-runner on a simulator"
+call uninstall-runner --device A1
+refuses NOT_SUPPORTED "uninstall-runner on a simulator with dtuhidd"
+pkill -f "runner\.cjs $fake" || true
+mv "$tmp/list.saved" "$fake/list.json"
 
-# 11. Real simulator: the test app, each effect read back with ui-tree, then the home screen as recorded.
+fakes="fakes: ratios, rotations, swipe, keys, iOS-less key, exits, hung (${took}s), booting, no compiler, text, element tap, runner path"
+
+# 12. Real simulator: the test app, each effect read back with ui-tree, then the home screen as recorded.
 phone=$({ command -v adb >/dev/null && adb devices | awk 'NR > 1 && $1 != "" && $1 !~ /^emulator-/'; ioreg -p IOUSB -w0 | grep -iE 'iPhone|iPad'; } || true)
 booted=$("$framework" list devices --json | node -e '
   const { devices } = JSON.parse(require("fs").readFileSync(0, "utf8"));
@@ -420,6 +561,7 @@ else
   succeeds "real key HOME" "{\"device\":\"$booted\",\"key\":\"KEYCODE_HOME\",\"code\":3}"
   wait_for "real key HOME" " " root
   real_ok="real $booted: tap, long press, swipe, tap --id, tap --text, text, DEL, HOME"
+  [ "$runner_mac" = no ] || real_ok="$real_ok, through the runner, removed after"
 fi
 
 echo "ok: $real_ok, $fakes"
