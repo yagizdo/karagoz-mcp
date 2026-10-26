@@ -54,7 +54,7 @@ Any other name fails before anything is sent:
 - Each key is pressed alone, with no modifier held.
 - Keyboard keys act only where iOS uses them: in a focused field, or with Full Keyboard Access. A letter goes through iOS's typing, so auto-capitalization applies: `key A` in an empty field typed `A`.
 - Errors: `NOT_SUPPORTED`, `DEVICE_NOT_READY` and `HELPER_FAILED` as for [`tap`](tap.md#on-an-ios-simulator).
-- On a Mac that never had Xcode 27, keys go through karagoz's runner, as [`tap`](tap.md#on-an-ios-simulator) does, and only `HOME` and the keys that type a character [on an iPhone](#on-an-iphone) have one. `POWER` and the volume keys fail before anything is sent, like any key without one: `'POWER' has no key on this simulator: with a CoreSimulator older than Xcode 27's, karagoz's runner takes HOME and keys that type a character (letters, digits, SPACE, ENTER, TAB, DEL, ESCAPE, punctuation)` (`INVALID_ARGS`).
+- On a Mac that never had Xcode 27, keys go through karagoz's runner, as [`tap`](tap.md#on-an-ios-simulator) does, and only `HOME` and the keys that type a character [on an iPhone](#on-an-iphone) have one. `HOME` behaves as on an iPhone: it brings the Home screen to the front and leaves its page as it is. `POWER` and the volume keys fail before anything is sent, like any key without one: `'POWER' has no key on this simulator: with a CoreSimulator older than Xcode 27's, karagoz's runner takes HOME and keys that type a character (letters, digits, SPACE, ENTER, TAB, DEL, ESCAPE, punctuation)` (`INVALID_ARGS`).
 
 ## On an iPhone
 

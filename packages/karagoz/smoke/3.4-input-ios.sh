@@ -9,7 +9,8 @@
 # accessibility write-back and uninstall-runner; on such a Mac the real part runs through it and removes it after.
 # Precondition: macOS with Xcode. A booted simulator on its home screen is used when one is running and no phone is
 # attached, else the real part prints SKIP. It builds smoke/fixtures/input-ios, installs, drives and uninstalls it,
-# presses HOME and checks that the home screen is on the page it recorded and the app is gone. Fake swiftc, simctl and devicectl come through
+# presses HOME and checks that the home screen is on the page it recorded (below CoreSimulator 1155.4 only that it is
+# in front) and the app is gone. Fake swiftc, simctl and devicectl come through
 # DEVELOPER_DIR, fake adb through ANDROID_HOME, all under env -i with a temporary HOME; the adb server on the default
 # port is never touched.
 set -e
@@ -67,9 +68,11 @@ wait_for() { # <label> <want> <mode> [<id>]
     sleep 0.5
   done
 }
+# With "any", only that the home screen is in front: karagoz's runner presses HOME by bringing it there, which leaves
+# its page as it is (K49).
 home_back() {
   i=0
-  until [ "$(tree | q home)" = "$home" ]; do
+  until got=$(tree | q home) && { [ "$got" = "$home" ] || { [ "$1" = any ] && [ "${got#Page }" != "$got" ]; }; }; do
     i=$((i + 1))
     [ "$i" -lt 20 ] || { echo "FAIL: the home screen is $(tree | q home), recorded $home"; return 1; }
     sleep 0.5
@@ -87,7 +90,7 @@ restore() {
     echo "note: home screen not checked (no key HOME before Xcode 27)"
     return 0
   fi
-  home_back
+  if [ "$runner_mac" = yes ]; then home_back any; else home_back; fi
   back=$?
   if [ "$runner_mac" = yes ]; then
     out=$(real uninstall-runner --device "$booted")

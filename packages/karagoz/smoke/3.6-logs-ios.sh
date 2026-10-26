@@ -9,7 +9,8 @@
 # Precondition: macOS with Xcode. A booted simulator on its home screen is used when one is running and no phone is
 # attached, else the real part prints SKIP. It builds smoke/fixtures/input-ios, installs, launches, terminates and
 # uninstalls dev.karagoz.probe, then checks the app is gone, the home screen is on the page it recorded and listapps is
-# as before. Nothing changes the log configuration. Fake simctl comes through DEVELOPER_DIR, fake adb through
+# as before. Below CoreSimulator 1155.4 the HOME press installs karagoz's runner, which the smoke removes again, and
+# only that the home screen is in front is checked. Nothing changes the log configuration. Fake simctl comes through DEVELOPER_DIR, fake adb through
 # ANDROID_HOME, all under env -i; the adb server on the default port is never touched.
 set -e
 cd "$(dirname "$0")/.."
@@ -52,9 +53,11 @@ apps() {
   "$framework" listapps "$booted" > "$tmp/apps.plist"
   plutil -convert json -o - "$tmp/apps.plist" | node -e 'console.log(Object.keys(JSON.parse(require("fs").readFileSync(0, "utf8"))).sort().join(" "))'
 }
+# With "any", only that the home screen is in front: karagoz's runner presses HOME by bringing it there, which leaves
+# its page as it is (K49).
 home_back() {
   i=0
-  until [ "$(tree | q home)" = "$home" ]; do
+  until got=$(tree | q home) && { [ "$got" = "$home" ] || { [ "$1" = any ] && [ "${got#Page }" != "$got" ]; }; }; do
     i=$((i + 1))
     [ "$i" -lt 20 ] || { echo "FAIL: the home screen is $(tree | q home), recorded $home"; return 1; }
     sleep 0.5
@@ -75,15 +78,16 @@ restore() {
     echo "note: home screen not checked (no key HOME before Xcode 27)"
     return 0
   fi
-  home_back
-  back=$?
   # Below CoreSimulator 1155.4 that HOME went through karagoz's runner, which the first key installed (K49).
   if "$framework" listapps "$booted" 2>/dev/null | grep -q '"com.karagozmcp.runner.xctrunner"'; then
+    home_back any
+    back=$?
     out=$(real uninstall-runner --device "$booted")
     "$framework" listapps "$booted" 2>/dev/null | grep -q '"com.karagozmcp.runner.xctrunner"' \
       && { echo "FAIL: karagoz's runner is still installed: $out"; return 1; }
+    return $back
   fi
-  return $back
+  home_back
 }
 trap 'set +e; pkill -f "sleep 97\.61"; restore; st=$?; rm -rf "$tmp"; [ "$st" = 0 ] || exit 1' EXIT
 
