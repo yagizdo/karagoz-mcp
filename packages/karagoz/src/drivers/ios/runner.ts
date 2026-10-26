@@ -649,16 +649,14 @@ async function start(udid: string, dev: string, simulator: string | undefined): 
       if (state === 'up') return;
       // A simulator's port is this start's own; anything else there before the runner binds it fails the bind.
       if (on === 'iphone' && state !== 'down') throw refusal(udid, state);
-      if (Date.now() > deadline && on === 'simulator') {
-        throw new KaragozError(
-          'DEVICE_NOT_READY',
-          `device ${udid} is not ready: karagoz's runner did not start within ${START_BUDGET_MS / 1000} s (log: ${log}).`,
-        );
-      }
       if (Date.now() > deadline) {
+        const look =
+          on === 'iphone'
+            ? '. Look at the iPhone: unlock it, enter the passcode if it asks to enable UI automation, and check that Settings > Developer > Enable UI Automation is on'
+            : '';
         throw new KaragozError(
           'DEVICE_NOT_READY',
-          `device ${udid} is not ready: karagoz's runner did not start within ${START_BUDGET_MS / 1000} s. Look at the iPhone: unlock it, enter the passcode if it asks to enable UI automation, and check that Settings > Developer > Enable UI Automation is on (log: ${log}).`,
+          `device ${udid} is not ready: karagoz's runner did not start within ${START_BUDGET_MS / 1000} s${look} (log: ${log}).`,
         );
       }
       await sleep(POLL_MS, undefined, signal && { signal });

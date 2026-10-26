@@ -6,7 +6,7 @@ import { promisify } from 'node:util';
 import { cancellation } from '../../cancellation.js';
 import { KaragozError } from '../../errors.js';
 import { isRecord } from './record.js';
-import { binary, developerDir } from './simctl.js';
+import { binary, developerDir, FRAMEWORK_PLIST } from './simctl.js';
 
 const run = promisify(execFile);
 
@@ -145,11 +145,11 @@ export function older(a: string, b: string): boolean {
   return false;
 }
 
-// The CoreSimulator of the simctl karagoz runs: the Info.plist of its framework, or beside the bin folder of a simctl
-// under DEVELOPER_DIR that is not Apple's shim (the smokes' fakes). undefined when there is none.
-export async function coreSimulator(): Promise<string | undefined> {
+// The CoreSimulator of the simctl karagoz runs: the Info.plist beside the bin folder of a simctl under DEVELOPER_DIR
+// that is not Apple's shim (the smokes' fakes give one), else the framework's, which a real simctl uses.
+async function coreSimulator(): Promise<string | undefined> {
   const { bin } = await binary();
-  return bundleVersion(join(dirname(bin), '..', 'Info.plist'));
+  return (await bundleVersion(join(dirname(bin), '..', 'Info.plist'))) ?? bundleVersion(FRAMEWORK_PLIST);
 }
 
 // The simulator's own input service, dtuhidd, came with CoreSimulator 1155.4. Any newer Xcode overwrites the framework,

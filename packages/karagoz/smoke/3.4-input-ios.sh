@@ -137,6 +137,8 @@ printf '#!/bin/sh\nexec /bin/sh "%s/helper" "\$@"\n' "$fake" > "\$out"
 FAKE
 chmod +x "$tmp/sdk/platform-tools/adb" "$tmp/dev/usr/bin/simctl" "$tmp/dev/usr/bin/devicectl" "$toolchain/swiftc"
 cp "$tmp/dev/usr/bin/simctl" "$tmp/nocc/usr/bin/simctl"
+# A CoreSimulator with dtuhidd for these fakes, whatever this Mac has; section 11 gives an older one.
+printf '<plist><dict><key>CFBundleVersion</key><string>1174.9.2</string></dict></plist>\n' | tee "$tmp/dev/usr/Info.plist" > "$tmp/nocc/usr/Info.plist"
 echo "{\"devices\":{\"com.apple.CoreSimulator.SimRuntime.iOS-27-0\":[{\"udid\":\"A1\",\"name\":\"iPhone 17\",\"state\":\"Booted\",\"isAvailable\":true},{\"udid\":\"A2\",\"name\":\"iPhone 17 Pro\",\"state\":\"Booting\",\"isAvailable\":true}]}}" > "$fake/list.json"
 helper() { printf '%s\n' "$1" > "$fake/helper"; }
 # A helper that prints $fake/tree.json in tree mode (no input arguments) and counts the reads; in an input mode it

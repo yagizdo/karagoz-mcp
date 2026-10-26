@@ -369,10 +369,10 @@ final class Runner: XCTestCase {
         guard let event = build(events, make, 0x0C, 0x30, 0.5)?.takeUnretainedValue() else {
           throw Missing(name: "XCDeviceEvent deviceEventWithPage:usage:duration:")
         }
-        let device = XCUIDevice.shared as NSObject
-        let (perform, sel) = try privateMethod(device, "performDeviceEvent:error:", as: PerformDeviceEvent.self)
+        let shared = XCUIDevice.shared as NSObject
+        let (perform, sel) = try privateMethod(shared, "performDeviceEvent:error:", as: PerformDeviceEvent.self)
         var error: NSError?
-        guard perform(device, sel, event, &error) else {
+        guard perform(shared, sel, event, &error) else {
           return (500, ["error": error?.localizedDescription ?? "the \(device) did not take the lock button", "kind": "event"])
         }
       } catch {

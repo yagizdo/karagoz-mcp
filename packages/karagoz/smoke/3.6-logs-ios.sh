@@ -76,6 +76,14 @@ restore() {
     return 0
   fi
   home_back
+  back=$?
+  # Below CoreSimulator 1155.4 that HOME went through karagoz's runner, which the first key installed (K49).
+  if "$framework" listapps "$booted" 2>/dev/null | grep -q '"com.karagozmcp.runner.xctrunner"'; then
+    out=$(real uninstall-runner --device "$booted")
+    "$framework" listapps "$booted" 2>/dev/null | grep -q '"com.karagozmcp.runner.xctrunner"' \
+      && { echo "FAIL: karagoz's runner is still installed: $out"; return 1; }
+  fi
+  return $back
 }
 trap 'set +e; pkill -f "sleep 97\.61"; restore; st=$?; rm -rf "$tmp"; [ "$st" = 0 ] || exit 1' EXIT
 
