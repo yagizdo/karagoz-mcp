@@ -1,5 +1,5 @@
 import { resolveTarget } from './devices.js';
-import { installRunner, uninstallRunner } from './drivers/ios/runner.js';
+import { installRunner, uninstallRunner, uninstallSimulatorRunner } from './drivers/ios/runner.js';
 
 export async function installRunnerOn(device: string | undefined, team: string | undefined) {
   const { id } = await resolveTarget(device, 'iphone-only');
@@ -7,6 +7,8 @@ export async function installRunnerOn(device: string | undefined, team: string |
 }
 
 export async function uninstallRunnerFrom(device: string | undefined) {
-  const { id } = await resolveTarget(device, 'iphone-only');
-  return uninstallRunner(id);
+  const resolved = await resolveTarget(device, 'runner');
+  return resolved.platform === 'ios' && resolved.kind === 'simulator'
+    ? uninstallSimulatorRunner(resolved.id)
+    : uninstallRunner(resolved.id);
 }

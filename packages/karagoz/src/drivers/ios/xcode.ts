@@ -1,12 +1,12 @@
 import { execFile } from 'node:child_process';
 import { access, lstat, mkdir, readFile, readlink } from 'node:fs/promises';
 import { homedir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { promisify } from 'node:util';
 import { cancellation } from '../../cancellation.js';
 import { KaragozError } from '../../errors.js';
 import { isRecord } from './record.js';
-import { developerDir } from './simctl.js';
+import { binary, developerDir, FRAMEWORK_PLIST } from './simctl.js';
 
 const run = promisify(execFile);
 
@@ -133,6 +133,34 @@ async function preference(key: string): Promise<unknown> {
 // JSON cannot carry, so plutil's json form refuses it (K47).
 export async function bundleVersion(plist: string): Promise<string | undefined> {
   return (await plistValue(plist, 'CFBundleVersion', 'raw'))?.trim() || undefined;
+}
+
+// Numeric per component, a missing component counting as 0, as the simctl shim's version sort does.
+export function older(a: string, b: string): boolean {
+  const x = a.split('.').map(Number);
+  const y = b.split('.').map(Number);
+  for (let i = 0; i < Math.max(x.length, y.length); i++) {
+    if ((x[i] ?? 0) !== (y[i] ?? 0)) return (x[i] ?? 0) < (y[i] ?? 0);
+  }
+  return false;
+}
+
+// The CoreSimulator of the simctl karagoz runs: the Info.plist beside the bin folder of a simctl under DEVELOPER_DIR
+// that is not Apple's shim (the smokes' fakes give one), else the framework's, which a real simctl uses.
+async function coreSimulator(): Promise<string | undefined> {
+  const { bin } = await binary();
+  return (await bundleVersion(join(dirname(bin), '..', 'Info.plist'))) ?? bundleVersion(FRAMEWORK_PLIST);
+}
+
+// The simulator's own input service, dtuhidd, came with CoreSimulator 1155.4. Any newer Xcode overwrites the framework,
+// so its version, not the selected Xcode's, says whether it is there (K49).
+export const DTUHIDD_FROM = '1155.4';
+
+// Below that version karagoz's runner plays tap, swipe, text and key inside the simulator (K49). An unreadable version
+// keeps the helper's path, which reports what it finds.
+export async function runnerOnSimulators(): Promise<boolean> {
+  const version = await coreSimulator();
+  return version !== undefined && older(version, DTUHIDD_FROM);
 }
 
 // The development teams of the Apple accounts signed in to Xcode. Xcode writes them only once it has shown a team list,

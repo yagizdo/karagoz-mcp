@@ -2,6 +2,7 @@ import { describe, entries, listDevices, notReady as notReadyAndroid } from './d
 import { listPhones, notReadyPhone } from './drivers/ios/devicectl.js';
 import { listSimulators, notReady as notReadySimulator } from './drivers/ios/devices.js';
 import { runnerStates } from './drivers/ios/runner.js';
+import { runnerOnSimulators } from './drivers/ios/xcode.js';
 import { KaragozError } from './errors.js';
 
 type Platform = 'android' | 'ios';
@@ -133,14 +134,16 @@ function ready(target: Candidate): string {
 
 // Every later adb call passes -s <id> and every simctl call the UDID, so the tools' own defaults never apply (K21).
 // Every command runs on an iPhone (K21 4.6 note); 'iphone-only' (the runner's own commands) refuses everything else, a
-// permanent answer given before any readiness check (K21 4.3 note).
+// permanent answer given before any readiness check (K21 4.3 note). 'runner' also takes a simulator on a Mac where
+// karagoz's runner plays its input (K49).
 export async function resolveTarget(
   device: string | undefined,
-  accept?: 'iphone-only',
+  accept?: 'iphone-only' | 'runner',
 ): Promise<{ id: string; platform: 'android' } | { id: string; platform: 'ios'; kind: 'simulator' | 'physical' }> {
   const target = await find(device);
   const physical = target.platform === 'ios' && target.kind === 'physical';
-  if (accept === 'iphone-only' && !physical) {
+  const simulator = target.platform === 'ios' && target.kind === 'simulator';
+  if (accept !== undefined && !physical && !(accept === 'runner' && simulator && (await runnerOnSimulators()))) {
     throw new KaragozError(
       'NOT_SUPPORTED',
       `device ${target.id} is not an iPhone; karagoz's runner runs only on iPhones.`,

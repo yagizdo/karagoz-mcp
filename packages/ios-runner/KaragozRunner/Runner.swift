@@ -4,8 +4,9 @@ import XCTest
 
 // The host side (packages/karagoz/src/drivers/ios/runner.ts) mirrors the port, the protocol number, the two headers and
 // the text each HMAC-SHA256 covers: "karagoz-req\n<nonce>\n<METHOD> <path>\n<body>" for a request,
-// "karagoz-res\n<nonce>\n<status>\n<body>" for its answer (K41, K42).
-private let port: UInt16 = 27753
+// "karagoz-res\n<nonce>\n<status>\n<body>" for its answer (K41, K42). A simulator shares the Mac's loopback, so the host
+// picks a free port for each simulator start and passes it as KARAGOZ_PORT; an iPhone gets none and keeps 27753 (K49).
+private let port: UInt16 = UInt16(ProcessInfo.processInfo.environment["KARAGOZ_PORT"] ?? "") ?? 27753
 private let protocolVersion = 2
 private let nonceHeader = "x-karagoz-nonce"
 private let macHeader = "x-karagoz-mac"
@@ -21,6 +22,11 @@ private let gateSeconds: Double = 8
 private let tapMilliseconds: Double = 100
 // A long text is the largest request; 1 MiB is hours of typing.
 private let maxRequestBytes = 1 << 20
+#if targetEnvironment(simulator)
+private let device = "simulator"
+#else
+private let device = "iPhone"
+#endif
 // UIAccessibilityTraitHeader; the simulator's tree calls these nodes AXHeading (K34).
 private let headerTrait: UInt64 = 0x10000
 
@@ -242,7 +248,7 @@ final class Runner: XCTestCase {
     _ work: @escaping @MainActor () -> (Int, [String: Any])) {
     guard gate.wait(timeout: .now() + gateSeconds) == .success else {
       return respond(
-        connection, 500, ["error": "another input or ui-tree read is still running on the iPhone", "kind": "busy"],
+        connection, 500, ["error": "another input or ui-tree read is still running on the \(device)", "kind": "busy"],
         nonce: nonce)
     }
     defer { gate.signal() }
@@ -336,7 +342,7 @@ final class Runner: XCTestCase {
     let (synthesize, sel) = try privateMethod(record, "synthesizeWithError:", as: Synthesize.self)
     var error: NSError?
     guard synthesize(record, sel, &error) else {
-      return (500, ["error": error?.localizedDescription ?? "the iPhone did not take the event", "kind": "event"])
+      return (500, ["error": error?.localizedDescription ?? "the \(device) did not take the event", "kind": "event"])
     }
     return (200, [:])
   }
@@ -348,8 +354,11 @@ final class Runner: XCTestCase {
   private func button(_ name: String) -> (Int, [String: Any]) {
     switch name {
     case "home": XCUIApplication(bundleIdentifier: "com.apple.springboard").activate()
+    // The simulator SDK marks both unavailable; a simulator answers them as unknown buttons.
+    #if !targetEnvironment(simulator)
     case "volumeUp": XCUIDevice.shared.press(.volumeUp)
     case "volumeDown": XCUIDevice.shared.press(.volumeDown)
+    #endif
     case "lock":
       do {
         let make = selector("deviceEventWithPage:usage:duration:")
@@ -360,11 +369,11 @@ final class Runner: XCTestCase {
         guard let event = build(events, make, 0x0C, 0x30, 0.5)?.takeUnretainedValue() else {
           throw Missing(name: "XCDeviceEvent deviceEventWithPage:usage:duration:")
         }
-        let device = XCUIDevice.shared as NSObject
-        let (perform, sel) = try privateMethod(device, "performDeviceEvent:error:", as: PerformDeviceEvent.self)
+        let shared = XCUIDevice.shared as NSObject
+        let (perform, sel) = try privateMethod(shared, "performDeviceEvent:error:", as: PerformDeviceEvent.self)
         var error: NSError?
-        guard perform(device, sel, event, &error) else {
-          return (500, ["error": error?.localizedDescription ?? "the iPhone did not take the lock button", "kind": "event"])
+        guard perform(shared, sel, event, &error) else {
+          return (500, ["error": error?.localizedDescription ?? "the \(device) did not take the lock button", "kind": "event"])
         }
       } catch {
         return failed(error)

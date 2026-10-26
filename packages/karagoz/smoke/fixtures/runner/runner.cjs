@@ -1,8 +1,8 @@
-// The fake runner for smokes 4.3 and 4.4: node runner.cjs <fake dir> <xctestrun>. Like the real one it takes
-// KARAGOZ_TOKEN from the .xctestrun's EnvironmentVariables, refuses a request without a valid MAC (401, unsigned) and
-// signs every other answer (K42). Each input (POST) is appended to $fake/inputs as "<route> <body>". $fake/runner-mode
-// steers it: old, stranger, squatter and mute change /health; hang, close, private, snapshot, event and xctest change
-// /tree and the input routes; /health answers signed protocol 2 in every other mode.
+// The fake runner for smokes 3.4, 4.3 and 4.4: node runner.cjs <fake dir> <xctestrun>. Like the real one it takes
+// KARAGOZ_TOKEN, and a simulator's KARAGOZ_PORT, from the .xctestrun's EnvironmentVariables, refuses a request without
+// a valid MAC (401, unsigned) and signs every other answer (K42). Each input (POST) is appended to $fake/inputs as
+// "<route> <body>". $fake/runner-mode steers it: old, stranger, squatter and mute change /health; hang, close, private,
+// snapshot, event and xctest change /tree and the input routes; /health answers signed protocol 2 in every other mode.
 const http = require("http"), fs = require("fs"), crypto = require("crypto");
 const [, , fake, xctestrun] = process.argv;
 const env = /<key>EnvironmentVariables<\/key>\s*<dict>([\s\S]*?)<\/dict>/.exec(fs.readFileSync(xctestrun, "utf8"))?.[1] ?? "";
@@ -55,4 +55,5 @@ const server = http.createServer((req, res) => {
     answer(200, JSON.parse(fs.readFileSync(fake + "/tree.json", "utf8")));
   });
 });
-server.listen(0, "127.0.0.1", () => fs.writeFileSync(fake + "/runner-port", String(server.address().port)));
+const port = Number(/<key>KARAGOZ_PORT<\/key>\s*<string>(\d+)<\/string>/.exec(env)?.[1] ?? 0);
+server.listen(port, "127.0.0.1", () => fs.writeFileSync(fake + "/runner-port", String(server.address().port)));

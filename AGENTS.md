@@ -2,7 +2,7 @@
 
 Device automation for mobile apps across four targets: Android emulator, Android device, iOS simulator, iOS device. CLI first, MCP server as a thin wrapper over the same core.
 
-Every device command runs on all four targets (`install-runner` and `uninstall-runner` only on iPhones).
+Every device command runs on all four targets (`install-runner` only on iPhones, `uninstall-runner` on iPhones and on simulators of a Mac whose CoreSimulator predates Xcode 27).
 
 These rules are for anyone who changes this repository, person or agent. A decision number such as K5 points into the maintainers' design journal, which is not in the repository, so its reason is always written beside it.
 

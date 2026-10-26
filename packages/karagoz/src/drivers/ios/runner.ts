@@ -2,8 +2,8 @@ import { execFile, spawn } from 'node:child_process';
 import { createHash, createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
 import { closeSync, constants, openSync } from 'node:fs';
 import { copyFile, mkdir, open, readdir, readFile, rename, rm, writeFile, type FileHandle } from 'node:fs/promises';
-import type { Socket } from 'node:net';
-import { dirname, join } from 'node:path';
+import { createConnection, createServer, type Socket } from 'node:net';
+import { basename, dirname, join } from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
@@ -11,6 +11,7 @@ import { cancellation } from '../../cancellation.js';
 import { KaragozError, type ErrorCode } from '../../errors.js';
 import { apps, installApp, PHONE_TIMEOUT_MS, profiles, removeProfile, uninstallApp } from './devicectl.js';
 import { isRecord } from './record.js';
+import { binary, simctl } from './simctl.js';
 import { connect } from './usbmux.js';
 import { buildVersion, CACHE_HINT, CACHE_ROOT, noTeam, ownedDir, teams, xcode } from './xcode.js';
 
@@ -55,8 +56,9 @@ function teamOf(appId: string): string | undefined {
   return TEAM.test(team) ? team : undefined;
 }
 
-// Where this karagoz's runner, built by this Xcode, lives: one directory per team below it.
-export async function runnerBuild(dev: string): Promise<string> {
+// Where this karagoz's runner, built by this Xcode, lives: one directory per team below it for an iPhone, and under
+// runner-sim the simulator build, kept apart because doctor reads every directory under runner as a team (K49).
+export async function runnerBuild(dev: string, dir: 'runner' | 'runner-sim' = 'runner'): Promise<string> {
   const texts = await Promise.all(
     SOURCES.map((file) =>
       readFile(join(PROJECT, file)).catch(() => {
@@ -72,13 +74,13 @@ export async function runnerBuild(dev: string): Promise<string> {
     .update(await buildVersion(dev))
     .digest('hex')
     .slice(0, 16);
-  return join(CACHE_ROOT, 'runner', key);
+  return join(CACHE_ROOT, dir, key);
 }
 
-// The .xctestrun the team's build left under root, undefined when there is none. Xcode names it KaragozRunner_<sdk>;
-// the session copies start() writes beside it are not builds (K42).
-export async function xctestrun(root: string, team: string): Promise<string | undefined> {
-  const products = join(root, team, 'Build', 'Products');
+// The .xctestrun the build in root/folder (a team, or the simulator build) left, undefined when there is none. Xcode
+// names it KaragozRunner_<sdk>; the session copies start() writes beside it are not builds (K42).
+export async function xctestrun(root: string, folder: string): Promise<string | undefined> {
+  const products = join(root, folder, 'Build', 'Products');
   const file = (await readdir(products).catch(() => [])).find(
     (name) => name.startsWith('KaragozRunner_') && name.endsWith('.xctestrun'),
   );
@@ -107,6 +109,59 @@ async function chooseTeam(wanted: string | undefined): Promise<string> {
   throw new KaragozError('INVALID_ARGS', `Xcode lists more than one team: ${listed}. Pick one with --team <ID>.`);
 }
 
+// Copies the project into derived/project and builds it for testing there; extra holds the destination and, for an
+// iPhone, the signing settings.
+async function build(dev: string, derived: string, extra: string[]): Promise<void> {
+  const project = join(derived, 'project');
+  for (const file of SOURCES) {
+    await mkdir(dirname(join(project, file)), { recursive: true, mode: 0o700 });
+    await copyFile(join(PROJECT, file), join(project, file));
+  }
+  const log = join(derived, 'build.log');
+  const signal = cancellation.getStore();
+  signal?.throwIfAborted();
+  try {
+    const { stdout, stderr } = await run(
+      xcodebuild(dev).bin,
+      [
+        '-quiet',
+        'build-for-testing',
+        '-project',
+        join(project, 'KaragozRunner.xcodeproj'),
+        '-scheme',
+        'KaragozRunner',
+        '-derivedDataPath',
+        derived,
+        ...extra,
+      ],
+      { timeout: BUILD_TIMEOUT_MS, maxBuffer: MAX_BUFFER, ...(signal && { signal }) },
+    );
+    await writeFile(log, stdout + stderr);
+  } catch (err) {
+    // The SDK sends no response for a cancelled call, so the abort passes through (K31).
+    if (signal?.aborted) throw err;
+    if (!(err instanceof Error)) throw err;
+    const stdout = 'stdout' in err && typeof err.stdout === 'string' ? err.stdout : '';
+    const stderr = 'stderr' in err && typeof err.stderr === 'string' ? err.stderr : '';
+    const output = stdout + stderr;
+    await writeFile(log, output).catch(() => undefined);
+    if ('killed' in err && err.killed) {
+      throw new KaragozError(
+        'HELPER_FAILED',
+        `xcodebuild did not finish within ${BUILD_TIMEOUT_MS / 60_000} minutes (log: ${log})`,
+      );
+    }
+    if ('code' in err && err.code === 'ENOENT') {
+      throw new KaragozError('HELPER_FAILED', xcodebuild(dev).missing);
+    }
+    const errors = output.split('\n').filter((line) => line.includes('error:'));
+    const reason = (
+      errors.length ? [...new Set(errors.map((line) => line.trim()))].slice(0, 3).join(' ') : err.message
+    ).slice(0, 300);
+    throw new KaragozError('HELPER_FAILED', `the runner build failed: ${reason} (log: ${log})`);
+  }
+}
+
 // Builds the runner for the team with xcodebuild and installs it with devicectl: the one command that writes the runner
 // to a phone (K13 4.0 note, K41).
 export async function installRunner(udid: string, wanted: string | undefined) {
@@ -119,64 +174,40 @@ export async function installRunner(udid: string, wanted: string | undefined) {
   await ownedDir(derived);
   const id = runnerId(team);
   // Two installs for one team share its derived data, which one xcodebuild builds at a time.
-  await locked(`team-${team}`, BUILD_LOCK_MS, async () => {
-    const project = join(derived, 'project');
-    for (const file of SOURCES) {
-      await mkdir(dirname(join(project, file)), { recursive: true, mode: 0o700 });
-      await copyFile(join(PROJECT, file), join(project, file));
-    }
-    const log = join(derived, 'build.log');
-    const signal = cancellation.getStore();
-    signal?.throwIfAborted();
-    try {
-      const { stdout, stderr } = await run(
-        xcodebuild(dev).bin,
-        [
-          '-quiet',
-          'build-for-testing',
-          '-project',
-          join(project, 'KaragozRunner.xcodeproj'),
-          '-scheme',
-          'KaragozRunner',
-          '-destination',
-          `id=${udid}`,
-          '-derivedDataPath',
-          derived,
-          '-allowProvisioningUpdates',
-          '-allowProvisioningDeviceRegistration',
-          `DEVELOPMENT_TEAM=${team}`,
-          `PRODUCT_BUNDLE_IDENTIFIER=${id}`,
-          'CODE_SIGN_STYLE=Automatic',
-        ],
-        { timeout: BUILD_TIMEOUT_MS, maxBuffer: MAX_BUFFER, ...(signal && { signal }) },
-      );
-      await writeFile(log, stdout + stderr);
-    } catch (err) {
-      // The SDK sends no response for a cancelled call, so the abort passes through (K31).
-      if (signal?.aborted) throw err;
-      if (!(err instanceof Error)) throw err;
-      const stdout = 'stdout' in err && typeof err.stdout === 'string' ? err.stdout : '';
-      const stderr = 'stderr' in err && typeof err.stderr === 'string' ? err.stderr : '';
-      const output = stdout + stderr;
-      await writeFile(log, output).catch(() => undefined);
-      if ('killed' in err && err.killed) {
-        throw new KaragozError(
-          'HELPER_FAILED',
-          `xcodebuild did not finish within ${BUILD_TIMEOUT_MS / 60_000} minutes (log: ${log})`,
-        );
-      }
-      if ('code' in err && err.code === 'ENOENT') {
-        throw new KaragozError('HELPER_FAILED', xcodebuild(dev).missing);
-      }
-      const errors = output.split('\n').filter((line) => line.includes('error:'));
-      const reason = (
-        errors.length ? [...new Set(errors.map((line) => line.trim()))].slice(0, 3).join(' ') : err.message
-      ).slice(0, 300);
-      throw new KaragozError('HELPER_FAILED', `the runner build failed: ${reason} (log: ${log})`);
-    }
-  });
+  await locked(`team-${team}`, BUILD_LOCK_MS, () =>
+    build(dev, derived, [
+      '-destination',
+      `id=${udid}`,
+      '-allowProvisioningUpdates',
+      '-allowProvisioningDeviceRegistration',
+      `DEVELOPMENT_TEAM=${team}`,
+      `PRODUCT_BUNDLE_IDENTIFIER=${id}`,
+      'CODE_SIGN_STYLE=Automatic',
+    ]),
+  );
   await installApp(udid, join(derived, 'Build', 'Products', 'Debug-iphoneos', 'KaragozRunner-Runner.app'));
   return { device: udid, bundleId: id + APP_SUFFIX, team };
+}
+
+// The simulator build of this karagoz and Xcode, made by the first input that needs it: no team and no signing
+// settings, so Xcode signs it to run locally. One build serves every simulator (K49).
+async function simulatorBuild(udid: string, dev: string): Promise<string> {
+  const root = await runnerBuild(dev, 'runner-sim');
+  await ownedDir(join(CACHE_ROOT, 'runner-sim'));
+  await ownedDir(root);
+  const derived = join(root, 'build');
+  return locked(`runner-sim-${basename(root)}`, BUILD_LOCK_MS, async () => {
+    const found = await xctestrun(root, 'build');
+    if (found) return found;
+    await ownedDir(derived);
+    await build(dev, derived, ['-destination', `id=${udid}`]);
+    const built = await xctestrun(root, 'build');
+    if (built) return built;
+    throw new KaragozError(
+      'HELPER_FAILED',
+      `xcodebuild built karagoz's runner but left no .xctestrun (log: ${join(derived, 'build.log')})`,
+    );
+  });
 }
 
 // Removes every karagoz runner and the provisioning profiles made for its ids. Automatic signing on a paid team used the
@@ -194,6 +225,19 @@ export async function uninstallRunner(udid: string) {
       removed.push(profile.uuid);
     }
     return { device: udid, apps: installed, profiles: removed };
+  });
+}
+
+// The runner app on a simulator: the build keeps the project's bundle id, which no team suffix makes unique there.
+const SIMULATOR_APP = 'com.karagozmcp.runner' + APP_SUFFIX;
+
+// Removes the runner from a simulator. Its running xcodebuild ends by itself within about 25 s (measured); a start
+// meanwhile works, on a new port (K49).
+export async function uninstallSimulatorRunner(udid: string) {
+  return locked(udid, PHONE_LOCK_MS, async () => {
+    const installed = (await simctl(['listapps', udid])).includes(`"${SIMULATOR_APP}"`);
+    if (installed) await simctl(['uninstall', udid, SIMULATOR_APP], undefined, 'UNINSTALL_FAILED');
+    return { device: udid, apps: installed ? [SIMULATOR_APP] : [], profiles: [] };
   });
 }
 
@@ -220,8 +264,13 @@ const POLL_MS = 500;
 // crashed or not, so a lock file needs no staleness rule (K41).
 const O_EXLOCK = 0x20;
 
-// Where this Mac keeps the secret of the runner it last started on a phone; every karagoz process of this user reads it.
+// Where this Mac keeps the secret of the runner it last started on a device, and a simulator runner's port; every karagoz
+// process of this user reads them.
 const secretPath = (udid: string) => join(CACHE_ROOT, 'runner', `${udid}.token`);
+const portPath = (udid: string) => join(CACHE_ROOT, 'runner', `${udid}.port`);
+
+// An iPhone's runner over usbmux, or a simulator's: a process on this Mac.
+export type On = 'iphone' | 'simulator';
 
 function notInstalled(udid: string, reason: string): KaragozError {
   return new KaragozError(
@@ -230,7 +279,13 @@ function notInstalled(udid: string, reason: string): KaragozError {
   );
 }
 
-function stranger(udid: string): KaragozError {
+function stranger(udid: string, on: On): KaragozError {
+  if (on === 'simulator') {
+    return new KaragozError(
+      'DEVICE_NOT_READY',
+      `device ${udid} is not ready: another process on this Mac answers on the port of karagoz's runner. Try again`,
+    );
+  }
   return new KaragozError(
     'DEVICE_NOT_READY',
     `device ${udid} is not ready: something else on the iPhone answers on karagoz's port ${PORT} without this Mac's key for karagoz's runner: another app, or a runner another Mac user started (it stops within 10 minutes). Restart the iPhone if it stays.`,
@@ -247,6 +302,45 @@ async function secretOf(udid: string): Promise<Buffer | undefined> {
 }
 
 type Answer = { status: number; body: string; signed: boolean };
+
+// A port nobody on this Mac holds now. Another process can take it before the runner binds it; the start then fails with
+// Runner.swift's 'cannot listen on'.
+function freePort(): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const server = createServer();
+    server.once('error', reject);
+    server.listen(0, '127.0.0.1', () => {
+      const address = server.address();
+      const port = typeof address === 'object' && address !== null ? address.port : 0;
+      server.close(() => resolve(port));
+    });
+  });
+}
+
+// The runner's stream, paused: an iPhone's through usbmux at the fixed port; a simulator's on this Mac's loopback, which
+// the simulator shares, at the port its start picked (K49). 'refused' when nothing listens there.
+async function reach(udid: string, on: On): Promise<Socket | 'refused'> {
+  if (on === 'iphone') return connect(udid, PORT, HEALTH_TIMEOUT_MS);
+  const port = Number(await readFile(portPath(udid), 'utf8').catch(() => ''));
+  if (!Number.isInteger(port) || port < 1 || port > 65535) return 'refused';
+  return new Promise((resolve) => {
+    const socket = createConnection({ host: '127.0.0.1', port });
+    // A loopback connect fails at once when nothing listens; any failure means start a runner.
+    const refused = () => {
+      clearTimeout(timer);
+      socket.destroy();
+      resolve('refused');
+    };
+    const timer = setTimeout(refused, HEALTH_TIMEOUT_MS);
+    socket.once('error', refused);
+    socket.once('connect', () => {
+      clearTimeout(timer);
+      socket.off('error', refused);
+      socket.pause();
+      resolve(socket);
+    });
+  });
+}
 
 // One HTTP/1.0 request on a usbmux stream; the runner closes the connection after its answer. signed: the answer
 // carries a valid MAC for this request's nonce, which needs the secret (K42).
@@ -315,9 +409,10 @@ function exchange(
   });
 }
 
-// A signed request to the phone's runner, which ensure() has found answering.
+// A signed request to the device's runner, which ensure() has found answering.
 async function request(
   udid: string,
+  on: On,
   method: 'GET' | 'POST',
   path: string,
   body: string,
@@ -325,7 +420,7 @@ async function request(
   failure: ErrorCode,
 ): Promise<Answer> {
   const key = await secretOf(udid);
-  const socket = await connect(udid, PORT, HEALTH_TIMEOUT_MS);
+  const socket = await reach(udid, on);
   if (socket === 'refused') throw new KaragozError(failure, "karagoz's runner stopped before it answered");
   return exchange(socket, key, method, path, body, timeoutMs, failure);
 }
@@ -335,8 +430,8 @@ type Health = 'up' | 'down' | 'old' | 'stranger';
 // up: this Mac's runner answers, signed; down: nothing listens; old: a 4.3 runner, which signs nothing; stranger:
 // anything else listening there, or no secret here to tell. A listener that accepts and does not answer is a stranger
 // too: the runner answers /health off its main thread, and starting another would replace the secret of a live one.
-async function health(udid: string): Promise<Health> {
-  const socket = await connect(udid, PORT, HEALTH_TIMEOUT_MS);
+async function health(udid: string, on: On): Promise<Health> {
+  const socket = await reach(udid, on);
   if (socket === 'refused') return 'down';
   let answer: Answer;
   try {
@@ -358,7 +453,7 @@ async function health(udid: string): Promise<Health> {
 }
 
 function refusal(udid: string, state: 'old' | 'stranger'): KaragozError {
-  return state === 'old' ? notInstalled(udid, 'is an older version') : stranger(udid);
+  return state === 'old' ? notInstalled(udid, 'is an older version') : stranger(udid, 'iphone');
 }
 
 // The .xctestrun of the installed runner's team, built by this karagoz and Xcode. The check keeps test-without-building,
@@ -378,10 +473,10 @@ async function installedBuild(udid: string, dev: string): Promise<string> {
 }
 
 // What the iPhone's user or the caller does, by xcodebuild's log, first match wins. 0xe8008012 is from a captured log;
-// the other texts come from sources and 4.3's phone run (K41).
-function startFailure(udid: string, log: string, output: string): KaragozError {
+// the other texts come from sources and 4.3's phone run (K41). A simulator has only the port to lose.
+function startFailure(udid: string, log: string, output: string, on: On): KaragozError {
   const lower = output.toLowerCase();
-  const states: [string[], ErrorCode, string][] = [
+  const phone: [string[], ErrorCode, string][] = [
     // Runner.swift's own text when the port is taken (K42).
     [
       ['cannot listen on'],
@@ -411,6 +506,10 @@ function startFailure(udid: string, log: string, output: string): KaragozError {
       'UI automation is off. Turn on Settings > Developer > Enable UI Automation, enter the passcode if the iPhone asks, then try again',
     ],
   ];
+  const simulator: [string[], ErrorCode, string][] = [
+    [['cannot listen on'], 'DEVICE_NOT_READY', 'another process on this Mac took the port karagoz picked. Try again'],
+  ];
+  const states = on === 'simulator' ? simulator : phone;
   const state = states.find(([texts]) => texts.some((text) => lower.includes(text)));
   if (state?.[1] === 'RUNNER_NOT_INSTALLED') return notInstalled(udid, state[2]);
   if (state) return new KaragozError(state[1], `device ${udid} is not ready: ${state[2]}.`);
@@ -439,8 +538,8 @@ async function writePrivate(path: string, data: string): Promise<void> {
 
 // A new secret for this start: in its file for later karagoz processes, and in a copy of the build's .xctestrun next to
 // it (its paths are relative to that folder), whose EnvironmentVariables reach the runner on the phone without the
-// secret on any command line or in Xcode's logs (measured, K42).
-async function keyed(udid: string, build: string): Promise<string> {
+// secret on any command line or in Xcode's logs (measured, K42). A simulator's port travels the same way (K49).
+async function keyed(udid: string, build: string, port: number | undefined): Promise<string> {
   const plist = await readFile(build, 'utf8').catch(() => '');
   const sections = [...plist.matchAll(/<key>EnvironmentVariables<\/key>\s*<dict>/g)];
   const [only] = sections;
@@ -455,18 +554,45 @@ async function keyed(udid: string, build: string): Promise<string> {
   const session = join(dirname(build), `session-${udid}.xctestrun`);
   await writePrivate(
     session,
-    `${plist.slice(0, at)}<key>KARAGOZ_TOKEN</key><string>${secret}</string>${plist.slice(at)}`,
+    `${plist.slice(0, at)}<key>KARAGOZ_TOKEN</key><string>${secret}</string>${port === undefined ? '' : `<key>KARAGOZ_PORT</key><string>${port}</string>`}${plist.slice(at)}`,
   );
   await writePrivate(secretPath(udid), secret);
+  if (port !== undefined) await writePrivate(portPath(udid), String(port));
   return session;
 }
 
+// A simulator's xcodebuild runs under sh, which turns app accessibility back on when xcodebuild exits: testmanagerd
+// turns it off as the runner's session ends, and apps opened later read as an empty tree (measured on iOS 26.2 and 27,
+// K47, K49). A killed group skips it; readTree() then puts it back.
+const WRITE_BACK =
+  'simctl=$1 udid=$2; shift 2; "$@"; "$simctl" spawn "$udid" defaults write com.apple.Accessibility ApplicationAccessibilityEnabled -bool true';
+
 // Starts the runner with xcodebuild test-without-building, detached: it outlives this call and ends with the runner's
 // idle stop. Only the start budget bounds this call; a start nobody waits for is killed with its process group (K41).
-async function start(udid: string, dev: string): Promise<void> {
-  const build = await installedBuild(udid, dev);
+// simulator is the simulator build's .xctestrun; an iPhone's comes from the installed runner.
+async function start(udid: string, dev: string, simulator: string | undefined): Promise<void> {
+  const on: On = simulator === undefined ? 'iphone' : 'simulator';
+  const build = simulator ?? (await installedBuild(udid, dev));
   await ownedDir(join(CACHE_ROOT, 'runner'));
-  const xctestrun = await keyed(udid, build);
+  const xctestrun = await keyed(udid, build, on === 'simulator' ? await freePort() : undefined);
+  const args = [
+    'test-without-building',
+    '-xctestrun',
+    xctestrun,
+    '-destination',
+    `id=${udid}`,
+    '-only-testing:KaragozRunner/Runner/testServe',
+    '-test-timeouts-enabled',
+    'NO',
+    '-collect-test-diagnostics',
+    'never',
+    '-parallel-testing-enabled',
+    'NO',
+  ];
+  const [command, argv] =
+    on === 'iphone'
+      ? [xcodebuild(dev).bin, args]
+      : ['/bin/sh', ['-c', WRITE_BACK, 'sh', (await binary()).bin, udid, xcodebuild(dev).bin, ...args]];
   const signal = cancellation.getStore();
   // The kill below listens for an abort from here on; a call aborted before starts nothing.
   signal?.throwIfAborted();
@@ -476,25 +602,8 @@ async function start(udid: string, dev: string): Promise<void> {
   const ended: { exited: boolean; error?: NodeJS.ErrnoException } = { exited: false };
   const child = (() => {
     try {
-      return spawn(
-        xcodebuild(dev).bin,
-        [
-          'test-without-building',
-          '-xctestrun',
-          xctestrun,
-          '-destination',
-          `id=${udid}`,
-          '-only-testing:KaragozRunner/Runner/testServe',
-          '-test-timeouts-enabled',
-          'NO',
-          '-collect-test-diagnostics',
-          'never',
-          '-parallel-testing-enabled',
-          'NO',
-        ],
-        // Never inherit: in MCP mode stdout is the JSON-RPC stream.
-        { detached: true, stdio: ['ignore', fd, fd] },
-      );
+      // Never inherit: in MCP mode stdout is the JSON-RPC stream.
+      return spawn(command, argv, { detached: true, stdio: ['ignore', fd, fd] });
     } finally {
       closeSync(fd);
     }
@@ -529,20 +638,25 @@ async function start(udid: string, dev: string): Promise<void> {
             : `xcodebuild could not start karagoz's runner: ${ended.error.message} (log: ${log})`,
         );
       }
-      if (ended.exited) throw startFailure(udid, log, output);
+      if (ended.exited) throw startFailure(udid, log, output, on);
       // xcodebuild waits, without exiting, for a phone that is not ready and says why (a locked iPhone, measured, K42):
       // a reason startFailure knows ends the start now instead of at the budget.
       if (output.includes('Waiting for the destination to become ready')) {
-        const failure = startFailure(udid, log, output);
+        const failure = startFailure(udid, log, output, on);
         if (failure.code !== 'HELPER_FAILED') throw failure;
       }
-      const state = await health(udid);
+      const state = await health(udid, on);
       if (state === 'up') return;
-      if (state !== 'down') throw refusal(udid, state);
+      // A simulator's port is this start's own; anything else there before the runner binds it fails the bind.
+      if (on === 'iphone' && state !== 'down') throw refusal(udid, state);
       if (Date.now() > deadline) {
+        const look =
+          on === 'iphone'
+            ? '. Look at the iPhone: unlock it, enter the passcode if it asks to enable UI automation, and check that Settings > Developer > Enable UI Automation is on'
+            : '';
         throw new KaragozError(
           'DEVICE_NOT_READY',
-          `device ${udid} is not ready: karagoz's runner did not start within ${START_BUDGET_MS / 1000} s. Look at the iPhone: unlock it, enter the passcode if it asks to enable UI automation, and check that Settings > Developer > Enable UI Automation is on (log: ${log}).`,
+          `device ${udid} is not ready: karagoz's runner did not start within ${START_BUDGET_MS / 1000} s${look} (log: ${log}).`,
         );
       }
       await sleep(POLL_MS, undefined, signal && { signal });
@@ -588,25 +702,28 @@ async function locked<T>(name: string, waitMs: number, work: () => Promise<T>): 
   }
 }
 
-// The runner answering on its port, started first when nothing answers.
-async function ensure(udid: string): Promise<void> {
-  const state = await health(udid);
+// The runner answering on its port, started first when nothing answers. On a simulator anything but this Mac's runner
+// at the stored port (none yet, a stale port, another process there) means start one, built first if need be (K49).
+async function ensure(udid: string, on: On): Promise<void> {
+  const state = await health(udid, on);
   if (state === 'up') return;
-  if (state !== 'down') throw refusal(udid, state);
+  if (on === 'iphone' && state !== 'down') throw refusal(udid, state);
   const dev = await xcode();
+  // Outside the device's lock: a second first call waits for the build on the build's own lock.
+  const simulator = on === 'simulator' ? await simulatorBuild(udid, dev) : undefined;
   await locked(udid, PHONE_LOCK_MS, async () => {
-    const again = await health(udid);
+    const again = await health(udid, on);
     if (again === 'up') return;
-    if (again !== 'down') throw refusal(udid, again);
-    await start(udid, dev);
+    if (on === 'iphone' && again !== 'down') throw refusal(udid, again);
+    await start(udid, dev, simulator);
   });
 }
 
 // The raw snapshot of what is on the iPhone's screen, from the runner (K41).
 export async function tree(udid: string): Promise<unknown> {
-  await ensure(udid);
-  const { status, body, signed } = await request(udid, 'GET', '/tree', '', READ_TIMEOUT_MS, 'CAPTURE_FAILED');
-  if (!signed) throw stranger(udid);
+  await ensure(udid, 'iphone');
+  const { status, body, signed } = await request(udid, 'iphone', 'GET', '/tree', '', READ_TIMEOUT_MS, 'CAPTURE_FAILED');
+  if (!signed) throw stranger(udid, 'iphone');
   let parsed: unknown;
   try {
     parsed = JSON.parse(body);
@@ -629,17 +746,26 @@ function runnerError(parsed: unknown, status: number, code: ErrorCode, prefix: s
   return new KaragozError(code, prefix + error);
 }
 
-// One input on the iPhone, through the runner started first if need be. playMs is how long the gesture or the typing
+// One input on the device, through the runner started first if need be. playMs is how long the gesture or the typing
 // takes, added to the call's budget as the runner adds it to its own (K42).
 export async function input(
   udid: string,
+  on: On,
   route: '/tap' | '/swipe' | '/text' | '/button',
   body: Record<string, unknown>,
   playMs: number,
 ): Promise<void> {
-  await ensure(udid);
-  const answer = await request(udid, 'POST', route, JSON.stringify(body), READ_TIMEOUT_MS + playMs, 'HELPER_FAILED');
-  if (!answer.signed) throw stranger(udid);
+  await ensure(udid, on);
+  const answer = await request(
+    udid,
+    on,
+    'POST',
+    route,
+    JSON.stringify(body),
+    READ_TIMEOUT_MS + playMs,
+    'HELPER_FAILED',
+  );
+  if (!answer.signed) throw stranger(udid, on);
   if (answer.status === 200) return;
   let parsed: unknown;
   try {
@@ -659,7 +785,7 @@ async function runnerState(udid: string, paired: boolean): Promise<RunnerState> 
   if (!paired) return null;
   const signal = cancellation.getStore();
   try {
-    if ((await health(udid)) === 'up') return 'running';
+    if ((await health(udid, 'iphone')) === 'up') return 'running';
   } catch (err) {
     if (signal?.aborted) throw err;
     // Not on USB or usbmuxd unreachable: the runner can still be installed, which devicectl tells.

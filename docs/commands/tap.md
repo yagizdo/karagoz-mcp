@@ -86,7 +86,8 @@ Same arguments and output. The point goes to the simulator's own input service a
 - The node is tapped at its center like a finger, so what covers it gets the tap.
 - There is no keyboard check on a simulator. The message for no match is `no node with label or value 'Save' in the frontmost app (1 read in 0.3 s)`.
 - A tap takes about 0.6 s; a node tap adds one tree read, about 0.3 s.
-- Errors: `NOT_SUPPORTED` with Xcode 26 or older, `DEVICE_NOT_READY` when the input service does not answer within 4 s (a simulator that has just booted), `HELPER_FAILED`, and for node taps the [`ui-tree` errors on iOS](ui-tree.md#on-an-ios-simulator).
+- Errors: `NOT_SUPPORTED` with Xcode 26 or older on a Mac that once had Xcode 27, `DEVICE_NOT_READY` when the input service does not answer within 4 s (a simulator that has just booted), `HELPER_FAILED`, and for node taps the [`ui-tree` errors on iOS](ui-tree.md#on-an-ios-simulator).
+- On a Mac that never had Xcode 27, the touch goes through karagoz's runner, which the first `tap`, `swipe`, `text` or `key` builds and installs on the simulator ([Requirements](../requirements.md)). The output is the same, and a later tap takes 0.3-0.5 s. Landscape is not detected there, so coordinates are taken as portrait. Errors there: `HELPER_FAILED` when the build or the start fails (with the log path), `DEVICE_NOT_READY` when the runner does not answer within 60 s.
 
 ## On an iPhone
 

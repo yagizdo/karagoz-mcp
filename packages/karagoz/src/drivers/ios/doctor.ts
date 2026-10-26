@@ -7,7 +7,7 @@ import { runnerBuild, xcodebuild, xctestrun } from './runner.js';
 import { binary, EXPECTED, FRAMEWORK_PLIST } from './simctl.js';
 import { helperPath, swiftc } from './ui-tree.js';
 import { daemonPath, unreachable } from './usbmux.js';
-import { bundleVersion, NO_XCODE, noTeam, owns, selected, teams, type Team } from './xcode.js';
+import { bundleVersion, DTUHIDD_FROM, NO_XCODE, noTeam, older, owns, selected, teams, type Team } from './xcode.js';
 
 // doctor reads files, and runs nothing but plutil, which only converts Xcode's preference file and the CoreSimulator
 // and CoreDevice Info.plists, binary on some Macs. simctl would start CoreSimulatorService and rewrite
@@ -42,6 +42,9 @@ type Report = {
 // tap, swipe and key need Xcode 27's simulator HID service (K35), text its automation session (K47).
 const FLOOR = 27;
 const OUTDATED = `tap, swipe, text and key on a simulator need Xcode ${FLOOR} or later`;
+
+// Below CoreSimulator 1155.4 karagoz's runner plays the four inside the simulator, whatever the Xcode (K49).
+const runnerCovers = (entry: Entry) => entry.version !== undefined && older(entry.version, DTUHIDD_FROM);
 
 const text = (path: string) => readFile(path, 'utf8').catch(() => '');
 const plistString = (plist: string, key: string) =>
@@ -100,16 +103,6 @@ async function executable(name: 'tar' | 'log'): Promise<Entry> {
   return denied
     ? { status: 'failed', path: denied, message: `cannot run ${denied} (EACCES)` }
     : { status: 'missing', message: notOnPath(name) };
-}
-
-// Numeric per component, a missing component counting as 0, as the shim's version sort does.
-function older(a: string, b: string): boolean {
-  const x = a.split('.').map(Number);
-  const y = b.split('.').map(Number);
-  for (let i = 0; i < Math.max(x.length, y.length); i++) {
-    if ((x[i] ?? 0) !== (y[i] ?? 0)) return (x[i] ?? 0) < (y[i] ?? 0);
-  }
-  return false;
 }
 
 // A missing or older framework than the selected Xcode's shim names: its first launch has not finished. A newer one is
@@ -258,7 +251,7 @@ export async function doctor(): Promise<Report> {
       ? 'missing'
       : tools.some((entry) => entry.status !== 'ok') || helperEntry.status === 'failed'
         ? 'failed'
-        : version !== undefined && Number(version.split('.')[0]) < FLOOR
+        : version !== undefined && Number(version.split('.')[0]) < FLOOR && !runnerCovers(simctlEntry)
           ? 'outdated'
           : 'ok';
   const message =

@@ -4,7 +4,7 @@
 karagoz install-runner [--device <id>] [--team <ID>]
 ```
 
-Builds karagoz's runner, the small XCUITest bundle that [`ui-tree`](ui-tree.md#on-an-iphone), `tap`, `swipe`, `text` and `key` use on an iPhone, with your Apple team, and installs it on a paired iPhone. It is the one command that puts something of karagoz's on a device; no other command installs the runner. macOS only.
+Builds karagoz's runner, the small XCUITest bundle that [`ui-tree`](ui-tree.md#on-an-iphone), `tap`, `swipe`, `text` and `key` use on an iPhone, with your Apple team, and installs it on a paired iPhone. It is the one command that puts something of karagoz's on an iPhone; no other command installs the runner there. A simulator needs no install step: on a Mac that never had Xcode 27, the first `tap`, `swipe`, `text` or `key` installs the runner on it ([Requirements](../requirements.md)). macOS only.
 
 | Option | Default | Meaning |
 | --- | --- | --- |
