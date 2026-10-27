@@ -1,5 +1,9 @@
 # Karagöz
 
+[![npm version](https://img.shields.io/npm/v/karagoz-mcp.svg)](https://www.npmjs.com/package/karagoz-mcp)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://github.com/yagizdo/karagoz-mcp/blob/main/LICENSE)
+[![Node.js](https://img.shields.io/badge/node-%3E%3D22-brightgreen)](https://nodejs.org)
+
 Device automation for mobile apps. One tool for four targets: Android emulator, Android physical device, iOS simulator, iOS physical device. It is a CLI, and `karagoz mcp` serves the same commands to an AI agent as an [MCP server](#mcp-server).
 
 Website: [karagozmcp.com](https://karagozmcp.com/?utm_source=github&utm_medium=readme) · [Docs](https://karagozmcp.com/docs/?utm_source=github&utm_medium=readme)
@@ -28,17 +32,12 @@ Early development. Every command runs on all four targets, except `install-runne
 
 ## Install
 
-Not on npm yet. From source:
-
 ```sh
-git clone https://github.com/yagizdo/karagoz-mcp.git
-cd karagoz-mcp
-npm install
-npm run build          # writes packages/karagoz/dist/: cli.js and two chunks
-node packages/karagoz/dist/cli.js devices
+npm install -g karagoz-mcp
+karagoz devices
 ```
 
-`npm link`, run in `packages/karagoz`, puts `karagoz` on your `PATH`. The examples below use `karagoz`.
+Or without installing: `npx -y karagoz-mcp devices`. To build from source: [Development](https://github.com/yagizdo/karagoz-mcp/blob/main/docs/development.md).
 
 ## Quick start
 
@@ -98,7 +97,7 @@ Starts an MCP server for an AI agent on stdin and stdout. It opens no port: the 
 Register it with Claude Code:
 
 ```sh
-claude mcp add karagoz -- node /abs/path/karagoz-mcp/packages/karagoz/dist/cli.js mcp
+claude mcp add karagoz -- npx -y karagoz-mcp mcp
 ```
 
 [Claude Desktop, Cursor, VS Code and Codex, the tools, their arguments, results and behavior](https://github.com/yagizdo/karagoz-mcp/blob/main/docs/mcp.md).

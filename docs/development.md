@@ -3,6 +3,16 @@
 How to build karagoz and run its checks and smoke scripts.
 
 ```sh
+git clone https://github.com/yagizdo/karagoz-mcp.git
+cd karagoz-mcp
+npm install
+npm run build          # writes packages/karagoz/dist/: cli.js and two chunks
+node packages/karagoz/dist/cli.js devices
+```
+
+`npm link`, run in `packages/karagoz`, puts `karagoz` on your `PATH`.
+
+```sh
 npm run build       # empty packages/karagoz/dist/, then bundle to dist/cli.js and two chunks
 npm run typecheck
 npm run lint        # oxlint and the Prettier check; npm run format fixes formatting

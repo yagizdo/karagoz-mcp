@@ -6,14 +6,14 @@ How to register `karagoz mcp` with each client, and what its tools take, return 
 
 ## Registration
 
-karagoz is not on npm yet, so every example runs the built file by its absolute path. After the first release, `npx -y karagoz-mcp mcp` replaces `node /abs/path/karagoz-mcp/packages/karagoz/dist/cli.js mcp`.
+Every example runs the published package with `npx`. From a clone, use `node /abs/path/karagoz-mcp/packages/karagoz/dist/cli.js mcp` instead.
 
 Claude Code and Codex were run against this server. The Claude Desktop, Cursor and VS Code entries follow their documentation and were not run.
 
 **Claude Code**
 
 ```sh
-claude mcp add karagoz -- node /abs/path/karagoz-mcp/packages/karagoz/dist/cli.js mcp
+claude mcp add karagoz -- npx -y karagoz-mcp mcp
 ```
 
 The server starts in the directory `claude` started in, with the shell's environment. A call still running after 2 minutes becomes a background task.
@@ -21,7 +21,7 @@ The server starts in the directory `claude` started in, with the shell's environ
 **Claude Desktop**, in `~/Library/Application Support/Claude/claude_desktop_config.json` on macOS or `%APPDATA%\Claude\claude_desktop_config.json` on Windows; quit and restart Desktop after editing:
 
 ```json
-{"mcpServers":{"karagoz":{"command":"node","args":["/abs/path/karagoz-mcp/packages/karagoz/dist/cli.js","mcp"],"env":{"ANDROID_HOME":"/Users/me/Library/Android/sdk"}}}}
+{"mcpServers":{"karagoz":{"command":"npx","args":["-y","karagoz-mcp","mcp"],"env":{"ANDROID_HOME":"/Users/me/Library/Android/sdk"}}}}
 ```
 
 Desktop starts servers with part of your environment and possibly `/` as the working directory, so set `ANDROID_HOME` in `env` when `adb` is not on the `PATH` it passes, and use absolute paths.
@@ -29,23 +29,23 @@ Desktop starts servers with part of your environment and possibly `/` as the wor
 **Cursor**, in `.cursor/mcp.json` in the project or `~/.cursor/mcp.json`:
 
 ```json
-{"mcpServers":{"karagoz":{"type":"stdio","command":"node","args":["/abs/path/karagoz-mcp/packages/karagoz/dist/cli.js","mcp"]}}}
+{"mcpServers":{"karagoz":{"type":"stdio","command":"npx","args":["-y","karagoz-mcp","mcp"]}}}
 ```
 
 **VS Code**, in `.vscode/mcp.json` in the workspace:
 
 ```json
-{"servers":{"karagoz":{"type":"stdio","command":"node","args":["/abs/path/karagoz-mcp/packages/karagoz/dist/cli.js","mcp"]}}}
+{"servers":{"karagoz":{"type":"stdio","command":"npx","args":["-y","karagoz-mcp","mcp"]}}}
 ```
 
-or from the command line: `code --add-mcp '{"name":"karagoz","command":"node","args":["/abs/path/karagoz-mcp/packages/karagoz/dist/cli.js","mcp"]}'`.
+or from the command line: `code --add-mcp '{"name":"karagoz","command":"npx","args":["-y","karagoz-mcp","mcp"]}'`.
 
 **Codex**, in `~/.codex/config.toml`:
 
 ```toml
 [mcp_servers.karagoz]
-command = "node"
-args = ["/abs/path/karagoz-mcp/packages/karagoz/dist/cli.js", "mcp"]
+command = "npx"
+args = ["-y", "karagoz-mcp", "mcp"]
 env_vars = ["ANDROID_HOME", "ANDROID_SDK_ROOT", "KARAGOZ_DEVICE", "ANDROID_SERIAL", "DEVELOPER_DIR"]
 tool_timeout_sec = 600
 ```
