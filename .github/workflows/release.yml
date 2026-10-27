@@ -12,6 +12,8 @@ permissions:
 jobs:
   publish:
     runs-on: ubuntu-latest
+    # Waits for a maintainer's approval; the npm trusted publisher requires this environment
+    environment: npm
     env:
       MCP_PUBLISHER_VERSION: v1.8.4
     steps:
