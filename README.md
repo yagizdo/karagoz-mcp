@@ -8,6 +8,19 @@ Device automation for mobile apps. One tool for four targets: Android emulator, 
 
 Website: [karagozmcp.com](https://karagozmcp.com/?utm_source=github&utm_medium=readme) · [Docs](https://karagozmcp.com/docs/?utm_source=github&utm_medium=readme)
 
+## Contents
+
+- [Why karagoz](#why-karagoz)
+- [Scope](#scope)
+- [Status](#status)
+- [Getting started](#getting-started)
+- [Commands](#commands)
+- [Output and errors](#output-and-errors)
+- [MCP server](#mcp-server)
+- [Development](#development)
+- [Name](#name)
+- [License](#license)
+
 ## Why karagoz
 
 `adb`, `simctl` and `devicectl` run the command; karagoz tells you what the command actually did.
@@ -17,11 +30,20 @@ Website: [karagozmcp.com](https://karagozmcp.com/?utm_source=github&utm_medium=r
 - **The accessibility tree first.** To see the screen, read `ui-tree` before taking a screenshot. The tree is text a program can search, costs a few hundred to a few thousand tokens, and gives the bounds needed to tap. A screenshot is written to disk and returned as a path; the CLI never prints the image.
 - **It installs only what you ask.** karagoz installs nothing on a device by itself, with one exception: on a Mac that never had Xcode 27, the first `tap`, `swipe`, `text` or `key` on a simulator installs karagoz's runner there ([Requirements](https://github.com/yagizdo/karagoz-mcp/blob/main/docs/requirements.md)). `install` installs only the app you pass it, and `install-runner` only karagoz's runner.
 
+## Scope
+
+karagoz is the primitive layer. Each command does one thing and exits.
+
+- **Not a test framework.** No assertions, no test runner, no recorded flows, no retry policy, no reports. `tap --timeout` waits for a node to appear; it never repeats an action.
+- **Not a design comparison tool.** Figma diffing, measurement and reporting belong a layer above. karagoz produces the raw input, and the metadata to measure it with, but does not interpret it.
+
 ## Status
 
 Early development. Every command runs on all four targets, except `install-runner`, which runs only on iPhones, and `uninstall-runner`, which runs on iPhones and on simulators of a Mac that never had Xcode 27. Windows and Linux have not been run.
 
-## Requirements
+## Getting started
+
+### Requirements
 
 - Node 22 or newer.
 - **Android:** `adb` from Android platform-tools, and a running emulator or a phone with USB debugging on.
@@ -30,7 +52,7 @@ Early development. Every command runs on all four targets, except `install-runne
 
 [What each command needs, and how karagoz finds `adb` and Xcode](https://github.com/yagizdo/karagoz-mcp/blob/main/docs/requirements.md).
 
-## Install
+### Install
 
 ```sh
 npm install -g karagoz-mcp
@@ -39,7 +61,7 @@ karagoz devices
 
 Or without installing: `npx -y karagoz-mcp devices`. To build from source: [Development](https://github.com/yagizdo/karagoz-mcp/blob/main/docs/development.md).
 
-## Quick start
+### Quick start
 
 ```sh
 $ karagoz devices
@@ -113,13 +135,6 @@ What the server adds to a Claude Code session, measured on 2026-10-24 with Claud
 | Every session, tool search off (`ENABLE_TOOL_SEARCH=false`): every definition and `instructions` | 2,618 |
 
 The `tools/list` result is 7,115 characters, `instructions` 398. One `ui_tree` of the launcher home screen is 5,383 characters.
-
-## Scope
-
-karagoz is the primitive layer. Each command does one thing and exits.
-
-- **Not a test framework.** No assertions, no test runner, no recorded flows, no retry policy, no reports. `tap --timeout` waits for a node to appear; it never repeats an action.
-- **Not a design comparison tool.** Figma diffing, measurement and reporting belong a layer above. karagoz produces the raw input, and the metadata to measure it with, but does not interpret it.
 
 ## Development
 
