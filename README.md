@@ -22,7 +22,6 @@ Device automation for mobile apps. One tool for four targets: Android emulator, 
 - [Output and errors](#output-and-errors)
 - [MCP server](#mcp-server)
 - [Development](#development)
-- [Name](#name)
 - [License](#license)
 
 ## Why karagoz
@@ -185,10 +184,6 @@ The `tools/list` result is 7,115 characters, `instructions` 398. One `ui_tree` o
 ## Development
 
 Build, checks and smoke scripts: [docs/development.md](https://github.com/yagizdo/karagoz-mcp/blob/main/docs/development.md).
-
-## Name
-
-Karagöz is Turkish shadow puppet theatre. Figures are driven with rods from behind a lit screen while the audience watches the movement on the screen. That is what this tool does.
 
 ## License
 
