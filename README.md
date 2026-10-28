@@ -1,12 +1,28 @@
+<div align="center">
+
 # Karagöz
 
 [![npm version](https://img.shields.io/npm/v/karagoz-mcp.svg)](https://www.npmjs.com/package/karagoz-mcp)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://github.com/yagizdo/karagoz-mcp/blob/main/LICENSE)
 [![Node.js](https://img.shields.io/badge/node-%3E%3D22-brightgreen)](https://nodejs.org)
 
+[Website](https://karagozmcp.com/?utm_source=github&utm_medium=readme) · [Docs](https://karagozmcp.com/docs/?utm_source=github&utm_medium=readme)
+
+</div>
+
 Device automation for mobile apps. One tool for four targets: Android emulator, Android physical device, iOS simulator, iOS physical device. It is a CLI, and `karagoz mcp` serves the same commands to an AI agent as an [MCP server](#mcp-server).
 
-Website: [karagozmcp.com](https://karagozmcp.com/?utm_source=github&utm_medium=readme) · [Docs](https://karagozmcp.com/docs/?utm_source=github&utm_medium=readme)
+## Contents
+
+- [Why karagoz](#why-karagoz)
+- [Scope](#scope)
+- [Status](#status)
+- [Getting started](#getting-started)
+- [Commands](#commands)
+- [Output and errors](#output-and-errors)
+- [MCP server](#mcp-server)
+- [Development](#development)
+- [License](#license)
 
 ## Why karagoz
 
@@ -17,11 +33,20 @@ Website: [karagozmcp.com](https://karagozmcp.com/?utm_source=github&utm_medium=r
 - **The accessibility tree first.** To see the screen, read `ui-tree` before taking a screenshot. The tree is text a program can search, costs a few hundred to a few thousand tokens, and gives the bounds needed to tap. A screenshot is written to disk and returned as a path; the CLI never prints the image.
 - **It installs only what you ask.** karagoz installs nothing on a device by itself, with one exception: on a Mac that never had Xcode 27, the first `tap`, `swipe`, `text` or `key` on a simulator installs karagoz's runner there ([Requirements](https://github.com/yagizdo/karagoz-mcp/blob/main/docs/requirements.md)). `install` installs only the app you pass it, and `install-runner` only karagoz's runner.
 
+## Scope
+
+karagoz is the primitive layer. Each command does one thing and exits.
+
+- **Not a test framework.** No assertions, no test runner, no recorded flows, no retry policy, no reports. `tap --timeout` waits for a node to appear; it never repeats an action.
+- **Not a design comparison tool.** Figma diffing, measurement and reporting belong a layer above. karagoz produces the raw input, and the metadata to measure it with, but does not interpret it.
+
 ## Status
 
 Early development. Every command runs on all four targets, except `install-runner`, which runs only on iPhones, and `uninstall-runner`, which runs on iPhones and on simulators of a Mac that never had Xcode 27. Windows and Linux have not been run.
 
-## Requirements
+## Getting started
+
+### Requirements
 
 - Node 22 or newer.
 - **Android:** `adb` from Android platform-tools, and a running emulator or a phone with USB debugging on.
@@ -30,7 +55,7 @@ Early development. Every command runs on all four targets, except `install-runne
 
 [What each command needs, and how karagoz finds `adb` and Xcode](https://github.com/yagizdo/karagoz-mcp/blob/main/docs/requirements.md).
 
-## Install
+### Install
 
 ```sh
 npm install -g karagoz-mcp
@@ -39,7 +64,7 @@ karagoz devices
 
 Or without installing: `npx -y karagoz-mcp devices`. To build from source: [Development](https://github.com/yagizdo/karagoz-mcp/blob/main/docs/development.md).
 
-## Quick start
+### Quick start
 
 ```sh
 $ karagoz devices
@@ -94,13 +119,55 @@ karagoz mcp
 
 Starts an MCP server for an AI agent on stdin and stdout. It opens no port: the client starts the process and talks to it over stdio. The 15 commands are its tools, and each tool returns the JSON line the CLI prints. The server code loads only when `mcp` runs, so the other commands start as fast as before.
 
-Register it with Claude Code:
+### Claude Code
 
 ```sh
 claude mcp add karagoz -- npx -y karagoz-mcp mcp
 ```
 
-[Claude Desktop, Cursor, VS Code and Codex, the tools, their arguments, results and behavior](https://github.com/yagizdo/karagoz-mcp/blob/main/docs/mcp.md).
+### Claude Desktop
+
+In `~/Library/Application Support/Claude/claude_desktop_config.json` on macOS or `%APPDATA%\Claude\claude_desktop_config.json` on Windows; quit and restart Desktop after editing:
+
+```json
+{"mcpServers":{"karagoz":{"command":"npx","args":["-y","karagoz-mcp","mcp"],"env":{"ANDROID_HOME":"/Users/me/Library/Android/sdk"}}}}
+```
+
+Desktop starts servers with part of your environment and possibly `/` as the working directory, so set `ANDROID_HOME` in `env` when `adb` is not on the `PATH` it passes, and use absolute paths.
+
+### Cursor
+
+In `.cursor/mcp.json` in the project or `~/.cursor/mcp.json`:
+
+```json
+{"mcpServers":{"karagoz":{"type":"stdio","command":"npx","args":["-y","karagoz-mcp","mcp"]}}}
+```
+
+### VS Code
+
+In `.vscode/mcp.json` in the workspace:
+
+```json
+{"servers":{"karagoz":{"type":"stdio","command":"npx","args":["-y","karagoz-mcp","mcp"]}}}
+```
+
+or from the command line: `code --add-mcp '{"name":"karagoz","command":"npx","args":["-y","karagoz-mcp","mcp"]}'`.
+
+### Codex
+
+In `~/.codex/config.toml`:
+
+```toml
+[mcp_servers.karagoz]
+command = "npx"
+args = ["-y", "karagoz-mcp", "mcp"]
+env_vars = ["ANDROID_HOME", "ANDROID_SDK_ROOT", "KARAGOZ_DEVICE", "ANDROID_SERIAL", "DEVELOPER_DIR"]
+tool_timeout_sec = 600
+```
+
+Codex passes a server only a short list of environment variables; `env_vars` forwards the ones karagoz reads. `tool_timeout_sec` covers long `tap` waits and big installs.
+
+[Running from a clone, the tools, their arguments, results and behavior](https://github.com/yagizdo/karagoz-mcp/blob/main/docs/mcp.md).
 
 ### Token cost
 
@@ -114,20 +181,9 @@ What the server adds to a Claude Code session, measured on 2026-10-24 with Claud
 
 The `tools/list` result is 7,115 characters, `instructions` 398. One `ui_tree` of the launcher home screen is 5,383 characters.
 
-## Scope
-
-karagoz is the primitive layer. Each command does one thing and exits.
-
-- **Not a test framework.** No assertions, no test runner, no recorded flows, no retry policy, no reports. `tap --timeout` waits for a node to appear; it never repeats an action.
-- **Not a design comparison tool.** Figma diffing, measurement and reporting belong a layer above. karagoz produces the raw input, and the metadata to measure it with, but does not interpret it.
-
 ## Development
 
 Build, checks and smoke scripts: [docs/development.md](https://github.com/yagizdo/karagoz-mcp/blob/main/docs/development.md).
-
-## Name
-
-Karagöz is Turkish shadow puppet theatre. Figures are driven with rods from behind a lit screen while the audience watches the movement on the screen. That is what this tool does.
 
 ## License
 
