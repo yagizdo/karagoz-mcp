@@ -1,12 +1,16 @@
+<div align="center">
+
 # Karagöz
 
 [![npm version](https://img.shields.io/npm/v/karagoz-mcp.svg)](https://www.npmjs.com/package/karagoz-mcp)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://github.com/yagizdo/karagoz-mcp/blob/main/LICENSE)
 [![Node.js](https://img.shields.io/badge/node-%3E%3D22-brightgreen)](https://nodejs.org)
 
-Device automation for mobile apps. One tool for four targets: Android emulator, Android physical device, iOS simulator, iOS physical device. It is a CLI, and `karagoz mcp` serves the same commands to an AI agent as an [MCP server](#mcp-server).
+[Website](https://karagozmcp.com/?utm_source=github&utm_medium=readme) · [Docs](https://karagozmcp.com/docs/?utm_source=github&utm_medium=readme)
 
-Website: [karagozmcp.com](https://karagozmcp.com/?utm_source=github&utm_medium=readme) · [Docs](https://karagozmcp.com/docs/?utm_source=github&utm_medium=readme)
+</div>
+
+Device automation for mobile apps. One tool for four targets: Android emulator, Android physical device, iOS simulator, iOS physical device. It is a CLI, and `karagoz mcp` serves the same commands to an AI agent as an [MCP server](#mcp-server).
 
 ## Contents
 
