@@ -19,6 +19,9 @@ const REMOTE = '/data/local/tmp/karagoz-text.jar';
 const CLEANUP = `rm -f ${REMOTE} /data/local/tmp/oat/*/karagoz-text.*; rmdir /data/local/tmp/oat/* /data/local/tmp/oat 2>/dev/null`;
 // As the iOS helper's 30 s; a paste took 0.5-5.4 s on an API 37 emulator, cold start included (measured).
 const HELPER_TIMEOUT_MS = 30_000;
+// Plus this per piece between newlines and tabs: the helper waits 200 ms after each paste (SETTLE_MS in
+// TextHelper.java), and its keys take time on top, so 150 lines no longer run out the fixed 30 s.
+const PIECE_MS = 1_000;
 
 // Cold typing measured ~20-30 ms per character, so a chunk stays well inside adb's 10 s timeout (K25).
 const CHUNK = 100;
@@ -231,7 +234,8 @@ async function paste(id: string, value: string) {
   await adb(['-s', id, 'push', HELPER, REMOTE]);
   const line = `CLASSPATH=${REMOTE} app_process / TextHelper ${Buffer.from(value).toString('base64')}`;
   try {
-    await adb(['-s', id, 'shell', `${line}; s=$?; ${CLEANUP}; exit $s`], HELPER_TIMEOUT_MS);
+    const timeout = HELPER_TIMEOUT_MS + value.split(/[\n\t]/).length * PIECE_MS;
+    await adb(['-s', id, 'shell', `${line}; s=$?; ${CLEANUP}; exit $s`], timeout);
   } catch (err) {
     if (blocked(err)) throw new KaragozError('INPUT_BLOCKED', BLOCKED);
     if (err instanceof KaragozError && err.code === 'ADB_FAILED') throw helperFailed(err.message);
