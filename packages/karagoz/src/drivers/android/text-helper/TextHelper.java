@@ -23,6 +23,10 @@ public final class TextHelper {
   private static final String SUPPRESS = "com.android.systemui.SUPPRESS_CLIPBOARD_OVERLAY";
   // InputManager.INJECT_INPUT_EVENT_MODE_WAIT_FOR_FINISH: the call returns once the app has handled the key.
   private static final int WAIT_FOR_FINISH = 2;
+  // Compose reads the clip after the paste key has returned: with no wait the last piece pasted the restored clip in 4
+  // of 5 runs on an API 37 emulator, with 100 ms in none. Twice that, before the clipboard changes again.
+  // ponytail: a fixed wait; a device slower than that emulator under load may need more.
+  private static final long SETTLE_MS = 200;
 
   private static Object clipboard;
   private static Object input;
@@ -155,6 +159,7 @@ public final class TextHelper {
     key(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_CTRL_LEFT, ctrl);
     press(KeyEvent.KEYCODE_V, ctrl);
     key(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_CTRL_LEFT, 0);
+    Thread.sleep(SETTLE_MS);
   }
 
   private static void press(int code, int meta) throws Exception {
