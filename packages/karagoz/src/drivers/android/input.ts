@@ -1,3 +1,4 @@
+import { fileURLToPath } from 'node:url';
 import { KaragozError } from '../../errors.js';
 import { cancellation } from '../../cancellation.js';
 import { adb, TIMEOUT_MS } from './adb.js';
@@ -6,8 +7,15 @@ import { readTree, type UiNode } from './ui-tree.js';
 // Android's own swipe default, passed so the output states it (K25).
 const SWIPE_MS = 300;
 
-// What Virtual.kcm types without a dead key (K25); any other character fails the whole call.
-const TYPABLE = /^[\x20-\x7e\n\tçÇß]$/;
+// What Virtual.kcm types without a dead key (K25); text with any other character is pasted by the helper.
+const TYPABLE = /^[\x20-\x7e\n\tçÇß]*$/;
+
+// The build copies the helper next to the bundle's chunks, all flat in dist/.
+const HELPER = fileURLToPath(new URL('text-helper.jar', import.meta.url));
+// One fixed name: a file a killed call leaves behind is overwritten and removed by the next paste.
+const REMOTE = '/data/local/tmp/karagoz-text.jar';
+// As the iOS helper's 30 s; a paste took 0.5-5.4 s on an API 37 emulator, cold start included (measured).
+const HELPER_TIMEOUT_MS = 30_000;
 
 // Cold typing measured ~20-30 ms per character, so a chunk stays well inside adb's 10 s timeout (K25).
 const CHUNK = 100;
@@ -23,18 +31,18 @@ const BLOCKED =
 // adb's own escape_arg rule (K25): mksh expands nothing inside single quotes.
 const quote = (arg: string) => `'${arg.replaceAll("'", "'\\''")}'`;
 
+const blocked = (err: unknown) =>
+  err instanceof KaragozError &&
+  err.code === 'ADB_FAILED' &&
+  err.message.includes('SecurityException') &&
+  err.message.includes('INJECT_EVENTS permission');
+
 // shell, not exec-out: exec-out drops the exit status, and input's 255 is the only failure it reports (K25).
 async function send(id: string, args: string[], timeout?: number): Promise<void> {
   try {
     await adb(['-s', id, 'shell', 'input', ...args.map(quote)], timeout);
   } catch (err) {
-    if (
-      err instanceof KaragozError &&
-      err.code === 'ADB_FAILED' &&
-      err.message.includes('SecurityException') &&
-      err.message.includes('INJECT_EVENTS permission')
-    )
-      throw new KaragozError('INPUT_BLOCKED', BLOCKED);
+    if (blocked(err)) throw new KaragozError('INPUT_BLOCKED', BLOCKED);
     throw err;
   }
 }
@@ -169,23 +177,68 @@ export async function swipe(id: string, x1: number, y1: number, x2: number, y2: 
   return { device: id, x1, y1, x2, y2, duration };
 }
 
+// Only what no path can type: control characters (C0, DEL, C1) other than newline and tab, and unpaired surrogates,
+// which have no UTF-8 form for the helper.
 export function typable(value: string): void {
-  // for…of walks code points: an emoji is one U+ value, not two surrogates.
-  const unsupported = new Set<string>();
-  for (const char of value) if (!TYPABLE.test(char)) unsupported.add(char);
-  if (unsupported.size) {
-    const named = Array.from(
-      unsupported,
-      (char) => `'${char}' (U+${(char.codePointAt(0) ?? 0).toString(16).toUpperCase().padStart(4, '0')})`,
+  // for…of walks code points: an emoji is one U+ value, and an unpaired surrogate comes out alone.
+  const control = new Set<string>();
+  const lone = new Set<string>();
+  for (const char of value) {
+    if (/^\p{Cc}$/u.test(char) && char !== '\n' && char !== '\t') control.add(char);
+    else if (/^\p{Cs}$/u.test(char)) lone.add(char);
+  }
+  const named = (chars: Set<string>) =>
+    Array.from(chars, (char) => `'U+${(char.codePointAt(0) ?? 0).toString(16).toUpperCase().padStart(4, '0')}'`).join(
+      ', ',
     );
+  if (control.size)
     throw new KaragozError(
       'TEXT_UNSUPPORTED',
-      `cannot type ${named.join(', ')}: Android's input text types only printable ASCII, newline, tab, ç, Ç and ß; nothing was typed`,
+      `cannot type ${named(control)} on Android: control characters other than newline and tab; nothing was typed`,
     );
+  if (lone.size)
+    throw new KaragozError(
+      'TEXT_UNSUPPORTED',
+      `cannot type ${named(lone)} on Android: an unpaired surrogate; nothing was typed`,
+    );
+}
+
+// The helper's last stderr line says what happened to the clipboard (TextHelper.java); with none it never got that far.
+const CLIP: Record<string, string> = {
+  kept: 'the clipboard was not changed',
+  restored: 'the previous clip was put back',
+};
+
+function helperFailed(stderr: string): KaragozError {
+  const lines = stderr.split('\n').map((line) => line.trim());
+  const clip = lines.find((line) => line.startsWith('clip: '))?.slice('clip: '.length);
+  const error = lines.find((line) => line && !line.startsWith('clip: ')) ?? 'the text was pasted';
+  const tail =
+    clip === undefined
+      ? ''
+      : Object.hasOwn(CLIP, clip)
+        ? `; ${CLIP[clip]}`
+        : `; the previous clip could not be put back (${clip.replace(/^lost: /, '')})`;
+  return new KaragozError('HELPER_FAILED', `the text helper failed on the device: ${error}${tail}`);
+}
+
+// One VM for save, paste and restore: each app_process start costs 1-2 s (measured). The text goes as base64, so the
+// device shell sees no quoting.
+async function paste(id: string, value: string) {
+  await adb(['-s', id, 'push', HELPER, REMOTE]);
+  const line = `CLASSPATH=${REMOTE} app_process / TextHelper ${Buffer.from(value).toString('base64')}`;
+  try {
+    await adb(['-s', id, 'shell', `${line}; s=$?; rm -f ${REMOTE}; exit $s`], HELPER_TIMEOUT_MS);
+  } catch (err) {
+    if (blocked(err)) throw new KaragozError('INPUT_BLOCKED', BLOCKED);
+    if (err instanceof KaragozError && err.code === 'ADB_FAILED') throw helperFailed(err.message);
+    throw err;
   }
+  return { device: id, text: value };
 }
 
 export async function text(id: string, value: string) {
+  if (!TYPABLE.test(value)) return paste(id, value);
   let typed = 0;
   // input turns every %s into a space within one call, so a part ends at each % followed by s.
   for (const part of value.split(/(?<=%)(?=s)/)) {
