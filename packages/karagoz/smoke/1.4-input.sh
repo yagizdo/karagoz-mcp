@@ -1,9 +1,11 @@
 #!/bin/sh
 # Step 1.4: key, tap (a point, a long press, --text or --id), swipe and text each print one JSON line, and bad
-# arguments fail with the JSON envelope before any device call. A fake adb covers what a live screen cannot produce.
+# arguments fail with the JSON envelope before any device call. Text beyond ASCII is pasted by karagoz's helper: it
+# reads back exactly, the clip copied before it is back afterwards, and the helper's file is gone from /data/local/tmp.
+# A fake adb covers what a live screen cannot produce.
 # Precondition: an emulator is running with state device, its screen on and unlocked, on the image the 1.1-1.3 smokes
-# use (Android 16, stock launcher and Settings). Only HOME and BACK are sent; nothing changes a setting, installs or
-# rotates anything, and the adb server on the default port is never touched.
+# use (stock launcher and Settings). Only HOME and BACK are sent; nothing changes a setting, installs or rotates
+# anything, and the adb server on the default port is never touched. The run leaves karagoz-clip on the clipboard.
 set -e
 cd "$(dirname "$0")/.."
 npm run --silent build
@@ -106,7 +108,7 @@ refuses INVALID_ARGS "'key' does not take the option '--duration'" key HOME --du
 refuses INVALID_ARGS "'text' needs <text>" text
 refuses INVALID_ARGS "'text' needs <text>" text ''
 refuses INVALID_ARGS "unexpected argument 'b'" text a b
-refuses TEXT_UNSUPPORTED "cannot type 'ğ' (U+011F): Android's input text types only printable ASCII, newline, tab, ç, Ç and ß; nothing was typed" text 'ağ' --device "$id"
+refuses TEXT_UNSUPPORTED "cannot type 'U+0001' on Android: control characters other than newline and tab; nothing was typed" text "$(printf 'a\001')" --device "$id"
 
 # 3. key: four spellings of HOME.
 want="{\"device\":\"$id\",\"key\":\"KEYCODE_HOME\",\"code\":3}"
@@ -153,6 +155,32 @@ want="{\"device\":\"$id\",\"text\":\"it's 100%s ok\"}"
 tree=$(node dist/cli.js ui-tree --device "$id") || { echo "FAIL: ui-tree exited non-zero: $tree"; exit 1; }
 typed=$(printf '%s' "$tree" | focused_text) || { echo "FAIL: no focused EditText after typing"; exit 1; }
 [ "$typed" = "it's 100%s ok" ] || { echo "FAIL: the search field reads '$typed', expected 'it's 100%s ok'"; exit 1; }
+
+# 6b. Pasted text: a clip copied first, then a Unicode text, then Ctrl+V gives the first clip back. Stock tools cannot
+# read the clip the emulator had before, so karagoz-clip stays on it.
+clear_field() { adb -s "$id" shell input keycombination 113 29; adb -s "$id" shell input keyevent 67; }
+# Reads ui-tree until the focused field reads $1, for up to 10 s; a toast can make one read fail.
+field_reads() {
+  end=$(($(date +%s) + 10))
+  until tree=$(node dist/cli.js ui-tree --device "$id" 2>/dev/null) && [ "$(printf '%s' "$tree" | focused_text)" = "$1" ]; do
+    [ "$(date +%s)" -lt "$end" ] || { echo "FAIL: the search field reads '$(printf '%s' "$tree" | focused_text)', expected '$1'"; exit 1; }
+  done
+}
+clear_field
+node dist/cli.js text karagoz-clip --device "$id" >/dev/null
+adb -s "$id" shell input keycombination 113 29
+adb -s "$id" shell input keycombination 113 31
+adb -s "$id" shell input keyevent 67
+unicode='Gülşen Doğan ıİ 😀'
+out=$(node dist/cli.js text "$unicode" --device "$id") || { echo "FAIL: text exited non-zero: $out"; exit 1; }
+want="{\"device\":\"$id\",\"text\":\"$unicode\"}"
+[ "$out" = "$want" ] || { echo "FAIL: text printed $out, expected $want"; exit 1; }
+field_reads "$unicode"
+clear_field
+adb -s "$id" shell input keycombination 113 50
+field_reads karagoz-clip
+left=$(adb -s "$id" shell ls -R /data/local/tmp)
+case $left in *karagoz-text*) echo "FAIL: a karagoz-text file is still in /data/local/tmp: $left"; exit 1 ;; esac
 
 # 7. swipe: a slow drag up moves the Settings list, restarted at its top.
 settings_top
@@ -210,6 +238,10 @@ case "$*" in
     { echo; echo "Exception occurred while executing 'text':"; echo 'java.lang.SecurityException: Injecting input events requires the caller (or the source of the instrumentation, if any) to have the INJECT_EVENTS permission.'; } >&2
     exit 255 ;;
   *'shell input '*) echo "$*" >> "$FAKE/input" ;;
+  *' push '*) echo "$*" >> "$FAKE/input" ;;
+  *' app_process '*)
+    echo "$*" >> "$FAKE/input"
+    if [ -e "$FAKE/helper" ]; then cat "$FAKE/helper" >&2; exit 1; fi ;;
   *) echo "fake adb: unexpected arguments: $*" >&2; exit 1 ;;
 esac
 FAKE
@@ -332,4 +364,38 @@ error_is i INPUT_BLOCKED "$blocked"
 if fake_run "$tmp/ime-hidden" text BLOCKme; then echo "FAIL: fixture i with text exited 0: $got"; exit 1; fi
 error_is i INPUT_BLOCKED "$blocked; 0 of 7 characters were typed before this"
 
-echo "ok: $id, key 3, long press popup, tap into search, text 13 chars, swipe moved, element taps, direction marks, input blocked"
+# j. ASCII text never reaches the helper.
+rm -f "$fake/helper"
+fake_run "$tmp/ime-hidden" text abc || { echo "FAIL: fixture j exited non-zero: $got"; exit 1; }
+input_is j "-s emulator-5554 shell input 'text' 'abc'"
+
+# k. Other text: one push of the helper, then one shell that runs it with the text as base64 and removes it.
+fake_run "$tmp/ime-hidden" text 'ağ' || { echo "FAIL: fixture k exited non-zero: $got"; exit 1; }
+[ "$got" = '{"device":"emulator-5554","text":"ağ"}' ] || { echo "FAIL: fixture k printed $got"; exit 1; }
+b64=$(node -p 'Buffer.from("ağ").toString("base64")')
+remote=/data/local/tmp/karagoz-text.jar
+shell="-s emulator-5554 shell CLASSPATH=$remote app_process / TextHelper $b64; s=\$?; rm -f $remote /data/local/tmp/oat/*/karagoz-text.*; rmdir /data/local/tmp/oat/* /data/local/tmp/oat 2>/dev/null; exit \$s"
+case $(sed -n 1p "$fake/input") in "-s emulator-5554 push "*"/dist/text-helper.jar $remote") ;; *) echo "FAIL: fixture k: no push first: $(cat "$fake/input")"; exit 1 ;; esac
+[ "$(sed -n 2p "$fake/input")" = "$shell" ] && [ "$(wc -l < "$fake/input" | tr -d ' ')" = 2 ] \
+  || { echo "FAIL: fixture k: expected the shell call $shell, got: $(cat "$fake/input")"; exit 1; }
+
+# l. The helper's own failures, each with what happened to the clip; a denied injection is INPUT_BLOCKED.
+helper_fails() { printf '%s\n' "$@" > "$fake/helper"; fake_run "$tmp/ime-hidden" text 'ağ' && { echo "FAIL: fixture l exited 0: $got"; exit 1; }; rm -f "$fake/helper"; }
+helper_fails 'java.lang.NoSuchMethodException: x' 'clip: kept'
+error_is l HELPER_FAILED 'the text helper failed on the device: java.lang.NoSuchMethodException: x; the clipboard was not changed'
+helper_fails 'java.lang.IllegalStateException: x' 'clip: restored'
+error_is l HELPER_FAILED 'the text helper failed on the device: java.lang.IllegalStateException: x; the previous clip was put back'
+helper_fails 'clip: lost: java.lang.SecurityException: y'
+error_is l HELPER_FAILED 'the text helper failed on the device: the text was pasted; the previous clip could not be put back (java.lang.SecurityException: y)'
+helper_fails 'java.lang.SecurityException: Injecting input events requires the caller (or the source of the instrumentation, if any) to have the INJECT_EVENTS permission.' 'clip: restored'
+error_is l INPUT_BLOCKED "$blocked"
+# adb's own failure on the shell call, with no clip: line from the helper, keeps its adb code.
+helper_fails "error: device 'emulator-5554' not found"
+error_is l ADB_FAILED "error: device 'emulator-5554' not found" prefix
+
+# m. A control character fails before any adb call past the device lookup.
+if fake_run "$tmp/ime-hidden" text "$(printf 'a\001b\177')"; then echo "FAIL: fixture m exited 0: $got"; exit 1; fi
+error_is m TEXT_UNSUPPORTED "cannot type 'U+0001', 'U+007F' on Android: control characters other than newline and tab; nothing was typed"
+input_is m ''
+
+echo "ok: $id, key 3, long press popup, tap into search, text 13 chars, pasted text and clip back, swipe moved, element taps, direction marks, input blocked, helper calls"

@@ -1,6 +1,6 @@
 #!/bin/sh
 # Step S: the package is ready to publish. npm pack takes only what a user runs (dist/, README, LICENSE and the
-# third-party notices), package.json and the repository's server.json carry the npm and MCP Registry fields and agree on
+# third-party notices), the Android text helper under 16 KB, package.json and the repository's server.json carry the npm and MCP Registry fields and agree on
 # name and version, and THIRD_PARTY_NOTICES.txt has one section per package in the bundle, at the bundled version.
 # Precondition: none, no device. npm pack's prepack rebuilds dist/ and copies the gitignored README.md and LICENSE into
 # the package folder; everything else goes to a temporary folder.
@@ -29,7 +29,7 @@ const read = (path) => JSON.parse(fs.readFileSync(path, "utf8"));
 let pack;
 try { [pack] = read(packFile); } catch { fail("npm pack --json printed no JSON on stdout"); }
 const files = pack.files.map((file) => file.path);
-const fixed = ["package.json", "README.md", "LICENSE", "THIRD_PARTY_NOTICES.txt", "dist/cli.js", "dist/ax-helper.swift"];
+const fixed = ["package.json", "README.md", "LICENSE", "THIRD_PARTY_NOTICES.txt", "dist/cli.js", "dist/ax-helper.swift", "dist/text-helper.jar"];
 const chunk = /^dist\/chunk-[A-Z0-9]+\.js$/;
 const server = /^dist\/mcp-[A-Z0-9]+\.js$/;
 const extra = files.filter((p) => !fixed.includes(p) && !chunk.test(p) && !server.test(p) && !p.startsWith("dist/ios-runner/"));
@@ -39,6 +39,8 @@ if (files.filter((p) => chunk.test(p)).length !== 1 || files.filter((p) => serve
   fail(`expected one dist/chunk-*.js and one dist/mcp-*.js, got ${files.filter((p) => p.startsWith("dist/") && p.endsWith(".js")).join(", ")}`);
 }
 if (!files.some((p) => p.startsWith("dist/ios-runner/KaragozRunner.xcodeproj/"))) fail("the tarball lacks the runner project");
+const helper = pack.files.find((file) => file.path === "dist/text-helper.jar");
+if (helper.size > 16384) fail(`dist/text-helper.jar is ${helper.size} bytes, over 16 KB`);
 
 const pkg = read("package.json");
 const want = {

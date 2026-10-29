@@ -90,7 +90,7 @@ const TOOLS: Tool[] = [
     name: 'text',
     title: 'Type text',
     description:
-      'Type into the focused field. Android: only printable ASCII, newline, tab, ç, Ç and ß. iOS: any text; an iPhone needs install_runner once.',
+      'Type into the focused field. Any text; on Android, text beyond ASCII is pasted through the clipboard and the old clip put back. An iPhone needs install_runner once.',
     inputSchema: { type: 'object', properties: { text: { type: 'string' }, device }, required: ['text'] },
     annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
   },

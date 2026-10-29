@@ -9,8 +9,9 @@
 # policy`, `dumpsys window -a InputMethod`, `dumpsys window windows`, `dumpsys accessibility`, `cmd package
 # resolve-activity`, `pidof uiautomator`, `wm size`); `am start -W -a android.settings.SETTINGS`; karagoz `ui-tree`,
 # `key` (HOME, BACK, DEL only), `tap`, `swipe` and `text` into the Settings search field; on exit, once input was sent,
-# `adb shell input keyevent` BACK three times and HOME. It writes no setting, installs nothing, never presses ENTER and
-# never taps a search result, so the search keeps no history. It leaves the phone on the home screen. The adb server
+# `adb shell input keyevent` BACK three times and HOME. The Unicode `text` pushes karagoz's ~3 KB helper to
+# /data/local/tmp and removes it in the same call, and replaces the clipboard for the call and puts it back. It writes
+# no setting, installs nothing, never presses ENTER and never taps a search result, so the search keeps no history. It leaves the phone on the home screen. The adb server
 # on the default port is never stopped or restarted.
 set -e
 cd "$(dirname "$0")/.."
@@ -299,6 +300,13 @@ run text "$typed"
 wait_until 30 'field_is "$typed"' "the field did not read back the typed text within 30 s"
 keys 8 DEL
 wait_until 30 'field_lacks kq' "the field still holds the typed text after 8 x key DEL"
+# Pasted, not typed: 17 code points, so one spare DEL, which an empty field ignores.
+unicode='Gülşen Doğan ıİ 😀'
+run text "$unicode"
+[ "$(printf '%s' "$out" | field text)" = "$unicode" ] || fail "text did not echo the Unicode text"
+wait_until 30 'field_is "$unicode"' "the field did not read back the Unicode text within 30 s"
+keys 18 DEL
+wait_until 30 'field_lacks Gül' "the field still holds the Unicode text after 18 x key DEL"
 
 # 9. BACK hides the keyboard. With the keyboard shown, the IME takes the first BACK (research run order).
 run key BACK
@@ -400,4 +408,4 @@ setting system accelerometer_rotation
 setting system user_rotation
 [ "$value" = "$user" ] || fail "user_rotation changed during the run"
 
-echo "ok: physical keys 3, tap, text 8 chars, keyboard $rects rect, long press, 2 element taps, $ambiguous, not found $reads reads, swipe moved"
+echo "ok: physical keys 3, tap, text 8 chars, Unicode text, keyboard $rects rect, long press, 2 element taps, $ambiguous, not found $reads reads, swipe moved"
