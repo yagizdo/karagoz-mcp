@@ -4,7 +4,6 @@ import {
   swipe as androidSwipe,
   tap as androidTap,
   text as androidText,
-  typable,
   type Target,
 } from './drivers/android/input.js';
 import {
@@ -20,6 +19,7 @@ import {
   textPhone,
 } from './drivers/ios/input.js';
 import { keyCode } from './keys.js';
+import { typable } from './text.js';
 
 export type { Target };
 
@@ -62,12 +62,14 @@ export async function swipe(
     : iosSwipe(id, x1, y1, x2, y2, duration);
 }
 
-// Which characters can be typed depends on the platform, so that check runs after the target resolves; nothing is sent
-// to the device before it (user decision, K35 3.4 plan).
+// The character check names the target, so it runs after the target resolves; nothing is sent to the device before it
+// (user decision, K35 3.4 plan).
 export async function text(device: string | undefined, value: string) {
   const resolved = await resolveTarget(device);
   const { id } = resolved;
-  if (resolved.platform === 'ios') return resolved.kind === 'physical' ? textPhone(id, value) : iosText(id, value);
-  typable(value);
-  return androidText(id, value);
+  const where =
+    resolved.platform === 'android' ? 'Android' : resolved.kind === 'physical' ? 'an iPhone' : 'an iOS simulator';
+  typable(value, where);
+  if (resolved.platform === 'android') return androidText(id, value);
+  return resolved.kind === 'physical' ? textPhone(id, value) : iosText(id, value);
 }

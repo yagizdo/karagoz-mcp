@@ -269,6 +269,28 @@ refuses TEXT_UNSUPPORTED "control characters"
 [ "$(printf '%s' "$out" | message_of)" = "cannot type 'U+0001', 'U+001B' on an iOS simulator: control characters other than newline and tab; nothing was typed" ] \
   || fail "TEXT_UNSUPPORTED text: $out"
 [ ! -e "$fake/argv" ] && [ ! -e "$fake/appax.log" ] || fail "control characters reached the simulator"
+# argv cannot carry an unpaired surrogate (Node reads it as U+FFFD), so it comes as MCP JSON.
+out=$(env -i HOME="$tmp/home" PATH=/usr/bin:/bin TMPDIR="$tmp" ANDROID_HOME="$tmp/sdk" DEVELOPER_DIR="$tmp/dev" \
+  "$node_bin" -e '
+const server = require("node:child_process").spawn(process.execPath, ["dist/cli.js", "mcp"]);
+const send = (m) => server.stdin.write(JSON.stringify({ jsonrpc: "2.0", ...m }) + "\n");
+require("node:readline").createInterface({ input: server.stdout }).on("line", (line) => {
+  const { id, result } = JSON.parse(line);
+  if (id === 1) {
+    send({ method: "notifications/initialized" });
+    send({ id: 2, method: "tools/call", params: { name: "text", arguments: { text: "a\ud800", device: "A1" } } });
+    return;
+  }
+  console.log(result.content[0].text);
+  server.kill();
+});
+send({ id: 1, method: "initialize", params: { protocolVersion: "2025-11-25", capabilities: {}, clientInfo: { name: "smoke", version: "0" } } });
+setTimeout(() => { console.log("no answer within 10 s"); process.exit(1); }, 10_000).unref();
+' 2>/dev/null) || fail "unpaired surrogate: $out"
+[ "$(printf '%s' "$out" | code_of)" = TEXT_UNSUPPORTED ] || fail "unpaired surrogate: expected TEXT_UNSUPPORTED, got: $out"
+[ "$(printf '%s' "$out" | message_of)" = "cannot type 'U+D800' on an iOS simulator: an unpaired surrogate; nothing was typed" ] \
+  || fail "unpaired surrogate text: $out"
+[ ! -e "$fake/argv" ] && [ ! -e "$fake/appax.log" ] || fail "an unpaired surrogate reached the simulator"
 echo 0 > "$fake/appax"
 call text ok --device A1
 [ "$st" = 0 ] && [ ! -e "$fake/appax.log" ] || fail "text wrote app accessibility that was off: exit $st"

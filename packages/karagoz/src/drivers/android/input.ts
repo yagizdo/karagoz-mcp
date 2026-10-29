@@ -183,32 +183,6 @@ export async function swipe(id: string, x1: number, y1: number, x2: number, y2: 
   return { device: id, x1, y1, x2, y2, duration };
 }
 
-// Only what no path can type: control characters (C0, DEL, C1) other than newline and tab, and unpaired surrogates,
-// which have no UTF-8 form for the helper.
-export function typable(value: string): void {
-  // for…of walks code points: an emoji is one U+ value, and an unpaired surrogate comes out alone.
-  const control = new Set<string>();
-  const lone = new Set<string>();
-  for (const char of value) {
-    if (/^\p{Cc}$/u.test(char) && char !== '\n' && char !== '\t') control.add(char);
-    else if (/^\p{Cs}$/u.test(char)) lone.add(char);
-  }
-  const named = (chars: Set<string>) =>
-    Array.from(chars, (char) => `'U+${(char.codePointAt(0) ?? 0).toString(16).toUpperCase().padStart(4, '0')}'`).join(
-      ', ',
-    );
-  if (control.size)
-    throw new KaragozError(
-      'TEXT_UNSUPPORTED',
-      `cannot type ${named(control)} on Android: control characters other than newline and tab; nothing was typed`,
-    );
-  if (lone.size)
-    throw new KaragozError(
-      'TEXT_UNSUPPORTED',
-      `cannot type ${named(lone)} on Android: an unpaired surrogate; nothing was typed`,
-    );
-}
-
 // The helper's last stderr line says what happened to the clipboard (TextHelper.java); with none it never got that far.
 const CLIP: Record<string, string> = {
   kept: 'the clipboard was not changed',
