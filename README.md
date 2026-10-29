@@ -171,7 +171,7 @@ Codex passes a server only a short list of environment variables; `env_vars` for
 
 ### Token cost
 
-What the server adds to a Claude Code session, measured on 2026-10-24 with Claude Code 2.1.306 and `claude-opus-5-5`: input tokens of the first API call with karagoz registered, minus the same call with no MCP server.
+What the server adds to a Claude Code session, measured on 2026-10-29 with Claude Code 2.1.306 and `claude-opus-5-5`: input tokens of the first API call with karagoz registered, minus the same call with no MCP server.
 
 | Case | Tokens |
 | --- | --- |
@@ -179,7 +179,7 @@ What the server adds to a Claude Code session, measured on 2026-10-24 with Claud
 | All 15 definitions, loaded by one `ToolSearch` call | 2,736 |
 | Every session, tool search off (`ENABLE_TOOL_SEARCH=false`): every definition and `instructions` | 2,618 |
 
-The `tools/list` result is 7,115 characters, `instructions` 398. One `ui_tree` of the launcher home screen is 5,383 characters.
+The `tools/list` result is 7,142 characters, `instructions` 398. One `ui_tree` of the launcher home screen is 5,383 characters.
 
 ## Development
 
