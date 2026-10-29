@@ -389,6 +389,9 @@ helper_fails 'clip: lost: java.lang.SecurityException: y'
 error_is l HELPER_FAILED 'the text helper failed on the device: the text was pasted; the previous clip could not be put back (java.lang.SecurityException: y)'
 helper_fails 'java.lang.SecurityException: Injecting input events requires the caller (or the source of the instrumentation, if any) to have the INJECT_EVENTS permission.' 'clip: restored'
 error_is l INPUT_BLOCKED "$blocked"
+# adb's own failure on the shell call, with no clip: line from the helper, keeps its adb code.
+helper_fails "error: device 'emulator-5554' not found"
+error_is l ADB_FAILED "error: device 'emulator-5554' not found" prefix
 
 # m. A control character fails before any adb call past the device lookup.
 if fake_run "$tmp/ime-hidden" text "$(printf 'a\001b\177')"; then echo "FAIL: fixture m exited 0: $got"; exit 1; fi

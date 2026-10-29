@@ -238,7 +238,9 @@ async function paste(id: string, value: string) {
     await adb(['-s', id, 'shell', `${line}; s=$?; ${CLEANUP}; exit $s`], timeout);
   } catch (err) {
     if (blocked(err)) throw new KaragozError('INPUT_BLOCKED', BLOCKED);
-    if (err instanceof KaragozError && err.code === 'ADB_FAILED') throw helperFailed(err.message);
+    // Only the helper prints a clip: line; without one adb itself failed (a device gone), which stays ADB_FAILED.
+    if (err instanceof KaragozError && err.code === 'ADB_FAILED' && /^clip: /m.test(err.message))
+      throw helperFailed(err.message);
     throw err;
   }
   return { device: id, text: value };
