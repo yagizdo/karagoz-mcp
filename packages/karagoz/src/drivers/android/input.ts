@@ -37,7 +37,7 @@ const BLOCKED =
 // adb's own escape_arg rule (K25): mksh expands nothing inside single quotes.
 const quote = (arg: string) => `'${arg.replaceAll("'", "'\\''")}'`;
 
-const blocked = (err: unknown) =>
+const blocked = (err: unknown): err is KaragozError =>
   err instanceof KaragozError &&
   err.code === 'ADB_FAILED' &&
   err.message.includes('SecurityException') &&
@@ -211,7 +211,8 @@ async function paste(id: string, value: string) {
     const timeout = HELPER_TIMEOUT_MS + value.split(/[\n\t]/).length * PIECE_MS;
     await adb(['-s', id, 'shell', `${line}; s=$?; ${CLEANUP}; exit $s`], timeout);
   } catch (err) {
-    if (blocked(err)) throw new KaragozError('INPUT_BLOCKED', BLOCKED);
+    // A lost clip outranks the block: the caller has to know the previous clip is gone.
+    if (blocked(err) && !/^clip: lost: /m.test(err.message)) throw new KaragozError('INPUT_BLOCKED', BLOCKED);
     // Only the helper prints a clip: line; without one adb itself failed (a device gone), which stays ADB_FAILED.
     if (err instanceof KaragozError && err.code === 'ADB_FAILED' && /^clip: /m.test(err.message))
       throw helperFailed(err.message);
