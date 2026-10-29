@@ -34,7 +34,8 @@
                   "!../../png.js",
                   "!../../tool.js",
                   "!../../keys.js",
-                  "!../../xml.js"
+                  "!../../xml.js",
+                  "!../../text.js"
                 ],
                 "message": "a driver imports shared modules and files of its own platform only (AGENTS.md, Code layout)"
               }
@@ -59,7 +60,8 @@
                   "!../../png.js",
                   "!../../tool.js",
                   "!../../keys.js",
-                  "!../../xml.js"
+                  "!../../xml.js",
+                  "!../../text.js"
                 ],
                 "message": "a driver imports shared modules and files of its own platform only (AGENTS.md, Code layout)"
               }

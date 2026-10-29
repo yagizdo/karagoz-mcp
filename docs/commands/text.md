@@ -56,6 +56,7 @@ Any Unicode text is typed exactly, at the cursor; iOS's auto-capitalization and 
 ```
 
 - Control characters other than newline and tab fail before anything is typed: `cannot type 'U+0001' on an iOS simulator: control characters other than newline and tab; nothing was typed` (`TEXT_UNSUPPORTED`).
+- An unpaired surrogate, which only MCP's JSON can carry, fails the same way: `cannot type 'U+D800' on an iOS simulator: an unpaired surrogate; nothing was typed`.
 - With no focused field nothing is typed, and the call still exits `0`.
 - It types 120 characters a second after about 1 s of setup: 300 characters took 3.5 s.
 - A cancelled or timed-out call can still type the whole text: the simulator gets it in one piece.
@@ -73,6 +74,7 @@ Any Unicode text is typed exactly through karagoz's runner, as on the simulator 
 ```
 
 - Control characters other than newline and tab fail before anything is sent: `cannot type 'U+0001' on an iPhone: ...` (`TEXT_UNSUPPORTED`).
+- So does an unpaired surrogate: `cannot type 'U+D800' on an iPhone: an unpaired surrogate; nothing was typed`.
 - A newline acts as Return: in a single-line field it ends editing, and what follows it is not typed. A tab is typed as a tab.
 - With no focused field nothing is typed, and the call still exits `0`.
 - 120 characters a second: 20 characters took 0.6 s, 300 took 2.9 s.

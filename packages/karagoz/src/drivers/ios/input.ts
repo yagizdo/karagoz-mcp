@@ -378,24 +378,8 @@ export async function tapElementPhone(udid: string, selector: Selector, duration
 // wait in arrival order (K35). Another process typing at the same time still races.
 const turns = new Map<string, Promise<void>>();
 
-// Any Unicode types on iOS but control characters other than newline and tab (K35); where names the target.
-function typable(value: string, where: string) {
-  const control = new Set(Array.from(value).filter((char) => /\p{Cc}/u.test(char) && char !== '\n' && char !== '\t'));
-  if (control.size) {
-    const named = Array.from(
-      control,
-      (char) => `'U+${(char.codePointAt(0) ?? 0).toString(16).toUpperCase().padStart(4, '0')}'`,
-    );
-    throw new KaragozError(
-      'TEXT_UNSUPPORTED',
-      `cannot type ${named.join(', ')} on ${where}: control characters other than newline and tab; nothing was typed`,
-    );
-  }
-}
-
 // Typed into whatever has focus; with none, nothing is typed and the call still succeeds, as on Android (K35).
 export async function text(udid: string, value: string) {
-  typable(value, 'an iOS simulator');
   // The runner holds its session for minutes and turns app accessibility back on when it stops: nothing to wait for.
   if (await runnerOnSimulators()) return runnerText('simulator', udid, value);
   const signal = cancellation.getStore();
@@ -444,7 +428,6 @@ async function typeText(udid: string, value: string) {
 // ponytail: no length check here; the runner refuses a request over 1 MiB, and the error does not say that was why.
 // Check the length here when a caller sends that much.
 export async function textPhone(udid: string, value: string) {
-  typable(value, 'an iPhone');
   return runnerText('iphone', udid, value);
 }
 

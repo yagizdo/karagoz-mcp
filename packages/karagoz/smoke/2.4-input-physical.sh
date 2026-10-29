@@ -10,7 +10,8 @@
 # resolve-activity`, `pidof uiautomator`, `wm size`); `am start -W -a android.settings.SETTINGS`; karagoz `ui-tree`,
 # `key` (HOME, BACK, DEL only), `tap`, `swipe` and `text` into the Settings search field; on exit, once input was sent,
 # `adb shell input keyevent` BACK three times and HOME. The Unicode `text` pushes karagoz's ~3 KB helper to
-# /data/local/tmp and removes it in the same call, and replaces the clipboard for the call and puts it back. It writes
+# /data/local/tmp and removes it in the same call, and replaces the clipboard for the call and puts it back; a keyboard
+# that keeps clipboard history keeps the pasted string there, and karagoz cannot remove it. It writes
 # no setting, installs nothing, never presses ENTER and never taps a search result, so the search keeps no history. It leaves the phone on the home screen. The adb server
 # on the default port is never stopped or restarted.
 set -e
