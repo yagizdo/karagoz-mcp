@@ -14,6 +14,9 @@ const TYPABLE = /^[\x20-\x7e\n\tçÇß]*$/;
 const HELPER = fileURLToPath(new URL('text-helper.jar', import.meta.url));
 // One fixed name: a file a killed call leaves behind is overwritten and removed by the next paste.
 const REMOTE = '/data/local/tmp/karagoz-text.jar';
+// ART on Android 8 compiles the jar into oat/<arch>/ next to it (measured on API 26), so those files go too, and the
+// folders when nothing else is in them.
+const CLEANUP = `rm -f ${REMOTE} /data/local/tmp/oat/*/karagoz-text.*; rmdir /data/local/tmp/oat/* /data/local/tmp/oat 2>/dev/null`;
 // As the iOS helper's 30 s; a paste took 0.5-5.4 s on an API 37 emulator, cold start included (measured).
 const HELPER_TIMEOUT_MS = 30_000;
 
@@ -228,7 +231,7 @@ async function paste(id: string, value: string) {
   await adb(['-s', id, 'push', HELPER, REMOTE]);
   const line = `CLASSPATH=${REMOTE} app_process / TextHelper ${Buffer.from(value).toString('base64')}`;
   try {
-    await adb(['-s', id, 'shell', `${line}; s=$?; rm -f ${REMOTE}; exit $s`], HELPER_TIMEOUT_MS);
+    await adb(['-s', id, 'shell', `${line}; s=$?; ${CLEANUP}; exit $s`], HELPER_TIMEOUT_MS);
   } catch (err) {
     if (blocked(err)) throw new KaragozError('INPUT_BLOCKED', BLOCKED);
     if (err instanceof KaragozError && err.code === 'ADB_FAILED') throw helperFailed(err.message);

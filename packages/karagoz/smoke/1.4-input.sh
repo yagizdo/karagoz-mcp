@@ -179,8 +179,8 @@ field_reads "$unicode"
 clear_field
 adb -s "$id" shell input keycombination 113 50
 field_reads karagoz-clip
-left=$(adb -s "$id" shell ls /data/local/tmp)
-case $left in *karagoz-text.jar*) echo "FAIL: karagoz-text.jar is still in /data/local/tmp"; exit 1 ;; esac
+left=$(adb -s "$id" shell ls -R /data/local/tmp)
+case $left in *karagoz-text*) echo "FAIL: a karagoz-text file is still in /data/local/tmp: $left"; exit 1 ;; esac
 
 # 7. swipe: a slow drag up moves the Settings list, restarted at its top.
 settings_top
@@ -374,7 +374,7 @@ fake_run "$tmp/ime-hidden" text 'ağ' || { echo "FAIL: fixture k exited non-zero
 [ "$got" = '{"device":"emulator-5554","text":"ağ"}' ] || { echo "FAIL: fixture k printed $got"; exit 1; }
 b64=$(node -p 'Buffer.from("ağ").toString("base64")')
 remote=/data/local/tmp/karagoz-text.jar
-shell="-s emulator-5554 shell CLASSPATH=$remote app_process / TextHelper $b64; s=\$?; rm -f $remote; exit \$s"
+shell="-s emulator-5554 shell CLASSPATH=$remote app_process / TextHelper $b64; s=\$?; rm -f $remote /data/local/tmp/oat/*/karagoz-text.*; rmdir /data/local/tmp/oat/* /data/local/tmp/oat 2>/dev/null; exit \$s"
 case $(sed -n 1p "$fake/input") in "-s emulator-5554 push "*"/dist/text-helper.jar $remote") ;; *) echo "FAIL: fixture k: no push first: $(cat "$fake/input")"; exit 1 ;; esac
 [ "$(sed -n 2p "$fake/input")" = "$shell" ] && [ "$(wc -l < "$fake/input" | tr -d ' ')" = 2 ] \
   || { echo "FAIL: fixture k: expected the shell call $shell, got: $(cat "$fake/input")"; exit 1; }
