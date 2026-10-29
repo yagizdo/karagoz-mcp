@@ -68,6 +68,12 @@ public final class TextHelper {
       restore(saved);
     } catch (Throwable t) {
       clip = "lost: " + describe(t);
+      // The pasted text must not stay as the clip: an empty clipboard is the next best thing to the old clip.
+      try {
+        restore(null);
+      } catch (Throwable ignored) {
+        // Nothing more to try; the clip line already says the old clip is lost.
+      }
     }
     if (error != null || !clip.equals("restored")) fail(error, clip);
     System.exit(0);
