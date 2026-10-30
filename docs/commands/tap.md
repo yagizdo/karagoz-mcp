@@ -35,7 +35,7 @@ Node:
 | `device` | string | The adb serial, or the simulator's or iPhone's UDID. |
 | `x` | number | Where the tap went, in [screen pixels](../output.md#coordinates): the point given, or the matched node's center. |
 | `y` | number | Where the tap went, in screen pixels: the point given, or the matched node's center. |
-| `element` | object | Only with `--text` or `--id`: the matched node as [`ui-tree`](ui-tree.md) returns it, without `children`. Its fields are that platform's node fields; the samples on this page show these: |
+| `element` | object | Only with `--text` or `--id`: the matched node as [`ui-tree --detail full`](ui-tree.md) returns it, without `children`. Its fields are that platform's node fields; the samples on this page show these: |
 | `element.class` | string | Android class, e.g. `android.widget.Button`. Can be empty. |
 | `element.text` | string | The node's text. |
 | `element.contentDesc` | string | The node's content description, uiautomator's `content-desc`. |
