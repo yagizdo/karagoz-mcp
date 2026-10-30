@@ -1,5 +1,6 @@
 import { KaragozError } from '../../errors.js';
 import { cancellation } from '../../cancellation.js';
+import { prune } from '../../tree.js';
 import { ENTITIES } from '../../xml.js';
 import { adb } from './adb.js';
 
@@ -200,4 +201,51 @@ export async function readTree(id: string): Promise<{ rotation: number; root: Ui
     }
   }
   return { rotation: result.rotation, root: result.root };
+}
+
+// What keeps a node in the compact tree besides text, contentDesc or hint (K54).
+const ACTIONS = ['clickable', 'longClickable', 'scrollable', 'checkable', 'password'];
+const EDITABLE = /(EditText|AutoCompleteTextView)$/;
+const ID = ':id/';
+
+const nodesOf = (node: UiNode): UiNode[] =>
+  Array.isArray(node.children) ? node.children.filter((child): child is UiNode => typeof child === 'object') : [];
+const boundsOf = (node: UiNode): number[] =>
+  Array.isArray(node.bounds) ? node.bounds.filter((value): value is number => typeof value === 'number') : [];
+
+function shortened(field: string, value: string): string {
+  if (field === 'class') return value.slice(value.lastIndexOf('.') + 1);
+  if (field === 'resourceId' && value.includes(ID)) return value.slice(value.indexOf(ID) + ID.length);
+  return value;
+}
+
+// The compact tree (K54). package is compared against the nearest kept ancestor, so each node's own package, given or
+// inherited, is known before the pass drops its parents.
+export function compact(root: UiNode): UiNode {
+  const owner = new Map<UiNode, string>();
+  const own = (node: UiNode, inherited: string) => {
+    const pkg = typeof node.package === 'string' ? node.package : inherited;
+    owner.set(node, pkg);
+    for (const child of nodesOf(node)) own(child, pkg);
+  };
+  own(root, '');
+  return prune(root, {
+    bounds: boundsOf,
+    children: nodesOf,
+    keep: (node) =>
+      Boolean(node.text || node.contentDesc || node.hint) ||
+      ACTIONS.some((flag) => node[flag] === true) ||
+      (typeof node.class === 'string' && EDITABLE.test(node.class)),
+    build: (node, children, kept) => {
+      const out: UiNode = {};
+      for (const [field, value] of Object.entries(node)) {
+        if (field === 'package' || field === 'children' || (field === 'contentDesc' && value === node.text)) continue;
+        out[field] = typeof value === 'string' ? shortened(field, value) : value;
+        const pkg = owner.get(node) ?? '';
+        if (field === 'class' && pkg && pkg !== (kept ? owner.get(kept) : '')) out.package = pkg;
+      }
+      if (children.length) out.children = children;
+      return out;
+    },
+  });
 }

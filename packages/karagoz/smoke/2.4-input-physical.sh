@@ -182,7 +182,7 @@ lock_guard() {
 
 # Conditions for wait_until. Each returns a status and never prints; a failed read is "not yet". tree, state and
 # count keep the last read.
-read_tree() { tree=$(node dist/cli.js ui-tree --device "$serial" 2>/dev/null); }
+read_tree() { tree=$(node dist/cli.js ui-tree --device "$serial" --detail full 2>/dev/null); }
 front() { read_tree && [ "$(printf '%s' "$tree" | field root.package)" = "$1" ]; }
 has_field() { read_tree && printf '%s' "$tree" | focused box >/dev/null; }
 field_is() { read_tree && [ "$(printf '%s' "$tree" | focused is "$1")" = true ]; }

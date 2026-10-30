@@ -1,6 +1,7 @@
 #!/bin/sh
 # Step 2.3: `ui-tree` on a physical phone, by serial and by model name, holds the K24 contract and agrees with the
-# phone's own screenshot: the same rotation, every node inside its pixels.
+# phone's own screenshot: the same rotation, every node inside its pixels; the default read holds the compact rule
+# (K54) and --detail full keeps full class names.
 # Precondition: the build only; a phone is optional, and no emulator is needed. If a phone is used: screen on and
 # unlocked, a personal-profile app in front, no other UiAutomation client connected.
 # What reaches a phone: `adb devices` and the getprop that `devices` and name matching make; `settings get`,
@@ -88,13 +89,14 @@ width=$(printf '%s' "$shot" | field pixels.width) || fail "screenshot output has
 height=$(printf '%s' "$shot" | field pixels.height) || fail "screenshot output has no pixels.height"
 rotation=$(printf '%s' "$shot" | field rotation) || fail "screenshot output has no rotation"
 
-# 5. By serial: the K24 contract on every node, bounds inside the screenshot. Prints the node count. Reasons name the
-# field only, never a value or a class. class may be empty: the dumper writes "" for a null class name (K24).
-tree=$(node dist/cli.js ui-tree --device "$serial" 2>/dev/null) \
-  || fail "ui-tree by serial exited non-zero: $(printf '%s' "$tree" | code_of)"
-nodes=$(printf '%s' "$tree" | node -e '
+# 5. By serial: the K24 contract on every node, bounds inside the screenshot, and the compact rule on the default read.
+# $1: compact or full. Prints the node count. Reasons name the field only, never a value or a class. class may be
+# empty: the dumper writes "" for a null class name (K24).
+contract() { node -e '
   const out = require("fs").readFileSync(0, "utf8");
-  const [serial, rotation, width, height] = process.argv.slice(1);
+  const [serial, rotation, width, height, detail] = process.argv.slice(1);
+  const compact = detail === "compact";
+  const ACTIONS = ["clickable", "longClickable", "scrollable", "checkable", "password"];
   const fail = (reason) => { console.log(reason); process.exit(1); };
   if (out.includes("\n")) fail("stdout is not one line");
   let result;
@@ -103,6 +105,7 @@ nodes=$(printf '%s' "$tree" | node -e '
   if (result.device !== serial) fail("device is not the serial");
   if (result.rotation !== Number(rotation)) fail("rotation differs from the screenshot rotation");
   if (typeof result.root?.package !== "string" || !result.root.package) fail("root has no package");
+  if (!compact && !result.root.class.includes(".")) fail("the full root class has no package part");
   const KEYS = ["class", "package", "text", "contentDesc", "resourceId", "hint", "checkable", "checked", "clickable",
     "longClickable", "focusable", "focused", "scrollable", "selected", "password", "enabled", "bounds", "children"];
   const FLAGS = ["checkable", "checked", "clickable", "longClickable", "focusable", "focused", "scrollable", "selected", "password"];
@@ -121,6 +124,14 @@ nodes=$(printf '%s' "$tree" | node -e '
     if ([l, r].some((x) => x < 0 || x > Number(width)) || [t, bottom].some((y) => y < 0 || y > Number(height))) {
       fail(`bounds are outside [0,0,${width},${height}]`);
     }
+    if (compact) {
+      if (node.class.includes(".")) fail("a class is not shortened");
+      if (node.resourceId?.includes(":id/")) fail("a resourceId is not shortened");
+      if ("contentDesc" in node && node.contentDesc === node.text) fail("a contentDesc equals its text");
+      if (r <= l || bottom <= t) fail("a node has no area");
+      const kept = node.text || node.contentDesc || node.hint || ACTIONS.some((flag) => node[flag]) || /(EditText|AutoCompleteTextView)$/.test(node.class);
+      if (node !== result.root && !kept) fail("a node has no text, contentDesc, hint or action");
+    }
     if ("children" in node) {
       if (!Array.isArray(node.children) || !node.children.length) fail("children is not a non-empty array");
       node.children.forEach(walk);
@@ -128,7 +139,13 @@ nodes=$(printf '%s' "$tree" | node -e '
   };
   walk(result.root);
   console.log(nodes);
-' "$serial" "$rotation" "$width" "$height") || fail "ui-tree by serial: $nodes"
+' "$serial" "$rotation" "$width" "$height" "$1"; }
+tree=$(node dist/cli.js ui-tree --device "$serial" 2>/dev/null) \
+  || fail "ui-tree by serial exited non-zero: $(printf '%s' "$tree" | code_of)"
+nodes=$(printf '%s' "$tree" | contract compact) || fail "ui-tree by serial: $nodes"
+tree=$(node dist/cli.js ui-tree --device "$serial" --detail full 2>/dev/null) \
+  || fail "ui-tree --detail full exited non-zero: $(printf '%s' "$tree" | code_of)"
+full=$(printf '%s' "$tree" | contract full) || fail "ui-tree --detail full: $full"
 
 # 6. By model name, when no other listed entry has it.
 byname=
@@ -151,4 +168,4 @@ setting system accelerometer_rotation
 setting system user_rotation
 [ "$value" = "$user" ] || fail "user_rotation changed during the run"
 
-echo "ok: physical rotation $rotation, $nodes nodes$byname"
+echo "ok: physical rotation $rotation, $nodes nodes compact, $full full$byname"
