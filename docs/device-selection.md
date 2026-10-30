@@ -16,7 +16,7 @@ The value is matched against every listed id first, exactly: adb serials (`emula
 | A value is given and nothing matches | `DEVICE_NOT_FOUND`, listing what is connected |
 | No value, nothing connected | `NO_DEVICE` |
 | No value and two or more devices listed (in any state), or a name that matches two entries: the same AVD listed as `emulator-5554` and `127.0.0.1:5555`, or two phones of the same model | `DEVICE_AMBIGUOUS` |
-| `install-runner` or `uninstall-runner` picked a simulator or an Android device. This comes before any readiness check. | `NOT_SUPPORTED` |
+| `install-runner` or `uninstall-runner` picked a simulator or an Android device (`uninstall-runner` also takes a simulator on a Mac that never had Xcode 27). This comes before any readiness check. | `NOT_SUPPORTED` |
 | The picked device is not in state `device` (`offline`, `unauthorized`, ...), a simulator not `Booted` (`Booting`, `Shutting Down`), or an iPhone not `paired` (`unpaired`, `pairingInProgress`; the message says what to do on the phone) | `DEVICE_NOT_READY` |
 
 karagoz never guesses between devices. There is no config file.
