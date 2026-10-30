@@ -7,7 +7,8 @@ import XCTest
 // "karagoz-res\n<nonce>\n<status>\n<body>" for its answer (K41, K42). A simulator shares the Mac's loopback, so the host
 // picks a free port for each simulator start and passes it as KARAGOZ_PORT; an iPhone gets none and keeps 27753 (K49).
 private let port: UInt16 = UInt16(ProcessInfo.processInfo.environment["KARAGOZ_PORT"] ?? "") ?? 27753
-private let protocolVersion = 2
+// 3 since /double-tap: the host takes an older runner, which answers that route with a 404, as one to reinstall.
+private let protocolVersion = 3
 private let nonceHeader = "x-karagoz-nonce"
 private let macHeader = "x-karagoz-mac"
 // No /tree or input for this long ends the test, and xcodebuild exits with it: the runner stops itself, no daemon (K3).
@@ -223,7 +224,7 @@ final class Runner: XCTestCase {
       respond(connection, 200, ["protocol": protocolVersion], nonce: nonce)
     case ("GET", "/tree"):
       job(connection, nonce, jobSeconds, "the snapshot") { self.snapshot() }
-    case ("POST", "/tap"), ("POST", "/swipe"), ("POST", "/text"), ("POST", "/button"):
+    case ("POST", "/tap"), ("POST", "/double-tap"), ("POST", "/swipe"), ("POST", "/text"), ("POST", "/button"):
       input(connection, nonce, path, body)
     default:
       respond(connection, 404, ["error": "no route \(method) \(path)", "kind": "route"], nonce: nonce)
@@ -284,6 +285,10 @@ final class Runner: XCTestCase {
       guard let at = point("x", "y") else { return bad() }
       let hold = (number("duration") ?? tapMilliseconds) / 1000
       job(connection, nonce, hold + jobSeconds, "the tap") { self.touch([at], hold, orientation) }
+    case "/double-tap":
+      guard let at = point("x", "y"), let hold = number("hold"), let gap = number("gap") else { return bad() }
+      let (h, g) = (hold / 1000, gap / 1000)
+      job(connection, nonce, 2 * h + g + jobSeconds, "the double tap") { self.doubleTouch(at, h, g, orientation) }
     case "/swipe":
       guard let from = point("x1", "y1"), let to = point("x2", "y2"), let ms = number("duration") else { return bad() }
       job(connection, nonce, ms / 1000 + jobSeconds, "the swipe") { self.touch([from, to], ms / 1000, orientation) }
@@ -312,7 +317,27 @@ final class Runner: XCTestCase {
       }
       let (lift, sel) = try privateMethod(path, "liftUpAtOffset:", as: LiftAt.self)
       lift(path, sel, time)
-      return try play(path, orientation)
+      return try play([path], orientation)
+    } catch {
+      return failed(error)
+    }
+  }
+
+  // Two touches in one record, the second down at hold + gap, so the record plays the gap exactly. Each needs its own
+  // path: one path lifted and pressed down again played no double tap in 6 of 6 tries on a simulator (K55).
+  @MainActor
+  private func doubleTouch(_ at: CGPoint, _ hold: Double, _ gap: Double, _ orientation: Int) -> (Int, [String: Any]) {
+    do {
+      var paths: [NSObject] = []
+      for start in [0, hold + gap] {
+        let path = try instance("XCPointerEventPath", "initForTouchAtPoint:offset:", as: InitPathAt.self) {
+          $0($1, $2, at, start)
+        }
+        let (lift, sel) = try privateMethod(path, "liftUpAtOffset:", as: LiftAt.self)
+        lift(path, sel, start + hold)
+        paths.append(path)
+      }
+      return try play(paths, orientation)
     } catch {
       return failed(error)
     }
@@ -325,7 +350,7 @@ final class Runner: XCTestCase {
       let path = try instance("XCPointerEventPath", "initForTextInput", as: InitPath.self) { $0($1, $2) }
       let (type, sel) = try privateMethod(path, "typeText:atOffset:typingSpeed:shouldRedact:", as: TypeText.self)
       type(path, sel, text as NSString, 0, UInt(speed), false)
-      return try play(path, 1)
+      return try play([path], 1)
     } catch {
       return failed(error)
     }
@@ -333,12 +358,12 @@ final class Runner: XCTestCase {
 
   // orientation is UIInterfaceOrientation's raw value, which the host maps from the screen's rotation (K42).
   @MainActor
-  private func play(_ path: NSObject, _ orientation: Int) throws -> (Int, [String: Any]) {
+  private func play(_ paths: [NSObject], _ orientation: Int) throws -> (Int, [String: Any]) {
     let record = try instance("XCSynthesizedEventRecord", "initWithName:interfaceOrientation:", as: InitRecord.self) {
       $0($1, $2, "karagoz" as NSString, orientation)
     }
     let (add, addSel) = try privateMethod(record, "addPointerEventPath:", as: AddPath.self)
-    add(record, addSel, path)
+    for path in paths { add(record, addSel, path) }
     let (synthesize, sel) = try privateMethod(record, "synthesizeWithError:", as: Synthesize.self)
     var error: NSError?
     guard synthesize(record, sel, &error) else {
