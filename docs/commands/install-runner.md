@@ -4,7 +4,7 @@
 karagoz install-runner [--device <id>] [--team <ID>]
 ```
 
-Builds karagoz's runner, the small XCUITest bundle that [`ui-tree`](ui-tree.md#on-an-iphone), `tap`, `long-press`, `swipe`, `text` and `key` use on an iPhone, with your Apple team, and installs it on a paired iPhone. It is the one command that puts something of karagoz's on an iPhone; no other command installs the runner there. A simulator needs no install step: on a Mac that never had Xcode 27, the first `tap`, `long-press`, `swipe`, `text` or `key` installs the runner on it ([Requirements](../requirements.md)). macOS only.
+Builds karagoz's runner, the small XCUITest bundle that [`ui-tree`](ui-tree.md#on-an-iphone), `tap`, `long-press`, `double-tap`, `swipe`, `text` and `key` use on an iPhone, with your Apple team, and installs it on a paired iPhone. It is the one command that puts something of karagoz's on an iPhone; no other command installs the runner there. A simulator needs no install step: on a Mac that never had Xcode 27, the first `tap`, `long-press`, `double-tap`, `swipe`, `text` or `key` installs the runner on it ([Requirements](../requirements.md)). macOS only.
 
 | Option | Default | Meaning |
 | --- | --- | --- |
@@ -37,3 +37,4 @@ Run it again after updating karagoz or Xcode, for another iPhone, and every 7 da
 
 - Took 17 s the first time (build, certificate and profile, install) and 3 s again with the build cached.
 - The build needs the network the first time: Xcode talks to Apple's developer service.
+- A karagoz update that changes the runner needs `install-runner` again; until then the calls that use the runner fail with `RUNNER_NOT_INSTALLED`. The update that added [`double-tap`](double-tap.md) is one.
