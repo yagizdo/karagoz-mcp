@@ -1,22 +1,26 @@
 # ui-tree
 
 ```
-karagoz ui-tree [--device <id>]
+karagoz ui-tree [--device <id>] [--detail compact|full]
 ```
 
 Returns the accessibility tree of the screen: on Android the focused window's, read with `uiautomator dump`; on an iOS simulator the frontmost app's, read by a helper karagoz compiles ([On an iOS simulator](#on-an-ios-simulator)); on an iPhone the frontmost app's, read by karagoz's runner on the phone ([On an iPhone](#on-an-iphone)).
 
-**Output** on Android (children cut short here; the real tree nests the Chrome icon several levels deep)
+By default the tree is compact: a node with no text, label or action is left out and its children take its place, and a node off screen is left out. On Android the compact tree also shortens `class` and `resourceId` and leaves out a `contentDesc` equal to `text` (see the field table). `--detail full` returns every node the platform reports, unchanged. `bounds` are the same pixels in both, so `tap` takes either tree's centers. Which nodes count as text, label or action is said below each platform's field table.
+
+**Output** on Android (children cut short here)
 
 ```json
-{"device":"emulator-5554","rotation":0,"root":{"class":"android.widget.FrameLayout","package":"com.google.android.apps.nexuslauncher","bounds":[0,0,1080,2400],"children":[...]}}
+{"device":"emulator-5554","rotation":0,"root":{"class":"FrameLayout","package":"com.google.android.apps.nexuslauncher","bounds":[0,0,1080,2400],"children":[...]}}
 ```
 
 A node from the same tree:
 
 ```json
-{"class":"android.widget.TextView","text":"Chrome","contentDesc":"Chrome","clickable":true,"longClickable":true,"focusable":true,"bounds":[581,1905,754,2100]}
+{"class":"TextView","text":"Chrome","clickable":true,"longClickable":true,"focusable":true,"bounds":[581,1905,754,2100]}
 ```
+
+In the full tree its class is `android.widget.TextView`.
 
 | Field | Present | Meaning |
 | --- | --- | --- |
@@ -28,11 +32,11 @@ Node fields on Android, in this order:
 
 | Field | Present | Meaning |
 | --- | --- | --- |
-| `class` | always | Android class, e.g. `android.widget.Button`. Can be empty. |
-| `package` | on the root, and on any node whose package differs from its parent's | App package. |
+| `class` | always | Android class, e.g. `android.widget.Button`; in the compact tree only the part after the last dot, `Button`. Can be empty. |
+| `package` | on the root, and on any node whose package differs from its parent's (in the compact tree: its nearest kept ancestor's) | App package. |
 | `text` | when not empty | The node's text. |
-| `contentDesc` | when not empty | The node's content description, uiautomator's `content-desc`. |
-| `resourceId` | when not empty | The node's resource id in its full form, `com.example:id/save`. |
+| `contentDesc` | when not empty | The node's content description, uiautomator's `content-desc`. The compact tree leaves it out when it equals `text`. |
+| `resourceId` | when not empty | The node's resource id, in the full tree in its full form, `com.example:id/save`; in the compact tree the part after `:id/`, `save`. `tap --id` takes either. |
 | `hint` | when not empty | The node's hint text, such as an empty text field's placeholder. It exists from Android 15 QPR2 (some API 35 images) on. |
 | `checkable` | only when `true` | The node can be checked, as a checkbox or a switch can. |
 | `checked` | only when `true` | The node is checked. |
@@ -47,7 +51,7 @@ Node fields on Android, in this order:
 | `bounds` | always | `[left, top, right, bottom]` in [screen pixels](../output.md#coordinates). Clipped to the screen: a node wholly off screen is `[0,0,0,0]`, and bottom can be above top. Up to Android 13 the clip also leaves out the status and navigation bars, so a node in the bottom band can be `[0,0,0,0]` while it is visible. |
 | `children` | when the node has any | Nodes, same shape. |
 
-Other attributes that uiautomator prints (`index`, `drawing-order`, `NAF`) are dropped. Every node uiautomator returns is kept; there is no filtering.
+Other attributes that uiautomator prints (`index`, `drawing-order`, `NAF`) are dropped. With `--detail full` every node uiautomator returns is kept. The compact tree keeps a node with `text`, `contentDesc` or `hint`, or one that is `clickable`, `longClickable`, `scrollable`, `checkable` or `password`, or an `EditText`; it drops nodes whose bounds are `[0,0,0,0]` or empty.
 
 What the tree covers is what uiautomator covers: the focused window, and nodes visible to the user. Where a framework puts its labels differs: Jetpack Compose puts text in `text`, Flutter puts it in `contentDesc`.
 
@@ -62,7 +66,7 @@ What the tree covers is what uiautomator covers: the focused window, and nodes v
   - the output could not be parsed.
 - `AUTOMATION_BUSY`: another UiAutomation client is connected. Only one can be at a time.
 - `ADB_TIMEOUT` after 20 s.
-- Plus the [device selection](../device-selection.md) errors, `INVALID_ARGS` and the adb errors.
+- Plus the [device selection](../device-selection.md) errors, `INVALID_ARGS` (also for `--detail` other than `compact` or `full`) and the adb errors.
 
 **Notes**
 
@@ -99,6 +103,8 @@ Node fields, in this order:
 | `bounds` | always | `[left, top, right, bottom]` in [screen pixels](../output.md#coordinates): the frame in points times `screenshot`'s `scale`, rounded to 0.01. Not clipped to the screen: an element below the fold has a bottom past the screen's height. |
 | `children` | when the node has any | Nodes, same shape. |
 
+The compact tree keeps an element with a `label` or `value`, or one whose role is a control, a cell, a text field, a scroll view, a table, a collection view, a bar, an alert, a sheet or the keyboard; it drops elements outside the screen. On a simulator the tree is already close to that, so the two differ mostly below the fold and when the keyboard is up.
+
 The root is the frontmost app, or SpringBoard on the home screen. An alert, a system alert included, is in the tree in place of what it covers. Only elements on screen are listed. Keyboard keys and WebView content have not been measured. An app stopped in a debugger (an Xcode breakpoint or pause) reads as a root `Application` with `bounds` `[0,0,0,0]` and no label or children, with exit 0.
 
 The first call compiles the helper ([Requirements](../requirements.md)) and takes a few seconds; later calls take about 0.25 s. The helper only reads: it installs nothing in the simulator, needs no macOS permission and leaves no process running.
@@ -123,8 +129,8 @@ The output's shape on an iPhone 14 Pro Max (UDID masked, label made up, children
 The node fields are the simulator's, with these differences:
 
 - `role` is XCTest's element type: `Application`, `Window`, `Group` (XCTest's `Other`), `Button`, `StaticText`, `Heading` (a static text with the header trait), `Cell`, `Icon`, `Image`, `Switch` (also XCTest's `Toggle`), `TextField`, `SearchField`, `Keyboard`, `Key`, `NavigationBar`, `CollectionView`, ... A type karagoz does not know is `Element<number>`.
-- XCTest's layers stay: windows and unlabeled groups. The measured trees were larger than the simulator's: home screen 224 nodes, Settings 183, an app with the keyboard up 158 (14 to 20 on the simulator).
-- Elements off screen are listed; icons on another home screen page have `bounds` `[0,0,0,0]`.
+- With `--detail full` XCTest's layers stay: windows and unlabeled groups. The measured trees were larger than the simulator's: home screen 224 nodes, Settings 183, an app with the keyboard up 158 (14 to 20 on the simulator). The compact tree leaves those layers out, and keeps the `Keyboard` node without its `Key` children.
+- Elements off screen are listed (in the full tree); icons on another home screen page have `bounds` `[0,0,0,0]`.
 - In landscape XCTest reports the keyboard in portrait coordinates; karagoz turns it into the screen's. Measured with the phone turned clockwise (`rotation` `270`); the other direction is turned by symmetry and was not measured.
 - `rotation` and the scale come from `devicectl device info displays`, as in [`screenshot`](screenshot.md), so `bounds` are that screenshot's pixels.
 - The root is the app in front, or SpringBoard on the home screen. A system alert, when one is up, is the root's only child. Not measured on a phone: an alert, Control Center, Notification Center, the lock screen.

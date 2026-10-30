@@ -58,7 +58,7 @@ Codex passes a server only a short list of environment variables; `env_vars` for
 | --- | --- | --- | --- |
 | `devices` | [`devices`](commands/devices.md) | none | read-only |
 | `screenshot` | [`screenshot`](commands/screenshot.md) | `out`, `inline`, `device` | |
-| `ui_tree` | [`ui-tree`](commands/ui-tree.md) | `device` | read-only |
+| `ui_tree` | [`ui-tree`](commands/ui-tree.md) | `device`, `detail` | read-only |
 | `tap` | [`tap`](commands/tap.md) | `x`, `y`, `text`, `id`, `duration`, `timeout`, `device` | |
 | `swipe` | [`swipe`](commands/swipe.md) | `x1`, `y1`, `x2`, `y2` (required), `duration`, `device` | |
 | `text` | [`text`](commands/text.md) | `text` (required), `device` | |
