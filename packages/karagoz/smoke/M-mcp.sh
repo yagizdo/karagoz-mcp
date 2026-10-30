@@ -237,8 +237,9 @@ if (JSON.stringify(list?.tools?.map((tool) => tool.name).sort()) !== JSON.string
 }
 const readOnly = ['devices', 'ui_tree', 'logs', 'doctor'];
 const destructive = ['install', 'uninstall', 'uninstall_runner'];
-// install_runner's build registers the iPhone and an App ID with Apple's developer service.
-const openWorld = ['install_runner'];
+// install_runner's build registers the iPhone and an App ID with Apple's developer service; open_url can send the
+// device to any host the caller names.
+const openWorld = ['install_runner', 'open_url'];
 const required = { swipe: ['x1', 'y1', 'x2', 'y2'], text: ['text'], key: ['key'], install: ['apk'], launch: ['package'], open_url: ['url'], terminate: ['package'], uninstall: ['package'] };
 const keys = (value) => (value && typeof value === 'object' ? Object.entries(value).flatMap(([key, inner]) => [key, ...keys(inner)]) : []);
 for (const tool of list.tools) {

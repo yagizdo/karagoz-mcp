@@ -192,7 +192,7 @@ const TOOLS: Tool[] = [
       },
       required: ['url'],
     },
-    annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
+    annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: true },
   },
   {
     name: 'terminate',

@@ -67,7 +67,7 @@ Codex passes a server only a short list of environment variables; `env_vars` for
 | `key` | [`key`](commands/key.md) | `key` (required), `device` | |
 | `install` | [`install`](commands/install.md) | `apk` (required), `device` | destructive |
 | `launch` | [`launch`](commands/launch.md) | `package` (required), `device` | |
-| `open_url` | [`open-url`](commands/open-url.md) | `url` (required), `app`, `device` | |
+| `open_url` | [`open-url`](commands/open-url.md) | `url` (required), `app`, `device` | open world |
 | `terminate` | [`terminate`](commands/terminate.md) | `package` (required), `device` | |
 | `uninstall` | [`uninstall`](commands/uninstall.md) | `package` (required), `device` | destructive |
 | `logs` | [`logs`](commands/logs.md) | `package`, `since`, `lines`, `device` | read-only |
@@ -75,7 +75,7 @@ Codex passes a server only a short list of environment variables; `env_vars` for
 | `install_runner` | [`install-runner`](commands/install-runner.md) | `team`, `device` | open world |
 | `uninstall_runner` | [`uninstall-runner`](commands/uninstall-runner.md) | `device` | destructive |
 
-"Marked" is the tool's annotation: `readOnlyHint`, `destructiveHint`, or `openWorldHint` for `install_runner`, whose build talks to Apple's developer service. The other 11 carry `destructiveHint: false`, the other 17 `openWorldHint: false`, and all 18 a title. Clients use these to decide what needs approval and what may run in parallel.
+"Marked" is the tool's annotation: `readOnlyHint`, `destructiveHint`, or `openWorldHint` for `install_runner`, whose build talks to Apple's developer service, and for `open_url`, whose URL can send the device to any host on the web. The other 11 carry `destructiveHint: false`, the other 16 `openWorldHint: false`, and all 18 a title. Clients use these to decide what needs approval and what may run in parallel.
 
 ## Arguments
 
