@@ -30,7 +30,7 @@ code_of() { node -e '
 message_of() { node -e 'console.log(JSON.parse(require("fs").readFileSync(0, "utf8")).error.message)'; }
 reason_of() { node -e 'console.log(JSON.parse(require("fs").readFileSync(0, "utf8")).error.reason ?? "none")'; }
 real() { env -i HOME="$tmp/home-real" PATH=/usr/bin:/bin TMPDIR="$tmp" ANDROID_HOME="$tmp/sdk" "$node_bin" dist/cli.js "$@" 2>/dev/null; }
-tree() { real ui-tree --device "$booted"; }
+tree() { real ui-tree --device "$booted" --detail full; }
 # The root's label, or the home screen's page.
 q() { node -e '
   const root = JSON.parse(require("fs").readFileSync(0, "utf8")).root;

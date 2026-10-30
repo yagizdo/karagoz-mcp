@@ -38,7 +38,7 @@ code_of() { node -e '
 '; }
 message_of() { node -e 'console.log(JSON.parse(require("fs").readFileSync(0, "utf8")).error.message)'; }
 real() { env -i HOME="$tmp/home-real" PATH=/usr/bin:/bin TMPDIR="$tmp" ANDROID_HOME="$tmp/sdk" "$node_bin" dist/cli.js "$@" 2>/dev/null; }
-tree() { real ui-tree --device "$booted"; }
+tree() { real ui-tree --device "$booted" --detail full; }
 # One fact from a ui-tree line on stdin: whether a node with an identifier is listed, its label or bounds center, the
 # top edge of the node labelled <id> (or "gone"), the root's label or size, or the home screen's page.
 q() { node -e '

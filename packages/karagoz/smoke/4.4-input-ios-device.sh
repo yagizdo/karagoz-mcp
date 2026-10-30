@@ -256,7 +256,7 @@ const answers = {
 };
 console.log(answers[what]());
 JS
-  q() { real ui-tree --device "$phone" > "$tmp/tree.json" || fail "real ui-tree failed: $(code_of < "$tmp/tree.json")"; "$node_bin" "$tmp/q.cjs" "$tmp/tree.json" "$@"; }
+  q() { real ui-tree --device "$phone" --detail full > "$tmp/tree.json" || fail "real ui-tree failed: $(code_of < "$tmp/tree.json")"; "$node_bin" "$tmp/q.cjs" "$tmp/tree.json" "$@"; }
   # until <seconds> <want> <q args>: polls the tree until q prints want.
   until_is() { n=$1 want=$2; shift 2; while [ "$(q "$@")" != "$want" ]; do n=$((n - 1)); [ $n -gt 0 ] || return 1; sleep 1; done; }
   until_is 15 Probe root || fail "Probe is not in front"

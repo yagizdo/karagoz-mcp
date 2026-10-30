@@ -39,7 +39,7 @@ records_of() { node -e '
   for (const record of records) console.log(JSON.stringify(record));
 '; }
 real() { env -i HOME="$tmp/home-real" PATH=/usr/bin:/bin TMPDIR="$tmp" ANDROID_HOME="$tmp/sdk" "$node_bin" dist/cli.js "$@" 2>/dev/null; }
-tree() { real ui-tree --device "$booted"; }
+tree() { real ui-tree --device "$booted" --detail full; }
 # The root's label, or the home screen's page.
 q() { node -e '
   const root = JSON.parse(require("fs").readFileSync(0, "utf8")).root;

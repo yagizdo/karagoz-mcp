@@ -3,8 +3,8 @@
 # installs it with devicectl, `uninstall-runner` removes every runner and only the profiles made for them, and both
 # refuse a simulator or an Android device before any readiness check. `ui-tree` on a paired iPhone asks the runner over
 # usbmux, starts an installed runner with xcodebuild test-without-building once under a lock when nothing answers,
-# refuses to start one that is not installed, maps its raw snapshot to K34's tree in pixels, and maps every start and
-# read failure to its code (K41). Each start puts a fresh secret in a 0600 file and a 0600 copy of the build's
+# refuses to start one that is not installed, maps its raw snapshot to K34's tree in pixels, compact by default and
+# every element with --detail full (K54), and maps every start and read failure to its code (K41). Each start puts a fresh secret in a 0600 file and a 0600 copy of the build's
 # .xctestrun, never on xcodebuild's command line; every request and answer is signed with it, and an older runner, a
 # stranger, a squatter, a listener that never answers and a taken port each get their own refusal (K42).
 # Precondition: macOS. Fake adb, simctl, devicectl and xcodebuild come through ANDROID_HOME and DEVELOPER_DIR under
@@ -199,7 +199,7 @@ cat > "$fake/tree.json" <<'JSON'
 JSON
 want='{"device":"P1","rotation":0,"root":{"role":"Application","label":"Probe","bounds":[0,0,1290,2796],"children":[{"role":"Group","bounds":[0,0,1290,2796],"children":[{"role":"Heading","label":"Title","bounds":[48,180,648,300]},{"role":"StaticText","label":"Body","bounds":[48,330,648,391.5]},{"role":"Switch","label":"Wi-Fi","value":"1","bounds":[48,420,1242,552]},{"role":"TextField","value":"Search","focused":true,"bounds":[48,570,1242,678]},{"role":"Button","label":"Delete","identifier":"delete","selected":true,"enabled":false,"bounds":[48,690,348,822]},{"role":"Element99","bounds":[0,0,3,3]}]}]}}'
 before=$(starts)
-out=$(k ui-tree --device P1) || fail "cold start exited non-zero: $out"
+out=$(k ui-tree --device P1 --detail full) || fail "cold start exited non-zero: $out"
 is "cold start, mapping" "$out" "$want"
 is "cold start: one xcodebuild" "$(starts)" $((before + 1))
 args=$(/usr/bin/grep test-without-building "$fake/xcodebuild" | /usr/bin/tail -1)
@@ -235,10 +235,20 @@ cat > "$fake/tree.json" <<'JSON'
 {"type":19,"frame":[266,117,162,698],"children":[{"type":20,"label":"q","frame":[266,117,40,60]}]}]}]}}
 JSON
 display rot90 1290,2796
-out=$(k ui-tree --device P1) || fail "landscape keyboard exited non-zero: $out"
+out=$(k ui-tree --device P1 --detail full) || fail "landscape keyboard exited non-zero: $out"
 is "landscape keyboard" "$out" '{"device":"P1","rotation":270,"root":{"role":"Application","label":"Probe","bounds":[0,0,2796,1290],"children":[{"role":"Window","bounds":[0,0,2796,1290],"children":[{"role":"Keyboard","bounds":[351,798,2445,1284],"children":[{"role":"Key","label":"q","bounds":[2265,798,2445,918]}]}]}]}}'
-cp "$tmp/tree.portrait.json" "$fake/tree.json"
 display rot0 1290,2796
+# Compact: the Window and unlabeled Group layers go and their children move up, the keyboard keeps its area without its
+# keys, and an icon with no area goes.
+cat > "$fake/tree.json" <<'JSON'
+{"root":{"type":2,"label":"Probe","frame":[0,0,430,932],"children":[{"type":4,"frame":[0,0,430,932],"children":[
+{"type":1,"frame":[0,0,430,932],"children":[{"type":1,"frame":[16,60,398,100],"children":[{"type":48,"label":"Title","frame":[16,60,200,40]}]},
+{"type":44,"label":"Mail","frame":[0,0,0,0]},{"type":9,"label":"Send","frame":[300,60,100,44]}]}]},
+{"type":4,"frame":[0,600,430,332],"children":[{"type":19,"frame":[0,600,430,332],"children":[{"type":20,"label":"q","frame":[0,610,40,60]},{"type":20,"label":"w","frame":[43,610,40,60]}]}]}]}}
+JSON
+out=$(k ui-tree --device P1) || fail "compact exited non-zero: $out"
+is "compact" "$out" '{"device":"P1","rotation":0,"root":{"role":"Application","label":"Probe","bounds":[0,0,1290,2796],"children":[{"role":"StaticText","label":"Title","bounds":[48,180,648,300]},{"role":"Button","label":"Send","bounds":[900,180,1200,312]},{"role":"Keyboard","bounds":[0,1800,1290,2796]}]}}'
+cp "$tmp/tree.portrait.json" "$fake/tree.json"
 
 # Read failures from a running runner.
 for m in snapshot:CAPTURE_FAILED:kAXErrorIllegalArgument private:HELPER_FAILED:"update karagoz" close:CAPTURE_FAILED:"closed the connection" \
@@ -272,7 +282,7 @@ refuses "not on USB" DEVICE_NOT_READY "USB" ui-tree --device P1
 echo P1:Network > "$fake/usb"
 refuses "Wi-Fi only" DEVICE_NOT_READY "USB" ui-tree --device P1
 echo p1 > "$fake/usb"
-out=$(k ui-tree --device P1) || fail "lowercase serial exited non-zero: $out"
+out=$(k ui-tree --device P1 --detail full) || fail "lowercase serial exited non-zero: $out"
 is "lowercase serial" "$out" "$want"
 : > "$fake/gone"
 refuses "gone before Connect" DEVICE_NOT_READY "USB" ui-tree --device P1
@@ -356,8 +366,8 @@ is "CLI SIGTERM during a start" "$code $(pgrep -f "sleep 97\.43" > /dev/null && 
 # Two first calls at once start one runner.
 echo ok > "$fake/start"
 before=$(starts)
-k ui-tree --device P1 > "$tmp/first" & first=$!
-k ui-tree --device P1 > "$tmp/second" & second=$!
+k ui-tree --device P1 --detail full > "$tmp/first" & first=$!
+k ui-tree --device P1 --detail full > "$tmp/second" & second=$!
 wait $first || fail "first concurrent call failed: $(/bin/cat "$tmp/first")"
 wait $second || fail "second concurrent call failed: $(/bin/cat "$tmp/second")"
 is "concurrent: one start" "$(starts)" $((before + 1))
@@ -405,4 +415,4 @@ else
   case "$real_ok" in real*) ;; *) fail "real tree: $real_ok" ;; esac
 fi
 
-echo "ok: $real_ok, teams, build arguments, failures, targets, uninstall, mapping, mini, read failures, not on USB, Wi-Fi only, serial case, gone before Connect, not installed, start failures, start budget (60s), MCP and CLI SIGTERM during a start, lock, devices, doctor, landscape keyboard, secret, signatures, older runner, stranger, squatter, mute listener, port taken, locked start"
+echo "ok: $real_ok, teams, build arguments, failures, targets, uninstall, mapping, mini, compact, read failures, not on USB, Wi-Fi only, serial case, gone before Connect, not installed, start failures, start budget (60s), MCP and CLI SIGTERM during a start, lock, devices, doctor, landscape keyboard, secret, signatures, older runner, stranger, squatter, mute listener, port taken, locked start"

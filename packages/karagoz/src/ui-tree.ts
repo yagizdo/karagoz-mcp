@@ -1,6 +1,6 @@
 import { resolveTarget } from './devices.js';
 import { compact as compactAndroid, readTree as readAndroidTree } from './drivers/android/ui-tree.js';
-import { readPhoneTree, readTree as readIosTree } from './drivers/ios/ui-tree.js';
+import { compact as compactIos, readPhoneTree, readTree as readIosTree } from './drivers/ios/ui-tree.js';
 import { KaragozError } from './errors.js';
 
 export async function uiTree(device: string | undefined, detail = 'compact') {
@@ -13,5 +13,5 @@ export async function uiTree(device: string | undefined, detail = 'compact') {
     return { device: target.id, rotation, root: detail === 'full' ? root : compactAndroid(root) };
   }
   const { rotation, root } = await (target.kind === 'physical' ? readPhoneTree(target.id) : readIosTree(target.id));
-  return { device: target.id, rotation, root };
+  return { device: target.id, rotation, root: detail === 'full' ? root : compactIos(root) };
 }
