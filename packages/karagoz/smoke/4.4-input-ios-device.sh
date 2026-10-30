@@ -154,7 +154,7 @@ is "direction mark" "$(sent)" '/tap {"x":116,"y":122,"orientation":1}'
 before=$(inputs)
 refuses "ambiguous" ELEMENT_AMBIGUOUS "2 nodes match label or value 'Row'" tap --text Row --device P1
 refuses "not found" ELEMENT_NOT_FOUND "no node with identifier 'nope'" tap --id nope --timeout 1000 --device P1
-refuses "under the keyboard" ELEMENT_COVERED "hide the keyboard" tap --text 'Row 30' --device P1
+refuses "under the keyboard" ELEMENT_COVERED "the software keyboard covers the center of the node with label or value 'Row 30' at (348, 2160); hide the keyboard first, then tap again" tap --text 'Row 30' --device P1
 is "refused element taps: nothing sent" "$(inputs)" "$before"
 k tap --text q --device P1 > /dev/null || fail "tapping a key of the keyboard failed"
 is "keyboard key" "$(sent)" '/tap {"x":30,"y":635,"orientation":1}'

@@ -1,6 +1,7 @@
 import { fileURLToPath } from 'node:url';
 import { KaragozError } from '../../errors.js';
 import { cancellation } from '../../cancellation.js';
+import { BIDI, findElement, type Hit, type Selector } from '../../element.js';
 import { DOUBLE_TAP_GAP_MS, DOUBLE_TAP_HOLD_MS } from '../../gesture.js';
 import { adb, TIMEOUT_MS } from './adb.js';
 import { readTree, type UiNode } from './ui-tree.js';
@@ -26,10 +27,6 @@ const PIECE_MS = 1_000;
 
 // Cold typing measured ~20-30 ms per character, so a chunk stays well inside adb's 10 s timeout (K25).
 const CHUNK = 100;
-
-// Invisible direction marks, Unicode's Bidi_Control set. One UI's Settings wraps Bluetooth and Wi-Fi Direct names in
-// U+200E (Samsung Settings source), which nobody can type from the screen, so --text ignores them on both sides (K26).
-const BIDI = /\p{Bidi_Control}/gu;
 
 // Every input call fails this way when MIUI/HyperOS or vivo deny INJECT_EVENTS to shell (K25).
 const BLOCKED =
@@ -60,7 +57,6 @@ export async function key(id: string, { name, code }: { name: string; code: numb
   return { device: id, key: `KEYCODE_${name}`, code };
 }
 
-type Selector = { kind: 'text'; label: string } | { kind: 'id'; id: string };
 export type Target = { kind: 'point'; x: number; y: number } | Selector;
 
 // A long press is a swipe that stays in place: one call, so the UP cannot get lost. On API 36 a lost UP silently eats
@@ -98,9 +94,9 @@ function matches(node: UiNode, selector: Selector): boolean {
 }
 
 // A matching parent and its matching child both count, so the pair is ambiguous (K26).
-function collect(node: UiNode, selector: Selector, found: { node: UiNode; box: [number, number, number, number] }[]) {
+function collect(node: UiNode, selector: Selector, found: Hit<UiNode>[]) {
   const box = area(node);
-  if (box && matches(node, selector)) found.push({ node, box });
+  if (box && matches(node, selector)) found.push({ node, name: typeof node.class === 'string' ? node.class : '', box });
   const children = node.children;
   if (Array.isArray(children))
     for (const child of children) if (typeof child === 'object') collect(child, selector, found);
@@ -123,52 +119,25 @@ async function keyboard(id: string) {
   }));
 }
 
-// Only "no match" reads again; a failed read, an ambiguous match or a covered center ends it. --timeout waits for the
-// element to appear and never repeats the tap (K26, K11 note).
 async function locate(id: string, selector: Selector, timeout: number) {
   const what =
     selector.kind === 'text'
       ? `text or contentDesc '${selector.label}'`
       : `resourceId '${selector.id}' or ending in ':id/${selector.id}'`;
-  const start = performance.now();
-  for (let reads = 1; ; reads++) {
-    // Without it a cancelled wait keeps reading for its whole timeout and blocks every other read on the device (K31).
-    cancellation.getStore()?.throwIfAborted();
+  const found = await findElement(what, timeout, async () => {
     const [{ root }, keys] = await Promise.all([readTree(id), keyboard(id)]);
-    const found = collect(root, selector, []);
-    if (found.length > 1) {
-      const shown = found
-        .slice(0, 5)
-        .map(({ node, box }) => `${typeof node.class === 'string' ? node.class : ''} [${box.join(',')}]`);
-      const more = found.length > shown.length ? `, and ${found.length - shown.length} more` : '';
-      throw new KaragozError(
-        'ELEMENT_AMBIGUOUS',
-        `${found.length} nodes match ${what}: ${shown.join(', ')}${more}; tap one by its coordinates`,
-      );
-    }
-    const [match] = found;
-    if (match) {
-      const [l, t, r, b] = match.box;
-      const x = (l + r) / 2;
-      const y = (t + b) / 2;
-      if (keys.some((rect) => rect.l <= x && x < rect.r && rect.t <= y && y < rect.b)) {
-        const name = selector.kind === 'text' ? selector.label : selector.id;
-        throw new KaragozError(
-          'ELEMENT_COVERED',
-          `'${name}' at (${x}, ${y}) is under the on-screen keyboard; hide it with karagoz key BACK, or tap another point`,
-        );
-      }
-      return { node: match.node, x, y };
-    }
-    const elapsed = performance.now() - start;
-    if (elapsed >= timeout) {
-      const where = typeof root.package === 'string' ? root.package : 'the focused window';
-      throw new KaragozError(
-        'ELEMENT_NOT_FOUND',
-        `no node with ${what} in ${where} (${reads} read${reads === 1 ? '' : 's'} in ${(elapsed / 1000).toFixed(1)} s)`,
-      );
-    }
+    const where = typeof root.package === 'string' ? root.package : 'the focused window';
+    return { tree: keys, hits: collect(root, selector, []), where };
+  });
+  const { x, y } = found;
+  if (found.tree.some((rect) => rect.l <= x && x < rect.r && rect.t <= y && y < rect.b)) {
+    const name = selector.kind === 'text' ? selector.label : selector.id;
+    throw new KaragozError(
+      'ELEMENT_COVERED',
+      `'${name}' at (${x}, ${y}) is under the on-screen keyboard; hide it with karagoz key BACK, or tap another point`,
+    );
   }
+  return { node: found.hit.node, x, y };
 }
 
 export async function tap(id: string, target: Target, duration: number | undefined, timeout: number) {

@@ -454,6 +454,26 @@ error_is o INPUT_BLOCKED "$blocked"
 double_fails "error: device 'emulator-5554' not found"
 error_is o ADB_FAILED "error: device 'emulator-5554' not found" prefix
 
+# p. Seven matches: the first five are named, the rest counted.
+rows=
+for top in 100 200 300 400 500 600 700; do rows="$rows<node class=\"android.widget.TextView\" text=\"Row\" bounds=\"[0,$top][1080,$((top + 50))]\" />"; done
+dump "$rows"
+if fake_run "$tmp/ime-hidden" tap --text Row; then echo "FAIL: fixture p exited 0: $got"; exit 1; fi
+error_is p ELEMENT_AMBIGUOUS "7 nodes match text or contentDesc 'Row': android.widget.TextView [0,100,1080,150], android.widget.TextView [0,200,1080,250], android.widget.TextView [0,300,1080,350], android.widget.TextView [0,400,1080,450], android.widget.TextView [0,500,1080,550], and 2 more; tap one by its coordinates"
+input_is p ''
+
+# q. A root without a package names the focused window.
+printf '%s' "<?xml version='1.0' encoding='UTF-8' standalone='yes' ?><hierarchy rotation=\"0\"><node class=\"android.widget.FrameLayout\" bounds=\"[0,0][1080,2400]\"><node class=\"android.widget.Button\" text=\"Save\" bounds=\"[0,0][0,0]\" /></node></hierarchy>" > "$fake/dump"
+if fake_run "$tmp/ime-hidden" tap --text Save; then echo "FAIL: fixture q exited 0: $got"; exit 1; fi
+error_is q ELEMENT_NOT_FOUND "no node with text or contentDesc 'Save' in the focused window (1 read in " prefix
+case $(printf '%s' "$got" | message_of) in *' (1 read in '[0-9]*.[0-9]' s)') ;; *) echo "FAIL: fixture q: $got"; exit 1 ;; esac
+
+# r. A wait that reads more than once counts its reads.
+dump '<node class="android.widget.Button" text="Save" bounds="[0,0][0,0]" />'
+if fake_run "$tmp/ime-hidden" tap --text Save --timeout 1000; then echo "FAIL: fixture r exited 0: $got"; exit 1; fi
+error_is r ELEMENT_NOT_FOUND "no node with text or contentDesc 'Save' in com.example (" prefix
+case $(printf '%s' "$got" | message_of) in *' ('[0-9]*' reads in '[0-9]*.[0-9]' s)') ;; *) echo "FAIL: fixture r: $got"; exit 1 ;; esac
+
 # m. A control character fails before any adb call past the device lookup.
 if fake_run "$tmp/ime-hidden" text "$(printf 'a\001b\177')"; then echo "FAIL: fixture m exited 0: $got"; exit 1; fi
 error_is m TEXT_UNSUPPORTED "cannot type 'U+0001', 'U+007F' on Android: control characters other than newline and tab; nothing was typed"

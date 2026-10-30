@@ -1,4 +1,5 @@
 import { cancellation } from '../../cancellation.js';
+import { BIDI, findElement, type Hit, type Selector } from '../../element.js';
 import { KaragozError } from '../../errors.js';
 import { DOUBLE_TAP_GAP_MS, DOUBLE_TAP_HOLD_MS } from '../../gesture.js';
 import { runTool } from '../../tool.js';
@@ -29,12 +30,6 @@ const TYPE_SPEED = 120;
 // 27's own device tool allows no older runtime, and a 26.2 simulator never answered within the helper's 15 s (K47).
 const SESSION_FLOOR = 27;
 const RUNTIME = /\.iOS-(\d+)-(\d+)$/;
-
-// Invisible direction marks, Unicode's Bidi_Control set, ignored on both sides as on Android (K26). A copy of the
-// Android driver's, so this driver imports nothing from it.
-const BIDI = /\p{Bidi_Control}/gu;
-
-type Selector = { kind: 'text'; label: string } | { kind: 'id'; id: string };
 
 // K25 names to the HID usages dtuhidd takes (K35): hardware buttons on the consumer page (12), the rest on the
 // keyboard page (7). A name in neither has no iOS key.
@@ -324,9 +319,9 @@ function matches(node: IosNode, selector: Selector): boolean {
 }
 
 // A node with no area has nothing to tap; a matching parent and its matching child both count (K26).
-function collect(node: IosNode, selector: Selector, found: IosNode[]): IosNode[] {
+function collect(node: IosNode, selector: Selector, found: Hit<IosNode>[]): Hit<IosNode>[] {
   const [l = 0, t = 0, r = 0, b = 0] = node.bounds;
-  if (r > l && b > t && matches(node, selector)) found.push(node);
+  if (r > l && b > t && matches(node, selector)) found.push({ node, name: node.role, box: node.bounds });
   for (const child of node.children ?? []) collect(child, selector, found);
   return found;
 }
@@ -344,39 +339,15 @@ function underKeyboard(node: IosNode, target: IosNode, x: number, y: number): bo
   return (node.children ?? []).some((child) => underKeyboard(child, target, x, y));
 }
 
-// Only "no match" reads again; a failed read or an ambiguous match ends it. --timeout waits for the element to appear
-// and never repeats the tap (K26, K11 note).
 async function find<T extends { root: IosNode }>(selector: Selector, timeout: number, read: () => Promise<T>) {
   const what = selector.kind === 'text' ? `label or value '${selector.label}'` : `identifier '${selector.id}'`;
-  const start = performance.now();
-  for (let reads = 1; ; reads++) {
-    // Without it a cancelled wait keeps reading for its whole timeout (K31).
-    cancellation.getStore()?.throwIfAborted();
-    const tree = await read();
-    const found = collect(tree.root, selector, []);
-    if (found.length > 1) {
-      const shown = found.slice(0, 5).map((node) => `${node.role} [${node.bounds.join(',')}]`);
-      const more = found.length > shown.length ? `, and ${found.length - shown.length} more` : '';
-      throw new KaragozError(
-        'ELEMENT_AMBIGUOUS',
-        `${found.length} nodes match ${what}: ${shown.join(', ')}${more}; tap one by its coordinates`,
-      );
-    }
-    const [match] = found;
-    if (match) {
-      const [l = 0, t = 0, r = 0, b = 0] = match.bounds;
-      const element = { ...match };
-      delete element.children;
-      return { tree, match, element, x: (l + r) / 2, y: (t + b) / 2, what };
-    }
-    const elapsed = performance.now() - start;
-    if (elapsed >= timeout) {
-      throw new KaragozError(
-        'ELEMENT_NOT_FOUND',
-        `no node with ${what} in the frontmost app (${reads} read${reads === 1 ? '' : 's'} in ${(elapsed / 1000).toFixed(1)} s)`,
-      );
-    }
-  }
+  const { tree, hit, x, y } = await findElement(what, timeout, async () => {
+    const current = await read();
+    return { tree: current, hits: collect(current.root, selector, []), where: 'the frontmost app' };
+  });
+  const element = { ...hit.node };
+  delete element.children;
+  return { tree, match: hit.node, element, x, y, what };
 }
 
 export async function tapElement(udid: string, selector: Selector, duration: number | undefined, timeout: number) {

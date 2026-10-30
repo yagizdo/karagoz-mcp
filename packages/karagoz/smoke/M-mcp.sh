@@ -2,7 +2,7 @@
 # Step M: `karagoz mcp` serves the 18 commands as MCP tools over stdio. The CLI lists mcp and checks its arguments;
 # the bundle holds no HTTP transport or bearer-auth code and reaches the server chunk only through import(); both
 # supported protocol versions are echoed; tools/list carries the 18 tools, their annotations and flat schemas within
-# 9,600 characters; every result and error is the CLI's JSON line; key HOME, ui_tree in both details and an inline
+# 9,600 characters, and each tool's properties are its command's arguments and options; every result and error is the CLI's JSON line; key HOME, ui_tree in both details and an inline
 # screenshot work on the emulator; a cancelled call, stdin close, SIGTERM and SIGINT kill the call's adb child at once and the server
 # keeps serving after a cancel; a cancelled logs call kills its streaming simctl; UiAutomation reads on one device take turns and a cancelled waiting read never runs;
 # a cached adb that vanishes is looked up again, stays in use when an earlier candidate reappears, and is the one
@@ -123,6 +123,10 @@ FAKE
 chmod +x "$tmp/dev/usr/bin/simctl" "$tmp/dev/usr/bin/devicectl"
 printf '%s' "<?xml version='1.0' encoding='UTF-8' standalone='yes' ?><hierarchy rotation=\"0\"><node class=\"android.widget.FrameLayout\" package=\"dev.karagoz.fake\" bounds=\"[0,0][100,100]\" /></hierarchy>" \
   > "$tmp/fake/tree.xml"
+# The command table, for the list group. dist/ does not export it, and Node's type stripping cannot import src/
+# directly: it does not map the .js specifiers there to .ts files.
+npx --no-install esbuild src/commands.ts --bundle --platform=node --format=esm --target=node22 \
+  --outfile="$tmp/commands.mjs" --log-level=warning
 
 # 5. The MCP groups. m.mjs prints FAIL lines only.
 cat > "$tmp/m.mjs" <<'JS'
@@ -254,6 +258,19 @@ for (const tool of list.tools) {
   const banned = keys(schema).filter((key) => ['oneOf', 'anyOf', 'allOf', 'pattern', 'minimum', 'maximum', 'format', 'default'].includes(key));
   if (banned.length) fail(`list: ${name} schema has ${banned.join(', ')}`);
 }
+// Each tool's properties are its command's arguments and options, and every command is a tool, named as mcp.ts maps
+// them. screenshot's inline is MCP-only: the server takes it out before the command's checks.
+const { commands } = await import(`${tmp}/commands.mjs`);
+for (const { name, inputSchema } of list.tools) {
+  const key = name.replace('_', '-');
+  if (!Object.hasOwn(commands, key)) fail(`list: ${name} has no command ${key}`);
+  const want = [...commands[key].args, ...Object.keys(commands[key].options), ...(name === 'screenshot' ? ['inline'] : [])];
+  const have = Object.keys(inputSchema.properties ?? {});
+  for (const arg of have.filter((arg) => !want.includes(arg))) fail(`list: ${name} property ${arg} is not in ${key}'s arguments or options`);
+  for (const arg of want.filter((arg) => !have.includes(arg))) fail(`list: ${name} has no property for ${key}'s ${arg}`);
+}
+const unserved = Object.keys(commands).filter((key) => !list.tools.some(({ name }) => name.replace('_', '-') === key));
+if (unserved.length) fail(`list: no tool for ${unserved.join(', ')}`);
 const detail = list.tools.find((tool) => tool.name === 'ui_tree')?.inputSchema.properties.detail;
 if (detail?.type !== 'string' || JSON.stringify(detail.enum) !== '["compact","full"]') fail(`list: ui_tree detail ${JSON.stringify(detail)}`);
 // 9,600 since open_url joined the tools (9,548 then).

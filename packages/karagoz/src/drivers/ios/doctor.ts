@@ -3,7 +3,7 @@ import { join, resolve } from 'node:path';
 import { KaragozError } from '../../errors.js';
 import { COREDEVICE_PLIST, devicectlPath } from './devicectl.js';
 import { notOnPath } from './logs.js';
-import { runnerBuild, xcodebuild, xctestrun } from './runner.js';
+import { runnerBuild, xcodebuild, xctestrun } from './runner-build.js';
 import { binary, EXPECTED, FRAMEWORK_PLIST } from './simctl.js';
 import { helperPath, swiftc } from './ui-tree.js';
 import { daemonPath, unreachable } from './usbmux.js';
