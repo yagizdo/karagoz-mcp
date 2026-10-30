@@ -383,12 +383,28 @@ refuses ELEMENT_AMBIGUOUS "two Rows"
 [ "$(printf '%s' "$out" | message_of)" = "2 nodes match label or value 'Row': StaticText [48,1500,1158,1632], StaticText [48,1650,1158,1782]; tap one by its coordinates" ] \
   || fail "ELEMENT_AMBIGUOUS text: $out"
 [ ! -e "$fake/argv" ] || fail "an ambiguous match tapped"
+cp "$fake/tree.json" "$tmp/tree.saved"
+cat > "$fake/tree.json" <<'TREE'
+{"screen":{"width":1206,"height":2622,"scale":3},"root":{"role":"AXApplication","label":"Probe","frame":[0,0,402,874],"children":[
+{"role":"AXStaticText","label":"Row","frame":[16,600,370,30]},
+{"role":"AXStaticText","label":"Row","frame":[16,640,370,30]},
+{"role":"AXStaticText","label":"Row","frame":[16,680,370,30]},
+{"role":"AXStaticText","label":"Row","frame":[16,720,370,30]},
+{"role":"AXStaticText","label":"Row","frame":[16,760,370,30]},
+{"role":"AXStaticText","label":"Row","frame":[16,800,370,30]}]}}
+TREE
+call tap --text Row --device A1
+refuses ELEMENT_AMBIGUOUS "six Rows"
+[ "$(printf '%s' "$out" | message_of)" = "6 nodes match label or value 'Row': StaticText [48,1800,1158,1890], StaticText [48,1920,1158,2010], StaticText [48,2040,1158,2130], StaticText [48,2160,1158,2250], StaticText [48,2280,1158,2370], and 1 more; tap one by its coordinates" ] \
+  || fail "ELEMENT_AMBIGUOUS text with more than five: $out"
+mv "$tmp/tree.saved" "$fake/tree.json"
 call tap --text Hidden --device A1
 refuses ELEMENT_NOT_FOUND "zero-area node"
-case "$(printf '%s' "$out" | message_of)" in "no node with label or value 'Hidden' in the frontmost app (1 read in "*) ;; *) fail "ELEMENT_NOT_FOUND text: $out" ;; esac
+case "$(printf '%s' "$out" | message_of)" in "no node with label or value 'Hidden' in the frontmost app (1 read in "[0-9]*.[0-9]" s)") ;; *) fail "ELEMENT_NOT_FOUND text: $out" ;; esac
 call tap --id nope --timeout 1500 --device A1
 refuses ELEMENT_NOT_FOUND "--timeout"
 says "--timeout" "no node with identifier 'nope'"
+case "$(printf '%s' "$out" | message_of)" in "no node with identifier 'nope' in the frontmost app ("[0-9]*" reads in "[0-9]*.[0-9]" s)") ;; *) fail "ELEMENT_NOT_FOUND after several reads: $out" ;; esac
 [ "$(/usr/bin/wc -l < "$fake/reads")" -ge 2 ] || fail "--timeout 1500 read the tree fewer than 2 times: $out"
 [ ! -e "$fake/argv" ] || fail "a missing element tapped"
 helper "if [ \$# -eq 2 ]; then echo 'ax: no frontmost application' >&2; exit 3; fi; shift 2; echo \"\$*\" > '$fake/argv'"
