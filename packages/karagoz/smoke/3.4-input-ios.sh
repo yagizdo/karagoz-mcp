@@ -1,5 +1,5 @@
 #!/bin/sh
-# Step 3.4: on macOS tap, swipe, key and the element tap (tap --text, --id) reach a booted iOS simulator through the
+# Step 3.4: on macOS tap, long-press, swipe, key and the element tap (tap --text, --id) reach a booted iOS simulator through the
 # helper's DTUHID modes and text through its XCUIAutomation mode, in K25's and K26's shapes, with the tree's pixels
 # turned into the unrotated portrait panel for every rotation (K35). Fakes prove the helper's argv, each helper exit's
 # K5 code, the timeout, DEVICE_NOT_READY and the iOS-less key before any compile, text's character check, that it
@@ -178,9 +178,9 @@ call tap 603 1171 --device A1
 succeeds tap '{"device":"A1","x":603,"y":1171}'
 argv_is tap "tap 0.5 0.446606 0"
 [ "$(compiles)" = 1 ] || fail "the first call compiled $(compiles) times"
-call tap 603 1171 --duration 700 --device A1
-succeeds "tap --duration" '{"device":"A1","x":603,"y":1171,"duration":700}'
-argv_is "tap --duration" "tap 0.5 0.446606 700"
+call long-press 603 1171 --duration 700 --device A1
+succeeds "long-press" '{"device":"A1","x":603,"y":1171,"duration":700}'
+argv_is "long-press" "tap 0.5 0.446606 700"
 
 # 2. Each interface rotation maps to the unrotated panel; an unreadable rotation counts as portrait.
 rot rot270; call tap 1311 901 --device A1; argv_is "rotation 90" "tap 0.252902 0.5 0"
@@ -366,9 +366,9 @@ call tap --text Press --device A1
 succeeds "tap --text" '{"device":"A1","x":603,"y":966,"element":{"role":"Button","label":"Press","identifier":"press-button","bounds":[48,900,1158,1032]}}'
 argv_is "tap --text" "tap 0.5 0.368421 0"
 call tap --text Name --device A1; argv_is "tap --text on a value" "tap 0.5 0.139588 0"
-call tap --id press-button --duration 700 --device A1
-succeeds "tap --id --duration" '{"device":"A1","x":603,"y":966,"duration":700,"element":{"role":"Button","label":"Press","identifier":"press-button","bounds":[48,900,1158,1032]}}'
-argv_is "tap --id --duration" "tap 0.5 0.368421 700"
+call long-press --id press-button --duration 700 --device A1
+succeeds "long-press --id" '{"device":"A1","x":603,"y":966,"duration":700,"element":{"role":"Button","label":"Press","identifier":"press-button","bounds":[48,900,1158,1032]}}'
+argv_is "long-press --id" "tap 0.5 0.368421 700"
 call tap --text Buds --device A1; argv_is "direction marks" "tap 0.164179 0.469108 0"
 call tap --text Row --device A1
 refuses ELEMENT_AMBIGUOUS "two Rows"
@@ -449,7 +449,7 @@ succeeds "runner tap" '{"device":"A1","x":603,"y":1311}'
 build_line=$(/usr/bin/grep build-for-testing "$fake/xcodebuild")
 case $build_line in *"-destination id=A1"*) ;; *) fail "runner build: no simulator destination: $build_line" ;; esac
 case $build_line in *DEVELOPMENT_TEAM* | *-allowProvisioning*) fail "runner build: signing settings: $build_line" ;; esac
-rcall "$tmp/rhome" tap 603 1311 --duration 700 --device A1
+rcall "$tmp/rhome" long-press 603 1311 --duration 700 --device A1
 [ "$(sent)" = '/tap {"x":201,"y":437,"duration":700,"orientation":1}' ] || fail "runner long press sent: $(sent)"
 [ "$(count build-for-testing xcodebuild)" = 1 ] && [ "$(count test-without-building xcodebuild)" = 1 ] \
   || fail "second runner call built or started again: $(cat "$fake/xcodebuild")"
@@ -554,7 +554,7 @@ else
   succeeds "real tap" "{\"device\":\"$booted\",\"x\":$1,\"y\":$2}"
   wait_for "real tap" "Tap me 1" label tap-button
   set -- $(tree | q center long-target)
-  out=$(real tap "$1" "$2" --duration 700 --device "$booted") && st=0 || st=$?
+  out=$(real long-press "$1" "$2" --duration 700 --device "$booted") && st=0 || st=$?
   succeeds "real long press" "{\"device\":\"$booted\",\"x\":$1,\"y\":$2,\"duration\":700}"
   wait_for "real long press" "Long 1" label long-target
   before=$(tree | q top "Row 1")

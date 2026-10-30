@@ -1,5 +1,5 @@
 #!/bin/sh
-# Step 1.4: key, tap (a point, a long press, --text or --id), swipe and text each print one JSON line, and bad
+# Step 1.4: key, tap (a point, --text or --id), long-press, swipe and text each print one JSON line, and bad
 # arguments fail with the JSON envelope before any device call. Text beyond ASCII is pasted by karagoz's helper: it
 # reads back exactly, the clip copied before it is back afterwards, and the helper's file is gone from /data/local/tmp.
 # A fake adb covers what a live screen cannot produce.
@@ -103,7 +103,10 @@ refuses INVALID_ARGS "unexpected argument '3'" tap 1 2 3
 refuses INVALID_ARGS "<x> must be a non-negative number (got '1e3')" tap 1e3 5
 refuses INVALID_ARGS "'swipe' needs <x1> <y1> <x2> <y2>" swipe 1 2 3
 refuses INVALID_ARGS "'tap' does not take the option '--out'" tap 1 2 --out x
-refuses INVALID_ARGS "--duration must be a whole number of milliseconds (got '1.5')" tap 1 2 --duration 1.5
+refuses INVALID_ARGS "'tap' does not take the option '--duration'" tap 1 2 --duration 5
+refuses INVALID_ARGS "'long-press' takes <x> <y>, --text or --id" long-press
+refuses INVALID_ARGS "'long-press' needs <x> <y>" long-press 5
+refuses INVALID_ARGS "--duration must be a whole number of milliseconds (got '1.5')" long-press 1 2 --duration 1.5
 refuses INVALID_ARGS "'key' does not take the option '--duration'" key HOME --duration 5
 refuses INVALID_ARGS "'text' needs <text>" text
 refuses INVALID_ARGS "'text' needs <text>" text ''
@@ -122,11 +125,11 @@ tree=$(node dist/cli.js ui-tree --device "$id" --detail full) || { echo "FAIL: u
 front=$(printf '%s' "$tree" | field root.package) || { echo "FAIL: ui-tree printed no root.package: $tree"; exit 1; }
 [ "$front" = "${home%%/*}" ] || { echo "FAIL: after key HOME the front package is $front, not the launcher ${home%%/*}"; exit 1; }
 
-# 4. Long press: a held touch on empty workspace opens the launcher's popup; a failed one would be a tap on nothing.
+# 4. Long press at the default 1000 ms: a held touch on empty workspace opens the launcher's popup; a failed one would be a tap on nothing.
 node dist/cli.js key HOME --device "$id" >/dev/null
-out=$(node dist/cli.js tap 540 1100 --duration 1000 --device "$id") || { echo "FAIL: tap --duration exited non-zero: $out"; exit 1; }
+out=$(node dist/cli.js long-press 540 1100 --device "$id") || { echo "FAIL: long-press exited non-zero: $out"; exit 1; }
 want="{\"device\":\"$id\",\"x\":540,\"y\":1100,\"duration\":1000}"
-[ "$out" = "$want" ] || { echo "FAIL: tap --duration printed $out, expected $want"; exit 1; }
+[ "$out" = "$want" ] || { echo "FAIL: long-press printed $out, expected $want"; exit 1; }
 tree=$(node dist/cli.js ui-tree --device "$id" --detail full) || { echo "FAIL: ui-tree exited non-zero: $tree"; exit 1; }
 printf '%s' "$tree" | texts | grep -qx Widgets \
   || { echo "FAIL: no node with the text Widgets after the long press: $(printf '%s' "$tree" | texts | tr '\n' '|')"; exit 1; }
@@ -325,11 +328,11 @@ if fake_run "$tmp/ime-hidden" tap --text Save; then echo "FAIL: fixture d exited
 error_is d ELEMENT_NOT_FOUND "no node with text or contentDesc 'Save' in com.example (1 read in " prefix
 input_is d ''
 
-# e. --id matches the part after :id/, and --duration holds the touch; a longer id does not match.
+# e. --id matches the part after :id/, and long-press --duration holds the touch; a longer id does not match.
 dump '<node class="android.widget.Button" resource-id="com.example:id/save" bounds="[0,211][1080,337]" />'
 fake_run "$tmp/ime-hidden" tap --id save || { echo "FAIL: fixture e exited non-zero: $got"; exit 1; }
 input_is e "-s emulator-5554 shell input 'tap' '540' '274'"
-fake_run "$tmp/ime-hidden" tap --id save --duration 700 || { echo "FAIL: fixture e with --duration exited non-zero: $got"; exit 1; }
+fake_run "$tmp/ime-hidden" long-press --id save --duration 700 || { echo "FAIL: fixture e with long-press exited non-zero: $got"; exit 1; }
 input_is e "-s emulator-5554 shell input 'swipe' '540' '274' '540' '274' '700'"
 dump '<node class="android.widget.Button" resource-id="com.example:id/save2" bounds="[0,211][1080,337]" />'
 if fake_run "$tmp/ime-hidden" tap --id save; then echo "FAIL: fixture e with save2 exited 0: $got"; exit 1; fi

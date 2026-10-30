@@ -1,5 +1,5 @@
 #!/bin/sh
-# Step 4.4: `tap` (by coordinates and by --text/--id), `swipe`, `text` and `key` on a paired iPhone go to karagoz's
+# Step 4.4: `tap` (by coordinates and by --text/--id), `long-press`, `swipe`, `text` and `key` on a paired iPhone go to karagoz's
 # runner as signed requests: points in the portrait panel with the interface orientation, converted from the tree's
 # pixels for every rotation and the mini; element taps match the tree and refuse a target under the software keyboard;
 # any Unicode text but control characters; the hardware buttons and the keys that type a character, other names refused
@@ -98,7 +98,7 @@ display ',"currentOrientation":"rot0"' 1290,2796
 out=$(k tap 645 1398 --device P1) || fail "tap exited non-zero: $out"
 is "tap" "$out" '{"device":"P1","x":645,"y":1398}'
 is "tap sent" "$(sent)" '/tap {"x":215,"y":466,"orientation":1}'
-out=$(k tap 645 1398 --duration 800 --device P1) || fail "long press exited non-zero: $out"
+out=$(k long-press 645 1398 --duration 800 --device P1) || fail "long press exited non-zero: $out"
 is "long press" "$out" '{"device":"P1","x":645,"y":1398,"duration":800}'
 is "long press sent" "$(sent)" '/tap {"x":215,"y":466,"duration":800,"orientation":1}'
 # turned <devicectl orientation> <x> <y> <what the runner gets>; devicectl's rot270 is karagoz's rotation 90 (K34).
@@ -141,8 +141,8 @@ JSON
 out=$(k tap --id tap-button --device P1) || fail "tap --id exited non-zero: $out"
 is "tap --id" "$out" '{"device":"P1","x":348,"y":366,"element":{"role":"Button","label":"Tap me 1","identifier":"tap-button","bounds":[48,300,648,432]}}'
 is "tap --id sent" "$(sent)" '/tap {"x":116,"y":122,"orientation":1}'
-out=$(k tap --text abc --duration 600 --device P1) || fail "tap --text on a value exited non-zero: $out"
-is "tap --text value" "$(sent)" '/tap {"x":215,"y":278,"duration":600,"orientation":1}'
+out=$(k long-press --text abc --duration 600 --device P1) || fail "long-press --text on a value exited non-zero: $out"
+is "long-press --text value" "$(sent)" '/tap {"x":215,"y":278,"duration":600,"orientation":1}'
 marked=$(printf '\342\200\216Tap me 1')
 k tap --text "$marked" --device P1 > /dev/null || fail "tap --text with a direction mark failed"
 is "direction mark" "$(sent)" '/tap {"x":116,"y":122,"orientation":1}'
@@ -266,9 +266,9 @@ JS
   set -- $(q center tap-button)
   real tap "$1" "$2" --device "$phone" > /dev/null || fail "tap at the button's center failed"
   until_is 5 "Tap me 2" label tap-button || fail "coordinate tap: the button reads $(q label tap-button)"
-  real tap --id long-target --duration 800 --device "$phone" > /dev/null || fail "long press failed"
+  real long-press --id long-target --duration 800 --device "$phone" > /dev/null || fail "long press failed"
   until_is 5 "Long 1" label long-target || fail "800 ms press: $(q label long-target)"
-  real tap --id long-target --duration 300 --device "$phone" > /dev/null || fail "short press failed"
+  real long-press --id long-target --duration 300 --device "$phone" > /dev/null || fail "short press failed"
   sleep 1
   is "300 ms press is no long press" "$(q label long-target)" "Long 1"
   real tap --id name-field --device "$phone" > /dev/null || fail "tap on the name field failed"
