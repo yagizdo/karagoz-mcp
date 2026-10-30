@@ -178,11 +178,11 @@ What the server adds to a Claude Code session, measured on 2026-10-30 with Claud
 
 | Case | Tokens |
 | --- | --- |
-| Every session, tool search on (the default): the 15 tool names and `instructions` | 370 |
-| All 15 definitions, loaded by one `ToolSearch` call | 2,798 |
-| Every session, tool search off (`ENABLE_TOOL_SEARCH=false`): every definition and `instructions` | 2,680 |
+| Every session, tool search on (the default): the 17 tool names and `instructions` | 397 |
+| All 17 definitions, loaded by one `ToolSearch` call | 3,438 |
+| Every session, tool search off (`ENABLE_TOOL_SEARCH=false`): every definition and `instructions` | 3,293 |
 
-The `tools/list` result is 7,320 characters, `instructions` 398. One `ui_tree` of the launcher home screen is 5,127 characters (11,767 with `detail: full`).
+The `tools/list` result is 9,008 characters, `instructions` 398. One `ui_tree` of the launcher home screen is 5,127 characters (11,767 with `detail: full`).
 
 ## Development
 
