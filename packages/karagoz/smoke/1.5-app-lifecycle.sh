@@ -1,6 +1,6 @@
 #!/bin/sh
-# Step 1.5: install, launch, terminate and uninstall each print one JSON line, and bad arguments fail with the JSON
-# envelope before any device call. A fake adb covers failures a live device cannot produce.
+# Step 1.5: install, launch, open-url, terminate and uninstall each print one JSON line, and bad arguments fail with
+# the JSON envelope before any device call. A fake adb covers failures a live device cannot produce.
 # Precondition: an emulator is running with state device; a JDK (java, keytool) and Android SDK build-tools and a
 # platform are on this machine. The smoke builds its own APK and installs and removes only dev.karagoz.smoke.
 set -e
@@ -56,6 +56,9 @@ for verb in launch terminate uninstall; do
   refuses INVALID_ARGS "'$verb' needs <package>" "$verb"
   refuses INVALID_ARGS "'a;b' is not a package name" "$verb" 'a;b'
 done
+refuses INVALID_ARGS "'open-url' needs <url>" open-url
+refuses INVALID_ARGS "'not a url' is not a URL: it needs a scheme such as https: or myapp:" open-url 'not a url'
+refuses INVALID_ARGS "'a;b' is not a package name" open-url karagoz-smoke://x --app 'a;b'
 
 # 2-3. Tools and the APK: manifest only, no code (K28), built on every run by the script both app smokes share.
 sh smoke/fixtures/app-lifecycle/build.sh "$tmp"
@@ -110,6 +113,27 @@ case $activity in
 esac
 node dist/cli.js terminate com.android.settings --device "$id" >/dev/null
 
+# 9a. open-url. The URL goes to adb as one argument and must reach the app byte for byte: dumpsys prints the task's
+# base intent unredacted, and a fresh start makes this URL that intent.
+url="karagoz-smoke://open/p?a=1&b=2;c#frag g'x"
+adb -s "$id" shell am force-stop dev.karagoz.smoke
+out=$(node dist/cli.js open-url "$url" --app dev.karagoz.smoke --device "$id") \
+  || { echo "FAIL: open-url --app exited non-zero: $out"; exit 1; }
+want=$(node -e 'console.log(JSON.stringify({ device: process.argv[1], url: process.argv[2], app: "dev.karagoz.smoke" }))' "$id" "$url")
+[ "$out" = "$want" ] || { echo "FAIL: open-url --app printed $out, expected $want"; exit 1; }
+adb -s "$id" shell dumpsys activity activities | grep -qF "dat=$url " \
+  || { echo "FAIL: open-url --app: dumpsys holds no intent with dat=$url"; exit 1; }
+adb -s "$id" shell am force-stop dev.karagoz.smoke
+out=$(node dist/cli.js open-url "$url" --device "$id") || { echo "FAIL: open-url exited non-zero: $out"; exit 1; }
+want=$(node -e 'console.log(JSON.stringify({ device: process.argv[1], url: process.argv[2] }))' "$id" "$url")
+[ "$out" = "$want" ] || { echo "FAIL: open-url printed $out, expected $want"; exit 1; }
+adb -s "$id" shell dumpsys activity activities | grep -qF "dat=$url " \
+  || { echo "FAIL: open-url: dumpsys holds no intent with dat=$url"; exit 1; }
+adb -s "$id" shell am force-stop dev.karagoz.smoke
+refuses APP_NOT_FOUND "no app on $id opens 'nosuchscheme://x'" open-url nosuchscheme://x --device "$id"
+refuses APP_NOT_LAUNCHABLE "package 'com.android.shell' has no activity that opens 'karagoz-smoke://x'" \
+  open-url karagoz-smoke://x --app com.android.shell --device "$id"
+
 # 10. An installed package with no launcher activity, and one that is not installed.
 refuses APP_NOT_LAUNCHABLE "package 'com.android.shell' has no launcher activity" launch com.android.shell --device "$id"
 refuses APP_NOT_FOUND "package 'dev.karagoz.nope' is not installed on $id" launch dev.karagoz.nope --device "$id"
@@ -122,6 +146,8 @@ if adb -s "$id" shell pm path dev.karagoz.smoke >/dev/null; then echo "FAIL: pm 
 for verb in uninstall launch terminate; do
   refuses APP_NOT_FOUND "package 'dev.karagoz.smoke' is not installed on $id" "$verb" dev.karagoz.smoke --device "$id"
 done
+refuses APP_NOT_FOUND "package 'dev.karagoz.smoke' is not installed on $id" \
+  open-url karagoz-smoke://x --app dev.karagoz.smoke --device "$id"
 
 # 12. Against a fake adb, for failures a live device gives only with a broken or protected package. ANDROID_HOME makes
 # $tmp/sdk/platform-tools/adb karagoz's first adb candidate.
@@ -132,6 +158,9 @@ cat > "$tmp/sdk/platform-tools/adb" <<'FAKE'
 case "$*" in
   devices) printf 'List of devices attached\nemulator-5554\tdevice\n\n' ;;
   *'exec-out cmd package query-activities '*) echo 'dev.karagoz.x/.Main' ;;
+  *'exec-out am start -W -a android.intent.action.VIEW '*)
+    printf '%s\n' 'Starting: Intent { act=android.intent.action.VIEW dat=karagoz-x://... }' \
+      'Error: Permission Denial: starting Intent { act=android.intent.action.VIEW }' ;;
   *'exec-out am start '*)
     printf '%s\n' 'Starting: Intent { cmp=dev.karagoz.x/.Main }' 'Error type 3' \
       'Error: Activity class {dev.karagoz.x/dev.karagoz.x.Main} does not exist.' ;;
@@ -156,6 +185,10 @@ error_is() {
 if fake_run launch dev.karagoz.x --device emulator-5554; then echo "FAIL: fixture a exited 0: $got"; exit 1; fi
 error_is a ADB_FAILED 'Error: Activity class {dev.karagoz.x/dev.karagoz.x.Main} does not exist.'
 
+# a2. open-url passes any Error: line other than "unable to resolve" through as it is.
+if fake_run open-url karagoz-x://y --device emulator-5554; then echo "FAIL: fixture a2 exited 0: $got"; exit 1; fi
+error_is a2 ADB_FAILED 'Error: Permission Denial: starting Intent { act=android.intent.action.VIEW }'
+
 # b. A protected package, or a system app with no update, refuses to go: Android's code arrives as the reason.
 if fake_run uninstall dev.karagoz.x --device emulator-5554; then echo "FAIL: fixture b exited 0: $got"; exit 1; fi
 error_is b UNINSTALL_FAILED 'Failure [DELETE_FAILED_INTERNAL_ERROR]'
@@ -174,4 +207,4 @@ error_is d ADB_TIMEOUT "adb install did not finish within 31s. The phone may be 
 [ "$elapsed" -ge 30 ] && [ "$elapsed" -le 40 ] || { echo "FAIL: fixture d took $elapsed s, expected about 31"; exit 1; }
 if pgrep -fx '/bin/sleep 61' >/dev/null; then echo "FAIL: fixture d left the fake adb's sleep running"; exit 1; fi
 
-echo "ok: $id, install, launch, terminate, uninstall, fake adb, install timeout"
+echo "ok: $id, install, launch, open-url, terminate, uninstall, fake adb, install timeout"

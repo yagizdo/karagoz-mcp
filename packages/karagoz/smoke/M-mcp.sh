@@ -41,7 +41,7 @@ refuses() {
 }
 
 # 1. CLI.
-refuses NO_COMMAND "no command given. Commands: devices, screenshot, ui-tree, key, tap, long-press, double-tap, swipe, text, install, launch, terminate, uninstall, logs, doctor, install-runner, uninstall-runner, mcp"
+refuses NO_COMMAND "no command given. Commands: devices, screenshot, ui-tree, key, tap, long-press, double-tap, swipe, text, install, launch, open-url, terminate, uninstall, logs, doctor, install-runner, uninstall-runner, mcp"
 refuses INVALID_ARGS "unexpected argument 'extra'" mcp extra
 refuses INVALID_ARGS "'mcp' does not take the option '--device'" mcp --device x
 

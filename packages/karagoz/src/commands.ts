@@ -1,4 +1,4 @@
-import { install, launch, terminate, uninstall } from './app.js';
+import { install, launch, openUrl, terminate, uninstall } from './app.js';
 import { doctor } from './doctor.js';
 import { doubleTap, key, swipe, tap, text, type Target } from './input.js';
 import { logs } from './logs.js';
@@ -170,6 +170,11 @@ export const commands: Record<string, Command> = {
     options: { device: { type: 'string' } },
     args: ['package'],
     run: ({ device }, [name = '']) => launch(device, name),
+  },
+  'open-url': {
+    options: { app: { type: 'string' }, device: { type: 'string' } },
+    args: ['url'],
+    run: ({ app, device }, [url = '']) => openUrl(device, url, app),
   },
   terminate: {
     options: { device: { type: 'string' } },

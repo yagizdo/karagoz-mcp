@@ -76,6 +76,23 @@ export async function launch(id: string, pkg: string) {
   throw new KaragozError('APP_NOT_LAUNCHABLE', `package '${pkg}' has no launcher activity`);
 }
 
+// am resolves the URL's handler itself; with pkg it picks among that package's activities only. No BROWSABLE category:
+// it narrows the match to what a browser link may open.
+export async function openUrl(id: string, url: string, pkg: string | undefined) {
+  const intent = ['-a', 'android.intent.action.VIEW', '-d', url, ...(pkg ? ['-p', pkg] : [])];
+  const out = await adb(['-s', id, 'exec-out', 'am', 'start', '-W', ...intent], LAUNCH_TIMEOUT_MS);
+  const lines = out.split('\n').map((line) => line.trim());
+  if (lines.some((line) => line.startsWith('Status:'))) {
+    return pkg ? { device: id, url, app: pkg } : { device: id, url };
+  }
+  const error = lines.find((line) => line.startsWith('Error:')) ?? (out.trim() || 'am start printed nothing');
+  // A package that is not installed and one with no activity for the URL print the same line.
+  if (!error.includes('unable to resolve Intent')) throw new KaragozError('ADB_FAILED', error);
+  if (!pkg) throw new KaragozError('APP_NOT_FOUND', `no app on ${id} opens '${url}'`);
+  await checkInstalled(id, pkg);
+  throw new KaragozError('APP_NOT_LAUNCHABLE', `package '${pkg}' has no activity that opens '${url}'`);
+}
+
 export async function terminate(id: string, pkg: string) {
   await checkInstalled(id, pkg);
   const out = (await adb(['-s', id, 'exec-out', 'am', 'force-stop', pkg])).trim();

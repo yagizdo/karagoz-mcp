@@ -5,6 +5,7 @@ import {
   checkPackage,
   install as androidInstall,
   launch as androidLaunch,
+  openUrl as androidOpenUrl,
   terminate as androidTerminate,
   uninstall as androidUninstall,
 } from './drivers/android/app.js';
@@ -13,6 +14,8 @@ import {
   installPhone,
   launch as iosLaunch,
   launchPhone,
+  openUrl as iosOpenUrl,
+  openUrlPhone,
   terminate as iosTerminate,
   terminatePhone,
   uninstall as iosUninstall,
@@ -74,6 +77,23 @@ export async function launch(device: string | undefined, pkg: string) {
   const target = await packageTarget(device, pkg);
   if (target.platform === 'android') return androidLaunch(target.id, pkg);
   return target.kind === 'physical' ? launchPhone(target.id, pkg) : iosLaunch(target.id, pkg);
+}
+
+// Only a scheme is checked here (RFC 3986's alphabet); what follows it is the handling app's to read.
+export async function openUrl(device: string | undefined, url: string, app: string | undefined) {
+  if (!/^[A-Za-z][A-Za-z0-9+.-]*:/.test(url)) {
+    throw new KaragozError('INVALID_ARGS', `'${url}' is not a URL: it needs a scheme such as https: or myapp:`);
+  }
+  const target = app === undefined ? await resolveTarget(device) : await packageTarget(device, app);
+  if (target.platform === 'android') return androidOpenUrl(target.id, url, app);
+  if (target.kind === 'physical') return openUrlPhone(target.id, url, app);
+  if (app !== undefined) {
+    throw new KaragozError(
+      'NOT_SUPPORTED',
+      'an iOS simulator opens a URL only in the app the system picks; run open-url without --app',
+    );
+  }
+  return iosOpenUrl(target.id, url);
 }
 
 export async function terminate(device: string | undefined, pkg: string) {

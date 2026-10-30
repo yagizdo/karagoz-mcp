@@ -1,5 +1,14 @@
 import { KaragozError } from '../../errors.js';
-import { appOn, installOn, kill, launchOn, PHONE_TIMEOUT_MS, pidsUnder, uninstallFrom } from './devicectl.js';
+import {
+  appOn,
+  installOn,
+  kill,
+  launchOn,
+  openUrlOn,
+  PHONE_TIMEOUT_MS,
+  pidsUnder,
+  uninstallFrom,
+} from './devicectl.js';
 import { header, simctl, TIMEOUT_MS } from './simctl.js';
 
 // True when err is simctl's SIMCTL_FAILED with this NSPOSIXErrorDomain code in its header (K36).
@@ -58,6 +67,21 @@ export async function launch(udid: string, id: string) {
   return { device: udid, package: id, activity: null };
 }
 
+// simctl openurl returns before the handling app is in front. It takes no app: the simulator picks the handler.
+export async function openUrl(udid: string, url: string) {
+  try {
+    await simctl(['openurl', udid, url]);
+  } catch (err) {
+    const found = err instanceof KaragozError && err.code === 'SIMCTL_FAILED' ? header(err.message) : undefined;
+    // LaunchServices' "no app for this URL".
+    if (found?.domain === 'LSApplicationWorkspaceErrorDomain' && found.code === 115) {
+      throw new KaragozError('APP_NOT_FOUND', `no app on ${udid} opens '${url}'`);
+    }
+    throw err;
+  }
+  return { device: udid, url };
+}
+
 export async function terminate(udid: string, id: string) {
   const stop = (err: unknown) => held(err, TIMEOUT_MS / 1000, 'stop');
   await installed(udid, id).catch(stop);
@@ -93,8 +117,8 @@ export async function installPhone(udid: string, path: string, timeout: number) 
   return { device: udid, path };
 }
 
-export async function launchPhone(udid: string, id: string) {
-  await launchOn(udid, id).catch((err: unknown) => {
+export async function launchPhone(udid: string, id: string, url?: string) {
+  await launchOn(udid, id, url).catch((err: unknown) => {
     if (!(err instanceof KaragozError) || err.code !== 'DEVICECTL_TIMEOUT') throw err;
     throw new KaragozError(
       'DEVICECTL_TIMEOUT',
@@ -102,6 +126,16 @@ export async function launchPhone(udid: string, id: string) {
     );
   });
   return { device: udid, package: id, activity: null };
+}
+
+// With app, the URL goes to that app as it launches; without, the iPhone picks the handler.
+export async function openUrlPhone(udid: string, url: string, app: string | undefined) {
+  if (app === undefined) {
+    await openUrlOn(udid, url);
+    return { device: udid, url };
+  }
+  await launchPhone(udid, app, url);
+  return { device: udid, url, app };
 }
 
 // The bundle URL keys the app's processes; devicectl's terminate and uninstall take no bundle id that says "not
