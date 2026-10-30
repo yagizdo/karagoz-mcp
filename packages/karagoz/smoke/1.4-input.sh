@@ -1,7 +1,8 @@
 #!/bin/sh
-# Step 1.4: key, tap (a point, a long press, --text or --id), swipe and text each print one JSON line, and bad
-# arguments fail with the JSON envelope before any device call. Text beyond ASCII is pasted by karagoz's helper: it
+# Step 1.4: key, tap (a point, --text or --id), long-press, double-tap, swipe and text each print one JSON line, and
+# bad arguments fail with the JSON envelope before any device call. Text beyond ASCII is pasted by karagoz's helper: it
 # reads back exactly, the clip copied before it is back afterwards, and the helper's file is gone from /data/local/tmp.
+# double-tap through the same helper selects a word: the selection toolbar is a window of its own.
 # A fake adb covers what a live screen cannot produce.
 # Precondition: an emulator is running with state device, its screen on and unlocked, on the image the 1.1-1.3 smokes
 # use (stock launcher and Settings). Only HOME and BACK are sent; nothing changes a setting, installs or rotates
@@ -54,6 +55,15 @@ wait_front() {
     [ "$(date +%s)" -lt "$end" ] || { echo "FAIL: $1 was not in front within $2 s; the last read: $(printf '%s' "$tree" | field root.package || printf '%s' "$tree")"; exit 1; }
   done
 }
+# Prints the bounds of the focused EditText of a ui-tree result as "l t r b"; fails when none is focused.
+focused_box() { node -e '
+  const find = (node) => (node.class === "android.widget.EditText" && node.focused ? node : (node.children ?? []).map(find).find(Boolean));
+  const node = find(JSON.parse(require("fs").readFileSync(0, "utf8")).root);
+  if (!node) process.exit(1);
+  console.log(node.bounds.join(" "));
+'; }
+# Counts the window lines that name a PopupWindow; a word selection's toolbar adds some. grep -c exits 1 on a count of 0.
+popups() { adb -s "$id" shell dumpsys window windows | grep -c PopupWindow || true; }
 # Prints the text of the focused EditText of a ui-tree result; fails when none is focused.
 focused_text() { node -e '
   const find = (node) => (node.class === "android.widget.EditText" && node.focused ? node : (node.children ?? []).map(find).find(Boolean));
@@ -103,7 +113,13 @@ refuses INVALID_ARGS "unexpected argument '3'" tap 1 2 3
 refuses INVALID_ARGS "<x> must be a non-negative number (got '1e3')" tap 1e3 5
 refuses INVALID_ARGS "'swipe' needs <x1> <y1> <x2> <y2>" swipe 1 2 3
 refuses INVALID_ARGS "'tap' does not take the option '--out'" tap 1 2 --out x
-refuses INVALID_ARGS "--duration must be a whole number of milliseconds (got '1.5')" tap 1 2 --duration 1.5
+refuses INVALID_ARGS "'tap' does not take the option '--duration'" tap 1 2 --duration 5
+refuses INVALID_ARGS "'long-press' takes <x> <y>, --text or --id" long-press
+refuses INVALID_ARGS "'long-press' needs <x> <y>" long-press 5
+refuses INVALID_ARGS "--duration must be a whole number of milliseconds (got '1.5')" long-press 1 2 --duration 1.5
+refuses INVALID_ARGS "'double-tap' takes <x> <y>, --text or --id" double-tap
+refuses INVALID_ARGS "'double-tap' needs <x> <y>" double-tap 5
+refuses INVALID_ARGS "'double-tap' does not take the option '--duration'" double-tap 1 2 --duration 5
 refuses INVALID_ARGS "'key' does not take the option '--duration'" key HOME --duration 5
 refuses INVALID_ARGS "'text' needs <text>" text
 refuses INVALID_ARGS "'text' needs <text>" text ''
@@ -122,11 +138,11 @@ tree=$(node dist/cli.js ui-tree --device "$id" --detail full) || { echo "FAIL: u
 front=$(printf '%s' "$tree" | field root.package) || { echo "FAIL: ui-tree printed no root.package: $tree"; exit 1; }
 [ "$front" = "${home%%/*}" ] || { echo "FAIL: after key HOME the front package is $front, not the launcher ${home%%/*}"; exit 1; }
 
-# 4. Long press: a held touch on empty workspace opens the launcher's popup; a failed one would be a tap on nothing.
+# 4. Long press at the default 1000 ms: a held touch on empty workspace opens the launcher's popup; a failed one would be a tap on nothing.
 node dist/cli.js key HOME --device "$id" >/dev/null
-out=$(node dist/cli.js tap 540 1100 --duration 1000 --device "$id") || { echo "FAIL: tap --duration exited non-zero: $out"; exit 1; }
+out=$(node dist/cli.js long-press 540 1100 --device "$id") || { echo "FAIL: long-press exited non-zero: $out"; exit 1; }
 want="{\"device\":\"$id\",\"x\":540,\"y\":1100,\"duration\":1000}"
-[ "$out" = "$want" ] || { echo "FAIL: tap --duration printed $out, expected $want"; exit 1; }
+[ "$out" = "$want" ] || { echo "FAIL: long-press printed $out, expected $want"; exit 1; }
 tree=$(node dist/cli.js ui-tree --device "$id" --detail full) || { echo "FAIL: ui-tree exited non-zero: $tree"; exit 1; }
 printf '%s' "$tree" | texts | grep -qx Widgets \
   || { echo "FAIL: no node with the text Widgets after the long press: $(printf '%s' "$tree" | texts | tr '\n' '|')"; exit 1; }
@@ -181,6 +197,29 @@ adb -s "$id" shell input keycombination 113 50
 field_reads karagoz-clip
 left=$(adb -s "$id" shell ls -R /data/local/tmp)
 case $left in *karagoz-text*) echo "FAIL: a karagoz-text file is still in /data/local/tmp: $left"; exit 1 ;; esac
+
+# 6c. double-tap on the first word of "hello world" selects it, so the selection toolbar's windows appear. The 2 s wait
+# lets the caret's own window settle before the count.
+clear_field
+node dist/cli.js text 'hello world' --device "$id" >/dev/null
+field_reads 'hello world'
+box=$(printf '%s' "$tree" | focused_box) || { echo "FAIL: no focused EditText for the double tap"; exit 1; }
+read -r l t r b <<BOX
+$box
+BOX
+x=$((l + (r - l) * 12 / 100)) y=$(((t + b) / 2))
+sleep 2
+before=$(popups)
+out=$(node dist/cli.js double-tap "$x" "$y" --device "$id") || { echo "FAIL: double-tap exited non-zero: $out"; exit 1; }
+want="{\"device\":\"$id\",\"x\":$x,\"y\":$y}"
+[ "$out" = "$want" ] || { echo "FAIL: double-tap printed $out, expected $want"; exit 1; }
+end=$(($(date +%s) + 5))
+until [ "$(popups)" -gt "$before" ]; do
+  [ "$(date +%s)" -lt "$end" ] || { echo "FAIL: double-tap opened no selection toolbar within 5 s ($before PopupWindow lines before and after)"; exit 1; }
+done
+left=$(adb -s "$id" shell ls -R /data/local/tmp)
+case $left in *karagoz-text*) echo "FAIL: double-tap left a karagoz-text file in /data/local/tmp: $left"; exit 1 ;; esac
+clear_field
 
 # 7. swipe: a slow drag up moves the Settings list, restarted at its top.
 settings_top
@@ -325,11 +364,11 @@ if fake_run "$tmp/ime-hidden" tap --text Save; then echo "FAIL: fixture d exited
 error_is d ELEMENT_NOT_FOUND "no node with text or contentDesc 'Save' in com.example (1 read in " prefix
 input_is d ''
 
-# e. --id matches the part after :id/, and --duration holds the touch; a longer id does not match.
+# e. --id matches the part after :id/, and long-press --duration holds the touch; a longer id does not match.
 dump '<node class="android.widget.Button" resource-id="com.example:id/save" bounds="[0,211][1080,337]" />'
 fake_run "$tmp/ime-hidden" tap --id save || { echo "FAIL: fixture e exited non-zero: $got"; exit 1; }
 input_is e "-s emulator-5554 shell input 'tap' '540' '274'"
-fake_run "$tmp/ime-hidden" tap --id save --duration 700 || { echo "FAIL: fixture e with --duration exited non-zero: $got"; exit 1; }
+fake_run "$tmp/ime-hidden" long-press --id save --duration 700 || { echo "FAIL: fixture e with long-press exited non-zero: $got"; exit 1; }
 input_is e "-s emulator-5554 shell input 'swipe' '540' '274' '540' '274' '700'"
 dump '<node class="android.widget.Button" resource-id="com.example:id/save2" bounds="[0,211][1080,337]" />'
 if fake_run "$tmp/ime-hidden" tap --id save; then echo "FAIL: fixture e with save2 exited 0: $got"; exit 1; fi
@@ -396,9 +435,28 @@ error_is l HELPER_FAILED 'the text helper failed on the device: java.lang.Securi
 helper_fails "error: device 'emulator-5554' not found"
 error_is l ADB_FAILED "error: device 'emulator-5554' not found" prefix
 
+# n. double-tap --id: one push, then one shell that runs the helper's double-tap with the shared timing and removes it.
+dump '<node class="android.widget.EditText" resource-id="com.example:id/field" bounds="[0,211][1080,337]" />'
+fake_run "$tmp/ime-hidden" double-tap --id field || { echo "FAIL: fixture n exited non-zero: $got"; exit 1; }
+[ "$got" = '{"device":"emulator-5554","x":540,"y":274,"element":{"class":"android.widget.EditText","resourceId":"com.example:id/field","bounds":[0,211,1080,337]}}' ] \
+  || { echo "FAIL: fixture n printed $got"; exit 1; }
+shell="-s emulator-5554 shell CLASSPATH=$remote app_process / TextHelper double-tap 540 274 50 100; s=\$?; rm -f $remote /data/local/tmp/oat/*/karagoz-text.*; rmdir /data/local/tmp/oat/* /data/local/tmp/oat 2>/dev/null; exit \$s"
+case $(sed -n 1p "$fake/input") in "-s emulator-5554 push "*"/dist/text-helper.jar $remote") ;; *) echo "FAIL: fixture n: no push first: $(cat "$fake/input")"; exit 1 ;; esac
+[ "$(sed -n 2p "$fake/input")" = "$shell" ] && [ "$(wc -l < "$fake/input" | tr -d ' ')" = 2 ] \
+  || { echo "FAIL: fixture n: expected the shell call $shell, got: $(cat "$fake/input")"; exit 1; }
+
+# o. The helper's double-tap failure is HELPER_FAILED, a denied injection INPUT_BLOCKED, adb's own failure ADB_FAILED.
+double_fails() { printf '%s\n' "$@" > "$fake/helper"; fake_run "$tmp/ime-hidden" double-tap 5 6 && { echo "FAIL: fixture o exited 0: $got"; exit 1; }; rm -f "$fake/helper"; }
+double_fails 'double-tap: java.lang.IllegalStateException: the device did not take the touch'
+error_is o HELPER_FAILED 'the input helper failed on the device: java.lang.IllegalStateException: the device did not take the touch'
+double_fails 'double-tap: java.lang.SecurityException: Injecting input events requires the caller (or the source of the instrumentation, if any) to have the INJECT_EVENTS permission.'
+error_is o INPUT_BLOCKED "$blocked"
+double_fails "error: device 'emulator-5554' not found"
+error_is o ADB_FAILED "error: device 'emulator-5554' not found" prefix
+
 # m. A control character fails before any adb call past the device lookup.
 if fake_run "$tmp/ime-hidden" text "$(printf 'a\001b\177')"; then echo "FAIL: fixture m exited 0: $got"; exit 1; fi
 error_is m TEXT_UNSUPPORTED "cannot type 'U+0001', 'U+007F' on Android: control characters other than newline and tab; nothing was typed"
 input_is m ''
 
-echo "ok: $id, key 3, long press popup, tap into search, text 13 chars, pasted text and clip back, swipe moved, element taps, direction marks, input blocked, helper calls"
+echo "ok: $id, key 3, long press popup, tap into search, text 13 chars, pasted text and clip back, double tap selection, swipe moved, element taps, direction marks, input blocked, helper calls, double-tap helper"

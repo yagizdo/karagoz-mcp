@@ -1,6 +1,6 @@
 import { install, launch, terminate, uninstall } from './app.js';
 import { doctor } from './doctor.js';
-import { key, swipe, tap, text, type Target } from './input.js';
+import { doubleTap, key, swipe, tap, text, type Target } from './input.js';
 import { logs } from './logs.js';
 import { installRunnerOn, uninstallRunnerFrom } from './runner.js';
 import { screenshot } from './screenshot.js';
@@ -13,7 +13,7 @@ import { KaragozError, type ErrorCode } from './errors.js';
 export type Command = {
   options: Record<string, { type: 'string' }>;
   args: readonly string[];
-  // tap can name its target with --text or --id instead of <x> <y>.
+  // tap, long-press and double-tap can name their target with --text or --id instead of <x> <y>.
   argsOptional?: true;
   run: (values: Record<string, string | undefined>, args: string[]) => Promise<unknown>;
 };
@@ -53,6 +53,35 @@ function count(label: string, value = ''): number {
   return Number(value);
 }
 
+// The long press every target accepts: AOSP waits 400 ms, Flutter and iOS 500, Samsung's setting up to 1000; its
+// 1500 setting needs --duration (K55).
+const LONG_PRESS_MS = 1000;
+
+// Exactly one of <x> <y>, --text or --id, checked before any device call.
+function target(
+  name: string,
+  { text: label, id: resourceId, timeout }: Record<string, string | undefined>,
+  [x, y]: string[],
+): Target {
+  if ([x, label, resourceId].filter((form) => form !== undefined).length !== 1) {
+    throw new KaragozError('INVALID_ARGS', `'${name}' takes <x> <y>, --text or --id`);
+  }
+  const parsed: Target =
+    label !== undefined
+      ? { kind: 'text', label }
+      : resourceId !== undefined
+        ? { kind: 'id', id: resourceId }
+        : { kind: 'point', x: decimal('<x>', x), y: decimal('<y>', y) };
+  if (parsed.kind === 'point' && timeout !== undefined) {
+    throw new KaragozError('INVALID_ARGS', '--timeout needs --text or --id');
+  }
+  return parsed;
+}
+
+function wait(timeout: string | undefined): number {
+  return timeout === undefined ? 0 : integer('--timeout', timeout);
+}
+
 export const commands: Record<string, Command> = {
   devices: { options: {}, args: [], run: () => listAll() },
   screenshot: {
@@ -73,6 +102,17 @@ export const commands: Record<string, Command> = {
   tap: {
     options: {
       device: { type: 'string' },
+      text: { type: 'string' },
+      id: { type: 'string' },
+      timeout: { type: 'string' },
+    },
+    args: ['x', 'y'],
+    argsOptional: true,
+    run: (values, args) => tap(values.device, target('tap', values, args), undefined, wait(values.timeout)),
+  },
+  'long-press': {
+    options: {
+      device: { type: 'string' },
       duration: { type: 'string' },
       text: { type: 'string' },
       id: { type: 'string' },
@@ -80,26 +120,24 @@ export const commands: Record<string, Command> = {
     },
     args: ['x', 'y'],
     argsOptional: true,
-    run: ({ device, duration, text: label, id: resourceId, timeout }, [x, y]) => {
-      if ([x, label, resourceId].filter((form) => form !== undefined).length !== 1) {
-        throw new KaragozError('INVALID_ARGS', "'tap' takes <x> <y>, --text or --id");
-      }
-      const target: Target =
-        label !== undefined
-          ? { kind: 'text', label }
-          : resourceId !== undefined
-            ? { kind: 'id', id: resourceId }
-            : { kind: 'point', x: decimal('<x>', x), y: decimal('<y>', y) };
-      if (target.kind === 'point' && timeout !== undefined) {
-        throw new KaragozError('INVALID_ARGS', '--timeout needs --text or --id');
-      }
-      return tap(
-        device,
-        target,
-        duration === undefined ? undefined : integer('--duration', duration),
-        timeout === undefined ? 0 : integer('--timeout', timeout),
-      );
+    run: (values, args) =>
+      tap(
+        values.device,
+        target('long-press', values, args),
+        values.duration === undefined ? LONG_PRESS_MS : integer('--duration', values.duration),
+        wait(values.timeout),
+      ),
+  },
+  'double-tap': {
+    options: {
+      device: { type: 'string' },
+      text: { type: 'string' },
+      id: { type: 'string' },
+      timeout: { type: 'string' },
     },
+    args: ['x', 'y'],
+    argsOptional: true,
+    run: (values, args) => doubleTap(values.device, target('double-tap', values, args), wait(values.timeout)),
   },
   swipe: {
     options: { device: { type: 'string' }, duration: { type: 'string' } },

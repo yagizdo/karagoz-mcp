@@ -246,7 +246,7 @@ export async function uninstallSimulatorRunner(udid: string) {
 // 'karagoz-res\n<nonce>\n<status>\n<body>' for its answer. Every request and answer is signed with the secret of the
 // runner's start, which never travels (K42).
 const PORT = 27753;
-const PROTOCOL = 2;
+const PROTOCOL = 3;
 const NONCE_HEADER = 'X-Karagoz-Nonce';
 const MAC_HEADER = 'X-Karagoz-Mac';
 const SECRET = /^[0-9a-f]{64}$/;
@@ -427,7 +427,8 @@ async function request(
 
 type Health = 'up' | 'down' | 'old' | 'stranger';
 
-// up: this Mac's runner answers, signed; down: nothing listens; old: a 4.3 runner, which signs nothing; stranger:
+// up: this Mac's runner answers, signed; down: nothing listens; old: a 4.3 runner, which signs nothing, or a signed one
+// of an older protocol, which lacks a route this karagoz sends (protocol 2 has no /double-tap); stranger:
 // anything else listening there, or no secret here to tell. A listener that accepts and does not answer is a stranger
 // too: the runner answers /health off its main thread, and starting another would replace the secret of a live one.
 async function health(udid: string, on: On): Promise<Health> {
@@ -449,7 +450,8 @@ async function health(udid: string, on: On): Promise<Health> {
   }
   // Checked before the secret: a Mac coming from 4.3 has none, and its runner is still the older one.
   if (!answer.signed) return isRecord(parsed) && parsed.protocol === 1 ? 'old' : 'stranger';
-  return isRecord(parsed) && parsed.protocol === PROTOCOL ? 'up' : 'stranger';
+  if (!isRecord(parsed) || typeof parsed.protocol !== 'number') return 'stranger';
+  return parsed.protocol === PROTOCOL ? 'up' : parsed.protocol < PROTOCOL ? 'old' : 'stranger';
 }
 
 function refusal(udid: string, state: 'old' | 'stranger'): KaragozError {
@@ -751,7 +753,7 @@ function runnerError(parsed: unknown, status: number, code: ErrorCode, prefix: s
 export async function input(
   udid: string,
   on: On,
-  route: '/tap' | '/swipe' | '/text' | '/button',
+  route: '/tap' | '/double-tap' | '/swipe' | '/text' | '/button',
   body: Record<string, unknown>,
   playMs: number,
 ): Promise<void> {

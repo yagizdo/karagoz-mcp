@@ -52,7 +52,7 @@ const TOOLS: Tool[] = [
     name: 'tap',
     title: 'Tap',
     description:
-      'Tap x, y in physical pixels, or the center of the node whose text or contentDesc (iOS: label or value) equals text, or whose resource id (iOS: identifier) matches id. duration makes it a long press. An iPhone needs install_runner once.',
+      'Tap x, y in physical pixels, or the center of the node whose text or contentDesc (iOS: label or value) equals text, or whose resource id (iOS: identifier) matches id. An iPhone needs install_runner once.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -60,7 +60,51 @@ const TOOLS: Tool[] = [
         y: { type: 'number' },
         text: { type: 'string', description: 'Exact text or contentDesc (iOS: label or value), case-sensitive.' },
         id: { type: 'string', description: 'Resource id, full or the part after :id/ (iOS: identifier).' },
-        duration: { type: 'integer', description: 'Hold time in ms.' },
+        timeout: {
+          type: 'integer',
+          description:
+            'With text or id: ms to keep reading the tree until the node appears; the call can run up to 6 s longer.',
+        },
+        device,
+      },
+    },
+    annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
+  },
+  {
+    name: 'long_press',
+    title: 'Long-press',
+    description:
+      'Long-press x, y in physical pixels, or the center of the node whose text or contentDesc (iOS: label or value) equals text, or whose resource id (iOS: identifier) matches id. An iPhone needs install_runner once.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        x: { type: 'number' },
+        y: { type: 'number' },
+        text: { type: 'string', description: 'Exact text or contentDesc (iOS: label or value), case-sensitive.' },
+        id: { type: 'string', description: 'Resource id, full or the part after :id/ (iOS: identifier).' },
+        duration: { type: 'integer', description: 'Hold time in ms. Default 1000.' },
+        timeout: {
+          type: 'integer',
+          description:
+            'With text or id: ms to keep reading the tree until the node appears; the call can run up to 6 s longer.',
+        },
+        device,
+      },
+    },
+    annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
+  },
+  {
+    name: 'double_tap',
+    title: 'Double-tap',
+    description:
+      'Double-tap x, y in physical pixels, or the center of the node whose text or contentDesc (iOS: label or value) equals text, or whose resource id (iOS: identifier) matches id. An iPhone needs install_runner once.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        x: { type: 'number' },
+        y: { type: 'number' },
+        text: { type: 'string', description: 'Exact text or contentDesc (iOS: label or value), case-sensitive.' },
+        id: { type: 'string', description: 'Resource id, full or the part after :id/ (iOS: identifier).' },
         timeout: {
           type: 'integer',
           description:

@@ -36,7 +36,8 @@
                   "!../../keys.js",
                   "!../../xml.js",
                   "!../../text.js",
-                  "!../../tree.js"
+                  "!../../tree.js",
+                  "!../../gesture.js"
                 ],
                 "message": "a driver imports shared modules and files of its own platform only (AGENTS.md, Code layout)"
               }
@@ -63,7 +64,8 @@
                   "!../../keys.js",
                   "!../../xml.js",
                   "!../../text.js",
-                  "!../../tree.js"
+                  "!../../tree.js",
+                  "!../../gesture.js"
                 ],
                 "message": "a driver imports shared modules and files of its own platform only (AGENTS.md, Code layout)"
               }

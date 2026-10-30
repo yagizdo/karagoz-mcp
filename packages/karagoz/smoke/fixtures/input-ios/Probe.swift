@@ -1,5 +1,6 @@
 // The app the iOS smokes drive on a simulator. Every input leaves a mark ui-tree shows: a counter in a label, the
-// field's echo, the first visible row. Each launch argument goes to the unified log, where smoke 3.6 reads it back.
+// field's echo, the selected text, the first visible row. Each launch argument goes to the unified log, where smoke
+// 3.6 reads it back.
 import SwiftUI
 import os
 
@@ -8,6 +9,15 @@ struct ContentView: View {
   @State private var taps = 0
   @State private var longs = 0
   @State private var presses = 0
+  @State private var doubles = 0
+  @State private var words = "hello world"
+  @State private var selection: TextSelection?
+
+  // A word a double tap selected; empty for a caret or several ranges.
+  private var selected: String {
+    guard case .selection(let range) = selection?.indices else { return "" }
+    return String(words[range])
+  }
 
   var body: some View {
     NavigationStack {
@@ -19,6 +29,13 @@ struct ContentView: View {
           Text("Long \(longs)").accessibilityIdentifier("long-target")
             .frame(maxWidth: .infinity, minHeight: 60).contentShape(Rectangle())
             .onLongPressGesture(minimumDuration: 0.5) { longs += 1 }
+          Text("Double \(doubles)").accessibilityIdentifier("double-target")
+            .frame(maxWidth: .infinity, minHeight: 60).contentShape(Rectangle())
+            .onTapGesture(count: 2) { doubles += 1 }
+          // Above its field: the keyboard covers what is below it.
+          Text("selected:\(selected)").accessibilityIdentifier("selection")
+          TextField("Words", text: $words, selection: $selection).accessibilityIdentifier("word-field")
+            .autocorrectionDisabled()
           Button("Press") { presses += 1 }.accessibilityIdentifier("press-button")
           Text("pressed \(presses)").accessibilityIdentifier("press-count")
         }

@@ -1,8 +1,9 @@
 // The fake runner for smokes 3.4, 4.3 and 4.4: node runner.cjs <fake dir> <xctestrun>. Like the real one it takes
 // KARAGOZ_TOKEN, and a simulator's KARAGOZ_PORT, from the .xctestrun's EnvironmentVariables, refuses a request without
 // a valid MAC (401, unsigned) and signs every other answer (K42). Each input (POST) is appended to $fake/inputs as
-// "<route> <body>". $fake/runner-mode steers it: old, stranger, squatter and mute change /health; hang, close, private,
-// snapshot, event and xctest change /tree and the input routes; /health answers signed protocol 2 in every other mode.
+// "<route> <body>". $fake/runner-mode steers it: old, older, stranger, squatter and mute change /health; hang, close,
+// private, snapshot, event and xctest change /tree and the input routes; /health answers signed protocol 3 in every
+// other mode, older signed protocol 2.
 const http = require("http"), fs = require("fs"), crypto = require("crypto");
 const [, , fake, xctestrun] = process.argv;
 const env = /<key>EnvironmentVariables<\/key>\s*<dict>([\s\S]*?)<\/dict>/.exec(fs.readFileSync(xctestrun, "utf8"))?.[1] ?? "";
@@ -39,7 +40,7 @@ const server = http.createServer((req, res) => {
       fs.appendFileSync(fake + "/refused", `${req.method} ${req.url}\n`);
       return answer(401, { error: "unauthorized", kind: "auth" }, null);
     }
-    if (req.url === "/health") return answer(200, { protocol: 2 });
+    if (req.url === "/health") return answer(200, { protocol: m === "older" ? 2 : 3 });
     if (req.method === "POST") fs.appendFileSync(fake + "/inputs", `${req.url} ${body}\n`);
     else fs.appendFileSync(fake + "/trees", "1\n");
     if (m === "hang") return;

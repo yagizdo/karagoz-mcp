@@ -1,5 +1,6 @@
 import { cancellation } from '../../cancellation.js';
 import { KaragozError } from '../../errors.js';
+import { DOUBLE_TAP_GAP_MS, DOUBLE_TAP_HOLD_MS } from '../../gesture.js';
 import { runTool } from '../../tool.js';
 import { displayOf, rotation } from './devicectl.js';
 import { runtimeOf } from './devices.js';
@@ -209,6 +210,18 @@ async function runnerTap(on: On, udid: string, x: number, y: number, duration: n
   return duration === undefined ? { device: udid, x, y } : { device: udid, x, y, duration };
 }
 
+// One event record, so the runner keeps the gap between the touches (K55).
+async function runnerDoubleTap(on: On, udid: string, x: number, y: number, display: Display) {
+  const { at, orientation } = points(display);
+  const [hold, gap] = [DOUBLE_TAP_HOLD_MS, DOUBLE_TAP_GAP_MS];
+  await input(udid, on, '/double-tap', { ...at(x, y), hold, gap, orientation }, 2 * hold + gap);
+  return { device: udid, x, y };
+}
+
+export async function doubleTapPhone(udid: string, x: number, y: number, display?: Display) {
+  return runnerDoubleTap('iphone', udid, x, y, display ?? (await displayOf(udid)));
+}
+
 // display comes from a tree read the caller already made; a plain tap reads it itself.
 export async function tapPhone(udid: string, x: number, y: number, duration: number | undefined, display?: Display) {
   return runnerTap('iphone', udid, x, y, duration, display ?? (await displayOf(udid)));
@@ -281,6 +294,17 @@ export async function tap(udid: string, x: number, y: number, duration: number |
   const ratio = await panel(udid, rotated);
   await send('tap', udid, ['tap', ...ratio(x, y), String(duration ?? 0)], duration);
   return duration === undefined ? { device: udid, x, y } : { device: udid, x, y, duration };
+}
+
+// Both touches from the helper's one process, so the gap is its own (K55).
+export async function doubleTap(udid: string, x: number, y: number, rotated?: number | null) {
+  if (await runnerOnSimulators()) {
+    return runnerDoubleTap('simulator', udid, x, y, await simulatorDisplay(udid, rotated));
+  }
+  const ratio = await panel(udid, rotated);
+  const [hold, gap] = [DOUBLE_TAP_HOLD_MS, DOUBLE_TAP_GAP_MS];
+  await send('double-tap', udid, ['doubletap', ...ratio(x, y), String(hold), String(gap)], 2 * hold + gap);
+  return { device: udid, x, y };
 }
 
 export async function swipe(udid: string, x1: number, y1: number, x2: number, y2: number, duration = SWIPE_MS) {
@@ -360,17 +384,33 @@ export async function tapElement(udid: string, selector: Selector, duration: num
   return { ...(await tap(udid, x, y, duration, tree.rotation)), element };
 }
 
+export async function doubleTapElement(udid: string, selector: Selector, timeout: number) {
+  const { tree, element, x, y } = await find(selector, timeout, () => readTree(udid));
+  return { ...(await doubleTap(udid, x, y, tree.rotation)), element };
+}
+
 // ponytail: the keyboard-cover check runs on an iPhone only: this simulator never showed a software keyboard (its
 // hardware keyboard state), so where its keys sit was never measured (K35).
-export async function tapElementPhone(udid: string, selector: Selector, duration: number | undefined, timeout: number) {
-  const { tree, match, element, x, y, what } = await find(selector, timeout, () => readPhoneTree(udid));
+async function findPhone(udid: string, selector: Selector, timeout: number) {
+  const found = await find(selector, timeout, () => readPhoneTree(udid));
+  const { tree, match, x, y, what } = found;
   if (underKeyboard(tree.root, match, x, y)) {
     throw new KaragozError(
       'ELEMENT_COVERED',
       `the software keyboard covers the center of the node with ${what} at (${x}, ${y}); hide the keyboard first, then tap again`,
     );
   }
+  return found;
+}
+
+export async function tapElementPhone(udid: string, selector: Selector, duration: number | undefined, timeout: number) {
+  const { tree, element, x, y } = await findPhone(udid, selector, timeout);
   return { ...(await tapPhone(udid, x, y, duration, tree.display)), element };
+}
+
+export async function doubleTapElementPhone(udid: string, selector: Selector, timeout: number) {
+  const { tree, element, x, y } = await findPhone(udid, selector, timeout);
+  return { ...(await doubleTapPhone(udid, x, y, tree.display)), element };
 }
 
 // Each simulator's last text. testmanagerd turns app accessibility off when a session ends and the server runs calls

@@ -32,7 +32,7 @@ Device automation for mobile apps. One tool for four targets: Android emulator, 
 - **What happened, as a code.** `am force-stop` on an app that is not installed says nothing, `simctl` and `devicectl` report success for uninstalling an app that is not there, and Android answers a missing package with the code it gives a package it will not remove. karagoz checks first and returns `APP_NOT_FOUND`. A refused install is `INSTALL_FAILED` with the platform's own code in `reason`, not text to parse.
 - **One contract on four targets.** The same commands, flags, device selection, [output and error codes](#output-and-errors) on an Android emulator, an Android phone, an iOS simulator and an iPhone. The MCP server returns the CLI's JSON line unchanged.
 - **The accessibility tree first.** To see the screen, read `ui-tree` before taking a screenshot. The tree is text a program can search, costs a few hundred to a few thousand tokens, and gives the bounds needed to tap. A screenshot is written to disk at full resolution and returned as a path, with its pixel size, logical size and scale (and safe area on Android) to measure against; the CLI never prints the image.
-- **It installs only what you ask and starts no daemon of its own.** karagoz installs nothing on a device by itself, with one exception: on a Mac that never had Xcode 27, the first `tap`, `swipe`, `text` or `key` on a simulator installs karagoz's runner there ([Requirements](https://github.com/yagizdo/karagoz-mcp/blob/main/docs/requirements.md)). `install` installs only the app you pass it, and `install-runner` only karagoz's runner. Each command is one process that exits when it answers, and `karagoz mcp` lives as long as the client that started it. Only karagoz's runner, on an iPhone or on that simulator, stays up between calls, and it stops itself 10 minutes after its last use.
+- **It installs only what you ask and starts no daemon of its own.** karagoz installs nothing on a device by itself, with one exception: on a Mac that never had Xcode 27, the first `tap`, `long-press`, `double-tap`, `swipe`, `text` or `key` on a simulator installs karagoz's runner there ([Requirements](https://github.com/yagizdo/karagoz-mcp/blob/main/docs/requirements.md)). `install` installs only the app you pass it, and `install-runner` only karagoz's runner. Each command is one process that exits when it answers, and `karagoz mcp` lives as long as the client that started it. Only karagoz's runner, on an iPhone or on that simulator, stays up between calls, and it stops itself 10 minutes after its last use.
 
 ## Scope
 
@@ -51,8 +51,8 @@ Early development. Every command runs on all four targets, except `install-runne
 
 - Node 22 or newer.
 - **Android:** `adb` from Android platform-tools, and a running emulator or a phone with USB debugging on.
-- **iOS simulator** (macOS): Xcode, opened once, and a booted simulator. `tap`, `swipe`, `text` and `key` need Xcode 27 or newer, or a Mac that never had Xcode 27, where they go through karagoz's runner.
-- **iPhone** (macOS): Xcode 15 or newer (27 for `screenshot`) and the iPhone paired with the Mac. `screenshot`, `install`, `launch`, `terminate` and `uninstall` need Developer Mode on; `logs` needs a USB cable; `ui-tree`, `tap`, `swipe`, `text` and `key` need both, plus UI Automation on and karagoz's runner, which [`install-runner`](https://github.com/yagizdo/karagoz-mcp/blob/main/docs/commands/install-runner.md) installs.
+- **iOS simulator** (macOS): Xcode, opened once, and a booted simulator. `tap`, `long-press`, `double-tap`, `swipe`, `text` and `key` need Xcode 27 or newer, or a Mac that never had Xcode 27, where they go through karagoz's runner.
+- **iPhone** (macOS): Xcode 15 or newer (27 for `screenshot`) and the iPhone paired with the Mac. `screenshot`, `install`, `launch`, `terminate` and `uninstall` need Developer Mode on; `logs` needs a USB cable; `ui-tree`, `tap`, `long-press`, `double-tap`, `swipe`, `text` and `key` need both, plus UI Automation on and karagoz's runner, which [`install-runner`](https://github.com/yagizdo/karagoz-mcp/blob/main/docs/commands/install-runner.md) installs.
 
 [What each command needs, and how karagoz finds `adb` and Xcode](https://github.com/yagizdo/karagoz-mcp/blob/main/docs/requirements.md).
 
@@ -90,7 +90,9 @@ $ karagoz screenshot --out home.png
 | [`devices`](https://github.com/yagizdo/karagoz-mcp/blob/main/docs/commands/devices.md) | List connected devices |
 | [`screenshot`](https://github.com/yagizdo/karagoz-mcp/blob/main/docs/commands/screenshot.md) | Save a full-resolution PNG and return its path with scale metadata |
 | [`ui-tree`](https://github.com/yagizdo/karagoz-mcp/blob/main/docs/commands/ui-tree.md) | Return the accessibility tree of the focused window |
-| [`tap`](https://github.com/yagizdo/karagoz-mcp/blob/main/docs/commands/tap.md) | Tap or long-press a point, or a node found by text or id |
+| [`tap`](https://github.com/yagizdo/karagoz-mcp/blob/main/docs/commands/tap.md) | Tap a point, or a node found by text or id |
+| [`long-press`](https://github.com/yagizdo/karagoz-mcp/blob/main/docs/commands/long-press.md) | Press and hold a point or a node |
+| [`double-tap`](https://github.com/yagizdo/karagoz-mcp/blob/main/docs/commands/double-tap.md) | Tap a point or a node twice |
 | [`swipe`](https://github.com/yagizdo/karagoz-mcp/blob/main/docs/commands/swipe.md) | Swipe between two points |
 | [`text`](https://github.com/yagizdo/karagoz-mcp/blob/main/docs/commands/text.md) | Type text into the focused field |
 | [`key`](https://github.com/yagizdo/karagoz-mcp/blob/main/docs/commands/key.md) | Press a key |
@@ -118,7 +120,7 @@ Every command prints one line of JSON on stdout: its result with exit code `0`, 
 karagoz mcp
 ```
 
-Starts an MCP server for an AI agent on stdin and stdout. It opens no port: the client starts the process and talks to it over stdio. The 15 commands are its tools, and each tool returns the JSON line the CLI prints. The server code loads only when `mcp` runs, so the other commands start as fast as before.
+Starts an MCP server for an AI agent on stdin and stdout. It opens no port: the client starts the process and talks to it over stdio. The 17 commands are its tools, and each tool returns the JSON line the CLI prints. The server code loads only when `mcp` runs, so the other commands start as fast as before.
 
 ### Claude Code
 
@@ -176,11 +178,11 @@ What the server adds to a Claude Code session, measured on 2026-10-30 with Claud
 
 | Case | Tokens |
 | --- | --- |
-| Every session, tool search on (the default): the 15 tool names and `instructions` | 370 |
-| All 15 definitions, loaded by one `ToolSearch` call | 2,798 |
-| Every session, tool search off (`ENABLE_TOOL_SEARCH=false`): every definition and `instructions` | 2,680 |
+| Every session, tool search on (the default): the 17 tool names and `instructions` | 397 |
+| All 17 definitions, loaded by one `ToolSearch` call | 3,438 |
+| Every session, tool search off (`ENABLE_TOOL_SEARCH=false`): every definition and `instructions` | 3,293 |
 
-The `tools/list` result is 7,320 characters, `instructions` 398. One `ui_tree` of the launcher home screen is 5,127 characters (11,767 with `detail: full`).
+The `tools/list` result is 9,008 characters, `instructions` 398. One `ui_tree` of the launcher home screen is 5,127 characters (11,767 with `detail: full`).
 
 ## Development
 

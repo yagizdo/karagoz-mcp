@@ -1,5 +1,5 @@
 #!/bin/sh
-# Step 2.4: key, tap (a point, a long press, --id), text and swipe on a physical phone, through its Settings app and
+# Step 2.4: key, tap (a point, --id), long-press, text and swipe on a physical phone, through its Settings app and
 # Settings search: each verb exits 0 with its JSON line and the screen shows its effect; an ambiguous and a missing
 # element are refused; the keyboard reports the touchable region ELEMENT_COVERED reads.
 # Precondition: the build only; a phone is optional, and no emulator is needed. If a phone is used: screen on and
@@ -323,8 +323,8 @@ $box
 EOF
 popup_count || fail "adb -s $serial shell dumpsys window windows failed"
 before=$count
-run tap "$((l + (r - l) * 15 / 100))" "$(((t + b) / 2))" --duration 1000
-[ "$(printf '%s' "$out" | field duration)" = 1000 ] || fail "tap --duration did not echo duration 1000"
+run long-press "$((l + (r - l) * 15 / 100))" "$(((t + b) / 2))"
+[ "$(printf '%s' "$out" | field duration)" = 1000 ] || fail "long-press did not echo duration 1000"
 wait_until 10 'popups_above "$before"' "the long press opened no popup window within 10 s"
 # The long press shows the keyboard again. Which one takes the first BACK differs: the keyboard on Android 16, the
 # popups on Android 12, where the keyboard then stays up.

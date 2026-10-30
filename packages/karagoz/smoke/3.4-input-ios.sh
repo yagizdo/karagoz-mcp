@@ -1,6 +1,6 @@
 #!/bin/sh
-# Step 3.4: on macOS tap, swipe, key and the element tap (tap --text, --id) reach a booted iOS simulator through the
-# helper's DTUHID modes and text through its XCUIAutomation mode, in K25's and K26's shapes, with the tree's pixels
+# Step 3.4: on macOS tap, long-press, double-tap, swipe, key and the element tap (tap --text, --id) reach a booted iOS
+# simulator through the helper's DTUHID modes and text through its XCUIAutomation mode, in K25's and K26's shapes, with the tree's pixels
 # turned into the unrotated portrait panel for every rotation (K35). Fakes prove the helper's argv, each helper exit's
 # K5 code, the timeout, DEVICE_NOT_READY and the iOS-less key before any compile, text's character check, that it
 # puts app accessibility back and that two texts on one server run in turn, and element matching on a fake tree; the
@@ -39,7 +39,8 @@ code_of() { node -e '
 message_of() { node -e 'console.log(JSON.parse(require("fs").readFileSync(0, "utf8")).error.message)'; }
 real() { env -i HOME="$tmp/home-real" PATH=/usr/bin:/bin TMPDIR="$tmp" ANDROID_HOME="$tmp/sdk" "$node_bin" dist/cli.js "$@" 2>/dev/null; }
 tree() { real ui-tree --device "$booted" --detail full; }
-# One fact from a ui-tree line on stdin: whether a node with an identifier is listed, its label or bounds center, the
+# One fact from a ui-tree line on stdin: whether a node with an identifier is listed, its label, bounds center or left
+# edge and middle, the
 # top edge of the node labelled <id> (or "gone"), the root's label or size, or the home screen's page.
 q() { node -e '
   const [mode, id] = process.argv.slice(1);
@@ -53,6 +54,7 @@ q() { node -e '
     has: () => (node ? "yes" : "no"),
     label: () => node?.label ?? "",
     center: () => `${(b[0] + b[2]) / 2} ${(b[1] + b[3]) / 2}`,
+    left: () => `${b[0]} ${(b[1] + b[3]) / 2}`,
     top: () => String(all.find((n) => n.label === id)?.bounds[1] ?? "gone"),
     root: () => root.label ?? "",
     size: () => `${root.bounds[2]} ${root.bounds[3]}`,
@@ -178,9 +180,12 @@ call tap 603 1171 --device A1
 succeeds tap '{"device":"A1","x":603,"y":1171}'
 argv_is tap "tap 0.5 0.446606 0"
 [ "$(compiles)" = 1 ] || fail "the first call compiled $(compiles) times"
-call tap 603 1171 --duration 700 --device A1
-succeeds "tap --duration" '{"device":"A1","x":603,"y":1171,"duration":700}'
-argv_is "tap --duration" "tap 0.5 0.446606 700"
+call long-press 603 1171 --duration 700 --device A1
+succeeds "long-press" '{"device":"A1","x":603,"y":1171,"duration":700}'
+argv_is "long-press" "tap 0.5 0.446606 700"
+call double-tap 603 1171 --device A1
+succeeds "double-tap" '{"device":"A1","x":603,"y":1171}'
+argv_is "double-tap" "doubletap 0.5 0.446606 50 100"
 
 # 2. Each interface rotation maps to the unrotated panel; an unreadable rotation counts as portrait.
 rot rot270; call tap 1311 901 --device A1; argv_is "rotation 90" "tap 0.252902 0.5 0"
@@ -366,9 +371,12 @@ call tap --text Press --device A1
 succeeds "tap --text" '{"device":"A1","x":603,"y":966,"element":{"role":"Button","label":"Press","identifier":"press-button","bounds":[48,900,1158,1032]}}'
 argv_is "tap --text" "tap 0.5 0.368421 0"
 call tap --text Name --device A1; argv_is "tap --text on a value" "tap 0.5 0.139588 0"
-call tap --id press-button --duration 700 --device A1
-succeeds "tap --id --duration" '{"device":"A1","x":603,"y":966,"duration":700,"element":{"role":"Button","label":"Press","identifier":"press-button","bounds":[48,900,1158,1032]}}'
-argv_is "tap --id --duration" "tap 0.5 0.368421 700"
+call long-press --id press-button --duration 700 --device A1
+succeeds "long-press --id" '{"device":"A1","x":603,"y":966,"duration":700,"element":{"role":"Button","label":"Press","identifier":"press-button","bounds":[48,900,1158,1032]}}'
+argv_is "long-press --id" "tap 0.5 0.368421 700"
+call double-tap --id press-button --device A1
+succeeds "double-tap --id" '{"device":"A1","x":603,"y":966,"element":{"role":"Button","label":"Press","identifier":"press-button","bounds":[48,900,1158,1032]}}'
+argv_is "double-tap --id" "doubletap 0.5 0.368421 50 100"
 call tap --text Buds --device A1; argv_is "direction marks" "tap 0.164179 0.469108 0"
 call tap --text Row --device A1
 refuses ELEMENT_AMBIGUOUS "two Rows"
@@ -449,8 +457,11 @@ succeeds "runner tap" '{"device":"A1","x":603,"y":1311}'
 build_line=$(/usr/bin/grep build-for-testing "$fake/xcodebuild")
 case $build_line in *"-destination id=A1"*) ;; *) fail "runner build: no simulator destination: $build_line" ;; esac
 case $build_line in *DEVELOPMENT_TEAM* | *-allowProvisioning*) fail "runner build: signing settings: $build_line" ;; esac
-rcall "$tmp/rhome" tap 603 1311 --duration 700 --device A1
+rcall "$tmp/rhome" long-press 603 1311 --duration 700 --device A1
 [ "$(sent)" = '/tap {"x":201,"y":437,"duration":700,"orientation":1}' ] || fail "runner long press sent: $(sent)"
+rcall "$tmp/rhome" double-tap 603 1311 --device A1
+succeeds "runner double-tap" '{"device":"A1","x":603,"y":1311}'
+[ "$(sent)" = '/double-tap {"x":201,"y":437,"hold":50,"gap":100,"orientation":1}' ] || fail "runner double tap sent: $(sent)"
 [ "$(count build-for-testing xcodebuild)" = 1 ] && [ "$(count test-without-building xcodebuild)" = 1 ] \
   || fail "second runner call built or started again: $(cat "$fake/xcodebuild")"
 rcall "$tmp/rhome" swipe 603 2000 603 600 --duration 500 --device A1
@@ -554,9 +565,13 @@ else
   succeeds "real tap" "{\"device\":\"$booted\",\"x\":$1,\"y\":$2}"
   wait_for "real tap" "Tap me 1" label tap-button
   set -- $(tree | q center long-target)
-  out=$(real tap "$1" "$2" --duration 700 --device "$booted") && st=0 || st=$?
+  out=$(real long-press "$1" "$2" --duration 700 --device "$booted") && st=0 || st=$?
   succeeds "real long press" "{\"device\":\"$booted\",\"x\":$1,\"y\":$2,\"duration\":700}"
   wait_for "real long press" "Long 1" label long-target
+  set -- $(tree | q center double-target)
+  out=$(real double-tap "$1" "$2" --device "$booted") && st=0 || st=$?
+  succeeds "real double tap" "{\"device\":\"$booted\",\"x\":$1,\"y\":$2}"
+  wait_for "real double tap" "Double 1" label double-target
   before=$(tree | q top "Row 1")
   [ "$before" != gone ] || fail "real swipe: Row 1 is not on screen before the swipe"
   set -- $(tree | q size)
@@ -584,10 +599,21 @@ else
   wait_for "real text" "echo:çğş it's -- ok" label echo
   real key DEL --device "$booted" >/dev/null || fail "real key DEL"
   wait_for "real key DEL" "echo:çğş it's -- o" label echo
+  # "hello" starts the field's text; its middle sits about 68 px right of the field's left edge. ENTER ends the name
+  # field's editing, so the keyboard no longer hides the word field.
+  real key ENTER --device "$booted" >/dev/null || fail "real key ENTER"
+  wait_for "the word field after ENTER" yes has word-field
+  set -- $(tree | q left word-field)
+  real tap "$(($1 + 900))" "$2" --device "$booted" >/dev/null || fail "real tap on the word field"
+  sleep 1
+  wait_for "the word field above the keyboard" yes has word-field
+  set -- $(tree | q left word-field)
+  out=$(real double-tap "$(($1 + 68))" "$2" --device "$booted") || fail "real double-tap on a word: $out"
+  wait_for "real double tap on a word" "selected:hello" label selection
   out=$(real key HOME --device "$booted") && st=0 || st=$?
   succeeds "real key HOME" "{\"device\":\"$booted\",\"key\":\"KEYCODE_HOME\",\"code\":3}"
   wait_for "real key HOME" " " root
-  real_ok="real $booted: tap, long press, swipe, tap --id, tap --text, text, DEL, HOME"
+  real_ok="real $booted: tap, long press, double tap, swipe, tap --id, tap --text, text, DEL, word selection, HOME"
   [ "$runner_mac" = no ] || real_ok="$real_ok, through the runner, removed after"
 fi
 
