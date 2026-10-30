@@ -59,7 +59,8 @@ Codex passes a server only a short list of environment variables; `env_vars` for
 | `devices` | [`devices`](commands/devices.md) | none | read-only |
 | `screenshot` | [`screenshot`](commands/screenshot.md) | `out`, `inline`, `device` | |
 | `ui_tree` | [`ui-tree`](commands/ui-tree.md) | `device`, `detail` | read-only |
-| `tap` | [`tap`](commands/tap.md) | `x`, `y`, `text`, `id`, `duration`, `timeout`, `device` | |
+| `tap` | [`tap`](commands/tap.md) | `x`, `y`, `text`, `id`, `timeout`, `device` | |
+| `long_press` | [`long-press`](commands/long-press.md) | `x`, `y`, `text`, `id`, `duration`, `timeout`, `device` | |
 | `swipe` | [`swipe`](commands/swipe.md) | `x1`, `y1`, `x2`, `y2` (required), `duration`, `device` | |
 | `text` | [`text`](commands/text.md) | `text` (required), `device` | |
 | `key` | [`key`](commands/key.md) | `key` (required), `device` | |
@@ -72,12 +73,12 @@ Codex passes a server only a short list of environment variables; `env_vars` for
 | `install_runner` | [`install-runner`](commands/install-runner.md) | `team`, `device` | open world |
 | `uninstall_runner` | [`uninstall-runner`](commands/uninstall-runner.md) | `device` | destructive |
 
-"Marked" is the tool's annotation: `readOnlyHint`, `destructiveHint`, or `openWorldHint` for `install_runner`, whose build talks to Apple's developer service. The other eight carry `destructiveHint: false`, the other 14 `openWorldHint: false`, and all 15 a title. Clients use these to decide what needs approval and what may run in parallel.
+"Marked" is the tool's annotation: `readOnlyHint`, `destructiveHint`, or `openWorldHint` for `install_runner`, whose build talks to Apple's developer service. The other nine carry `destructiveHint: false`, the other 15 `openWorldHint: false`, and all 16 a title. Clients use these to decide what needs approval and what may run in parallel.
 
 ## Arguments
 
-- The names are the CLI's option and positional names: `tap {"x": 540, "y": 1200}` is `karagoz tap 540 1200`, and `logs {"lines": 5}` is `karagoz logs --lines 5`. `ui_tree` is the one renamed tool, because Codex turns `-` into `_`.
-- Values go through the CLI's own checks, as the text of the value (`12.5` is `12.5`), and the messages keep CLI syntax: `tap {"x": 1, "y": 2, "duration": 1.5}` fails with `--duration must be a whole number of milliseconds (got '1.5')`.
+- The names are the CLI's option and positional names: `tap {"x": 540, "y": 1200}` is `karagoz tap 540 1200`, and `logs {"lines": 5}` is `karagoz logs --lines 5`. `ui_tree` and `long_press` are renamed, because Codex turns `-` into `_`.
+- Values go through the CLI's own checks, as the text of the value (`12.5` is `12.5`), and the messages keep CLI syntax: `long_press {"x": 1, "y": 2, "duration": 1.5}` fails with `--duration must be a whole number of milliseconds (got '1.5')`.
 - `null` counts as not given. An argument the tool does not take is refused: `'devices' does not take the option '--foo'`.
 - `inline` exists only here: `true` or `false`, else `INVALID_ARGS` `inline must be true or false (got 'yes')`.
 - `out` and `apk` should be absolute. A relative path resolves against the server's working directory, which the client picks.
@@ -105,7 +106,7 @@ A real exchange, one line per message, `-->` sent and `<--` received. The `data`
 
 ## Behavior
 
-- Calls run in parallel, except UiAutomation reads (`ui_tree`, and `tap` with `text` or `id`), which take turns per device inside one server. Another process that holds UiAutomation still causes `AUTOMATION_BUSY`.
+- Calls run in parallel, except UiAutomation reads (`ui_tree`, and `tap` or `long_press` with `text` or `id`), which take turns per device inside one server. Another process that holds UiAutomation still causes `AUTOMATION_BUSY`.
 - A cancelled call kills its adb child at once and gets no response. The device does not stop with it: it keeps its UiAutomation slot for about 1-2 s, so a `ui_tree` right after can get `AUTOMATION_BUSY`; a gesture already sent finishes on the device; and a cancelled `install` may leave the app installed. Esc in Claude Code cancels the running call: the adb dump was gone within 0.3 s and the server kept running.
 - stdin closing, SIGINT and SIGTERM cancel every call the same way; the process exits with `0`, `130` and `143`.
 - The server keeps the `adb` it found for the whole session. If that file disappears (`ENOENT`), the next call looks it up again.

@@ -43,7 +43,7 @@ On macOS the same line goes on with `xcode`, shown here alone:
 | `xcode.simctl` | object | The `simctl` the simulator commands run. An entry, as described under `xcode.<entry>`. |
 | `xcode.swiftc` | object | The `swiftc` that compiles the simulator helper. An entry. |
 | `xcode.devicectl` | object | The `devicectl` karagoz runs. An entry. |
-| `xcode.helper` | object | The simulator helper in karagoz's cache, which `ui-tree`, `tap`, `swipe`, `text` and `key` run. An entry. |
+| `xcode.helper` | object | The simulator helper in karagoz's cache, which `ui-tree`, `tap`, `long-press`, `swipe`, `text` and `key` run. An entry. |
 | `xcode.<entry>.status` | string | The entry's state, see the entry status table below. `<entry>` is `simctl`, `swiftc`, `devicectl`, `helper`, `xcodebuild`, `usbmuxd`, `tar` or `log`. |
 | `xcode.<entry>.path` | string | When known: the file or socket that was checked. |
 | `xcode.<entry>.message` | string | With `missing` and `failed`: why. For `simctl` and `swiftc` `missing`, it is the text the command itself would fail with. |
@@ -85,7 +85,7 @@ On macOS the same line goes on with `xcode`, shown here alone:
 | `ok` | `simctl`, `swiftc`, `devicectl`, `xcodebuild`, `tar`, `log`: a file karagoz can run. `usbmuxd`: a socket karagoz can read and write. `helper`: built, and a file you own. |
 | `missing` | Nothing at `path`. With no developer folder, `swiftc` and `xcodebuild` have no `path` and say no Xcode is selected. `tar` and `log` have no `path`. |
 | `failed` | There but not runnable: `cannot run <path> (EACCES)`. For `tar` and `log`, the first such file on `PATH` when none after it runs. For `usbmuxd`, not a socket (`ENOTSOCK`) or not yours to use (`EACCES`). For `simctl` and `devicectl`, also when Xcode's first launch has not finished: `the selected Xcode expects CoreSimulator <version>, this Mac has <version>: open Xcode once to finish installing its components` (CoreDevice for `devicectl`). For `helper`, the cache folder or binary is not yours or not the right type: delete `~/Library/Caches/karagoz`. |
-| `not built` | `helper` only: the next `ui-tree`, `tap`, `swipe`, `text` or `key` compiles it. |
+| `not built` | `helper` only: the next `ui-tree`, `tap`, `long-press`, `swipe`, `text` or `key` compiles it. |
 
 The exit code is `0` whenever the report is printed, with adb or Xcode missing or broken as well. Check `adb.status` and `xcode.status`.
 
@@ -98,7 +98,7 @@ The exit code is `0` whenever the report is printed, with adb or Xcode missing o
 - `xcode` is absent on Linux and Windows.
 - Nothing is installed.
 - `outdated` means below platform-tools 30.0.0, where `install` fails: it passes `--no-incremental`, which older versions forward to the device, and the device rejects it. Debian 12 ships 29.0.6. The other commands still work.
-- `xcode.status` `outdated` means below Xcode 27 on a Mac that once had it, where `tap`, `swipe`, `text` and `key` return `NOT_SUPPORTED` on a simulator. The other commands work. On a Mac that never had Xcode 27 they go through karagoz's runner, so its Xcode is not `outdated`.
+- `xcode.status` `outdated` means below Xcode 27 on a Mac that once had it, where `tap`, `long-press`, `swipe`, `text` and `key` return `NOT_SUPPORTED` on a simulator. The other commands work. On a Mac that never had Xcode 27 they go through karagoz's runner, so its Xcode is not `outdated`.
 - `version` keeps the builder's suffix: digits from Google, `-debian`, `-android-tools`. Debian's 8.1.0 package prints its package version, `1:8.1.0+r23-8`, and is `outdated`. `1.0.41` in `Android Debug Bridge version 1.0.41` is adb's protocol number and is not shown.
 - For `PATH`, `path` is the symlink as invoked on macOS (`/opt/homebrew/bin/adb`) and the resolved file on Linux.
 - A candidate that is there but fails to start with `ENOENT` (a script whose interpreter is missing, a broken link) is shown `failed`, and karagoz moves on to the next one, as every command does. Any other failure stops the lookup at that candidate. The exception is `PATH` on macOS and Linux: `adb` runs by name there, the error does not say which file failed, and the candidate is shown `missing`.
