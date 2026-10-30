@@ -52,7 +52,7 @@ Early development. Every command runs on all four targets, except `install-runne
 - Node 22 or newer.
 - **Android:** `adb` from Android platform-tools, and a running emulator or a phone with USB debugging on.
 - **iOS simulator** (macOS): Xcode, opened once, and a booted simulator. `tap`, `long-press`, `double-tap`, `swipe`, `text` and `key` need Xcode 27 or newer, or a Mac that never had Xcode 27, where they go through karagoz's runner.
-- **iPhone** (macOS): Xcode 15 or newer (27 for `screenshot`) and the iPhone paired with the Mac. `screenshot`, `install`, `launch`, `terminate` and `uninstall` need Developer Mode on; `logs` needs a USB cable; `ui-tree`, `tap`, `long-press`, `double-tap`, `swipe`, `text` and `key` need both, plus UI Automation on and karagoz's runner, which [`install-runner`](https://github.com/yagizdo/karagoz-mcp/blob/main/docs/commands/install-runner.md) installs.
+- **iPhone** (macOS): Xcode 15 or newer (27 for `screenshot`) and the iPhone paired with the Mac. `screenshot`, `install`, `launch`, `open-url`, `terminate` and `uninstall` need Developer Mode on; `logs` needs a USB cable; `ui-tree`, `tap`, `long-press`, `double-tap`, `swipe`, `text` and `key` need both, plus UI Automation on and karagoz's runner, which [`install-runner`](https://github.com/yagizdo/karagoz-mcp/blob/main/docs/commands/install-runner.md) installs.
 
 [What each command needs, and how karagoz finds `adb` and Xcode](https://github.com/yagizdo/karagoz-mcp/blob/main/docs/requirements.md).
 
@@ -98,6 +98,7 @@ $ karagoz screenshot --out home.png
 | [`key`](https://github.com/yagizdo/karagoz-mcp/blob/main/docs/commands/key.md) | Press a key |
 | [`install`](https://github.com/yagizdo/karagoz-mcp/blob/main/docs/commands/install.md) | Install or replace an app |
 | [`launch`](https://github.com/yagizdo/karagoz-mcp/blob/main/docs/commands/launch.md) | Start an app as its launcher icon does |
+| [`open-url`](https://github.com/yagizdo/karagoz-mcp/blob/main/docs/commands/open-url.md) | Open a URL or deep link in the app that handles it |
 | [`terminate`](https://github.com/yagizdo/karagoz-mcp/blob/main/docs/commands/terminate.md) | Stop every process of an app |
 | [`uninstall`](https://github.com/yagizdo/karagoz-mcp/blob/main/docs/commands/uninstall.md) | Remove an app |
 | [`logs`](https://github.com/yagizdo/karagoz-mcp/blob/main/docs/commands/logs.md) | Read the device log |
@@ -120,7 +121,7 @@ Every command prints one line of JSON on stdout: its result with exit code `0`, 
 karagoz mcp
 ```
 
-Starts an MCP server for an AI agent on stdin and stdout. It opens no port: the client starts the process and talks to it over stdio. The 17 commands are its tools, and each tool returns the JSON line the CLI prints. The server code loads only when `mcp` runs, so the other commands start as fast as before.
+Starts an MCP server for an AI agent on stdin and stdout. It opens no port: the client starts the process and talks to it over stdio. The 18 commands are its tools, and each tool returns the JSON line the CLI prints. The server code loads only when `mcp` runs, so the other commands start as fast as before.
 
 ### Claude Code
 
