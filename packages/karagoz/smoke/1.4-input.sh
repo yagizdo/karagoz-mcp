@@ -50,7 +50,7 @@ center() { node -e '
 # read in $tree.
 wait_front() {
   end=$(($(date +%s) + $2))
-  until tree=$(node dist/cli.js ui-tree --device "$id" 2>/dev/null) && [ "$(printf '%s' "$tree" | field root.package)" = "$1" ]; do
+  until tree=$(node dist/cli.js ui-tree --device "$id" --detail full 2>/dev/null) && [ "$(printf '%s' "$tree" | field root.package)" = "$1" ]; do
     [ "$(date +%s)" -lt "$end" ] || { echo "FAIL: $1 was not in front within $2 s; the last read: $(printf '%s' "$tree" | field root.package || printf '%s' "$tree")"; exit 1; }
   done
 }
@@ -118,7 +118,7 @@ for key in HOME home KEYCODE_HOME 3; do
 done
 home=$(adb -s "$id" shell cmd package resolve-activity --brief -a android.intent.action.MAIN -c android.intent.category.HOME | tail -1)
 case $home in */*) ;; *) echo "FAIL: resolve-activity named no launcher activity: $home"; exit 1 ;; esac
-tree=$(node dist/cli.js ui-tree --device "$id") || { echo "FAIL: ui-tree exited non-zero: $tree"; exit 1; }
+tree=$(node dist/cli.js ui-tree --device "$id" --detail full) || { echo "FAIL: ui-tree exited non-zero: $tree"; exit 1; }
 front=$(printf '%s' "$tree" | field root.package) || { echo "FAIL: ui-tree printed no root.package: $tree"; exit 1; }
 [ "$front" = "${home%%/*}" ] || { echo "FAIL: after key HOME the front package is $front, not the launcher ${home%%/*}"; exit 1; }
 
@@ -127,7 +127,7 @@ node dist/cli.js key HOME --device "$id" >/dev/null
 out=$(node dist/cli.js tap 540 1100 --duration 1000 --device "$id") || { echo "FAIL: tap --duration exited non-zero: $out"; exit 1; }
 want="{\"device\":\"$id\",\"x\":540,\"y\":1100,\"duration\":1000}"
 [ "$out" = "$want" ] || { echo "FAIL: tap --duration printed $out, expected $want"; exit 1; }
-tree=$(node dist/cli.js ui-tree --device "$id") || { echo "FAIL: ui-tree exited non-zero: $tree"; exit 1; }
+tree=$(node dist/cli.js ui-tree --device "$id" --detail full) || { echo "FAIL: ui-tree exited non-zero: $tree"; exit 1; }
 printf '%s' "$tree" | texts | grep -qx Widgets \
   || { echo "FAIL: no node with the text Widgets after the long press: $(printf '%s' "$tree" | texts | tr '\n' '|')"; exit 1; }
 node dist/cli.js key BACK --device "$id" >/dev/null
@@ -145,14 +145,14 @@ wait_front com.google.android.settings.intelligence 10
 
 # 6. text: %s and a quote arrive literally. The 2 s wait: text typed as a field appears loses characters (K25).
 end=$(($(date +%s) + 10))
-until tree=$(node dist/cli.js ui-tree --device "$id" 2>/dev/null) && printf '%s' "$tree" | focused_text >/dev/null; do
+until tree=$(node dist/cli.js ui-tree --device "$id" --detail full 2>/dev/null) && printf '%s' "$tree" | focused_text >/dev/null; do
   [ "$(date +%s)" -lt "$end" ] || { echo "FAIL: no focused EditText in the search within 10 s"; exit 1; }
 done
 sleep 2
 out=$(node dist/cli.js text "it's 100%s ok" --device "$id") || { echo "FAIL: text exited non-zero: $out"; exit 1; }
 want="{\"device\":\"$id\",\"text\":\"it's 100%s ok\"}"
 [ "$out" = "$want" ] || { echo "FAIL: text printed $out, expected $want"; exit 1; }
-tree=$(node dist/cli.js ui-tree --device "$id") || { echo "FAIL: ui-tree exited non-zero: $tree"; exit 1; }
+tree=$(node dist/cli.js ui-tree --device "$id" --detail full) || { echo "FAIL: ui-tree exited non-zero: $tree"; exit 1; }
 typed=$(printf '%s' "$tree" | focused_text) || { echo "FAIL: no focused EditText after typing"; exit 1; }
 [ "$typed" = "it's 100%s ok" ] || { echo "FAIL: the search field reads '$typed', expected 'it's 100%s ok'"; exit 1; }
 
@@ -162,7 +162,7 @@ clear_field() { adb -s "$id" shell input keycombination 113 29; adb -s "$id" she
 # Reads ui-tree until the focused field reads $1, for up to 10 s; a toast can make one read fail.
 field_reads() {
   end=$(($(date +%s) + 10))
-  until tree=$(node dist/cli.js ui-tree --device "$id" 2>/dev/null) && [ "$(printf '%s' "$tree" | focused_text)" = "$1" ]; do
+  until tree=$(node dist/cli.js ui-tree --device "$id" --detail full 2>/dev/null) && [ "$(printf '%s' "$tree" | focused_text)" = "$1" ]; do
     [ "$(date +%s)" -lt "$end" ] || { echo "FAIL: the search field reads '$(printf '%s' "$tree" | focused_text)', expected '$1'"; exit 1; }
   done
 }
@@ -188,7 +188,7 @@ before=$(printf '%s' "$tree" | texts)
 out=$(node dist/cli.js swipe 540 1800 540 800 --duration 1000 --device "$id") || { echo "FAIL: swipe exited non-zero: $out"; exit 1; }
 want="{\"device\":\"$id\",\"x1\":540,\"y1\":1800,\"x2\":540,\"y2\":800,\"duration\":1000}"
 [ "$out" = "$want" ] || { echo "FAIL: swipe printed $out, expected $want"; exit 1; }
-tree=$(node dist/cli.js ui-tree --device "$id") || { echo "FAIL: ui-tree exited non-zero: $tree"; exit 1; }
+tree=$(node dist/cli.js ui-tree --device "$id" --detail full) || { echo "FAIL: ui-tree exited non-zero: $tree"; exit 1; }
 [ "$(printf '%s' "$tree" | texts)" != "$before" ] || { echo "FAIL: the Settings texts did not change after the swipe"; exit 1; }
 
 # 8. Without --duration, swipe states Android's own 300 ms.

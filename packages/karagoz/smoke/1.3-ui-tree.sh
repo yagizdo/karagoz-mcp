@@ -1,7 +1,8 @@
 #!/bin/sh
-# Step 1.3: `ui-tree` prints the focused window's accessibility tree as one JSON line, by serial and by AVD name;
-# another UiAutomation client gives AUTOMATION_BUSY; an unknown target and an option the command does not declare
-# fail with the JSON envelope. A fake adb covers parsing, failure classification and the WebView re-read.
+# Step 1.3: `ui-tree` prints the focused window's accessibility tree as one JSON line, by serial and by AVD name,
+# compact by default and every node with --detail full; another UiAutomation client gives AUTOMATION_BUSY; an unknown
+# target, an unknown --detail and an option the command does not declare fail with the JSON envelope. A fake adb covers
+# parsing, the compact rule, failure classification and the WebView re-read.
 # Precondition: an emulator is running with its screen on, and no other UiAutomation client is connected.
 # The only device-side process started here is `uiautomator events` (step 6), which the script stops. Nothing here
 # boots, stops, rotates or wakes anything, and the adb server on the default port is never touched.
@@ -43,10 +44,11 @@ case $a11y in *'Ui Automation['*)
   exit 1 ;;
 esac
 
-# 4. By serial: the K24 contract on every node of the live screen. Prints the summary for the ok line.
-out=$(node dist/cli.js ui-tree --device "$id") || { echo "FAIL: ui-tree by serial exited non-zero: $out"; exit 1; }
-summary=$(printf '%s' "$out" | node -e '
+# 4. By serial: the K24 contract on every node of the live screen, plus the compact rule (K54) on the default read and
+# full class names under --detail full. $1: compact or full. Prints a summary for the ok line.
+contract() { node -e '
   const out = require("fs").readFileSync(0, "utf8");
+  const compact = process.argv[2] === "compact";
   const fail = (reason) => { console.log(reason); process.exit(1); };
   if (out.includes("\n")) fail("stdout is not one line");
   let result;
@@ -55,17 +57,27 @@ summary=$(printf '%s' "$out" | node -e '
   if (result.device !== process.argv[1]) fail(`device is not ${process.argv[1]}`);
   if (![0, 90, 180, 270].includes(result.rotation)) fail("rotation is not 0, 90, 180 or 270");
   if (typeof result.root.package !== "string" || !result.root.package) fail("root has no package");
+  if (!compact && !result.root.class.includes(".")) fail(`the full root class ${result.root.class} has no package part`);
   const KEYS = ["class", "package", "text", "contentDesc", "resourceId", "hint", "checkable", "checked", "clickable",
     "longClickable", "focusable", "focused", "scrollable", "selected", "password", "enabled", "bounds", "children"];
   const FLAGS = ["checkable", "checked", "clickable", "longClickable", "focusable", "focused", "scrollable", "selected", "password"];
   const STRINGS = ["package", "text", "contentDesc", "resourceId", "hint"];
   let nodes = 0;
   let labelled = false;
+  const ACTIONS = ["clickable", "longClickable", "scrollable", "checkable", "password"];
   const walk = (node) => {
     nodes++;
     if (typeof node.class !== "string" || !node.class) fail("a node has no class");
     const bounds = node.bounds;
     if (!Array.isArray(bounds) || bounds.length !== 4 || !bounds.every(Number.isInteger)) fail(`bounds of ${node.class} are not four integers`);
+    if (compact) {
+      if (node.class.includes(".")) fail(`class ${node.class} is not shortened`);
+      if (node.resourceId?.includes(":id/")) fail(`resourceId ${node.resourceId} is not shortened`);
+      if ("contentDesc" in node && node.contentDesc === node.text) fail(`${node.class} repeats its text as contentDesc`);
+      if (bounds[2] <= bounds[0] || bounds[3] <= bounds[1]) fail(`${node.class} has no area: ${bounds}`);
+      const kept = node.text || node.contentDesc || node.hint || ACTIONS.some((flag) => node[flag]) || /(EditText|AutoCompleteTextView)$/.test(node.class);
+      if (node !== result.root && !kept) fail(`${node.class} ${bounds} has no text, contentDesc, hint or action`);
+    }
     for (const key of Object.keys(node)) if (!KEYS.includes(key)) fail(`${node.class} has ${key}, which is not a contract field`);
     for (const flag of FLAGS) if (flag in node && node[flag] !== true) fail(`${flag} of ${node.class} is present but not true`);
     if ("enabled" in node && node.enabled !== false) fail(`enabled of ${node.class} is present but not false`);
@@ -78,8 +90,16 @@ summary=$(printf '%s' "$out" | node -e '
   };
   walk(result.root);
   if (!labelled) fail("no node has text or contentDesc");
-  console.log(`rotation ${result.rotation}, ${nodes} nodes, ${Buffer.byteLength(out)} B, root ${result.root.package}`);
-' "$id") || { echo "FAIL: $summary: $out"; exit 1; }
+  console.log(`rotation ${result.rotation}, ${nodes} nodes, ${out.length} chars, root ${result.root.package}`);
+' "$id" "$1"; }
+out=$(node dist/cli.js ui-tree --device "$id") || { echo "FAIL: ui-tree by serial exited non-zero: $out"; exit 1; }
+summary=$(printf '%s' "$out" | contract compact) || { echo "FAIL: compact: $summary: $out"; exit 1; }
+full=$(node dist/cli.js ui-tree --device "$id" --detail full) || { echo "FAIL: ui-tree --detail full exited non-zero: $full"; exit 1; }
+full_summary=$(printf '%s' "$full" | contract full) || { echo "FAIL: full: $full_summary: $full"; exit 1; }
+# The launcher measured 44% and the widest screen 52% (K54).
+[ $((${#out} * 100)) -le $((${#full} * 60)) ] \
+  || { echo "FAIL: the compact tree is ${#out} chars, over 60% of the full tree's ${#full}"; exit 1; }
+summary="compact: $summary; full: $full_summary"
 
 # 5. By AVD name.
 res=$(node dist/cli.js ui-tree --device "$name") || { echo "FAIL: ui-tree by AVD name exited non-zero: $res"; exit 1; }
@@ -115,7 +135,7 @@ done
 if miss=$(node dist/cli.js ui-tree --device nope 2>/dev/null); then echo "FAIL: unknown device exited 0"; exit 1; fi
 [ "$(printf '%s' "$miss" | code_of)" = DEVICE_NOT_FOUND ] || { echo "FAIL: expected DEVICE_NOT_FOUND, got: $miss"; exit 1; }
 
-# 8. ui-tree declares only --device.
+# 8. ui-tree declares only --device and --detail.
 if bad=$(node dist/cli.js ui-tree --out x 2>/dev/null); then echo "FAIL: ui-tree --out exited 0"; exit 1; fi
 [ "$(printf '%s' "$bad" | code_of)" = INVALID_ARGS ] || { echo "FAIL: expected INVALID_ARGS, got: $bad"; exit 1; }
 
@@ -127,6 +147,7 @@ mkdir -p "$tmp/sdk/platform-tools" "$fake" "$fx"
 cat > "$tmp/sdk/platform-tools/adb" <<'EOF'
 #!/bin/sh
 # Fake adb for smoke 1.3: answers from the files in $FAKE. dump1 is the first uiautomator read, dump2 the second.
+echo "$*" >> "$FAKE/calls"
 case "$*" in
   devices) printf 'List of devices attached\nemulator-5554\tdevice\n\n' ;;
   *'exec-out uiautomator dump /dev/tty')
@@ -141,14 +162,17 @@ chmod +x "$tmp/sdk/platform-tools/adb"
 busy_a11y='Ui Automation[eventTypes=TYPES_ALL_MASK, notificationTimeout=0]'
 idle_a11y='ACCESSIBILITY MANAGER (dumpsys accessibility)'
 
-# Runs ui-tree against the fake adb. $1: the dumpsys accessibility text; $2: the first read; $3: the second, if any.
+# Runs ui-tree against the fake adb. $1: the dumpsys accessibility text; $2: the first read; $3: the second, if any;
+# $4: a --detail value, if any.
 run_fake() {
   printf '%s\n' "$1" > "$fake/a11y"
   echo 0 > "$fake/reads"
+  : > "$fake/calls"
   cp "$2" "$fake/dump1"
   rm -f "$fake/dump2"
   [ -z "$3" ] || cp "$3" "$fake/dump2"
-  ANDROID_HOME="$tmp/sdk" FAKE="$fake" node dist/cli.js ui-tree --device emulator-5554 2>/dev/null
+  if [ -n "$4" ]; then set -- --detail "$4"; else set --; fi
+  ANDROID_HOME="$tmp/sdk" FAKE="$fake" node dist/cli.js ui-tree --device emulator-5554 "$@" 2>/dev/null
 }
 # Fails unless $got is exactly the line in file $2 and the dump was read $3 times. $1: the fixture.
 # printf, not echo: this machine's sh echo expands the \n and \" inside the JSON (K9).
@@ -176,8 +200,35 @@ EOF
 cat > "$fx/a.json" <<'EOF'
 {"device":"emulator-5554","rotation":90,"root":{"class":"android.widget.FrameLayout","package":"com.example","bounds":[0,0,2400,1080],"children":[{"class":"android.widget.TextView","text":"a & b < c \" d ' e\nf 😀","resourceId":"com.example:id/label","enabled":false,"bounds":[0,2391,1080,2337]},{"class":"android.widget.Button","package":"com.other","contentDesc":"Save > \"x\" A","hint":"Hint","clickable":true,"longClickable":true,"focusable":true,"bounds":[10,20,30,40]}]}}
 EOF
-got=$(run_fake "$idle_a11y" "$fx/a.xml") || { echo "FAIL: fixture a exited non-zero: $got"; exit 1; }
+cat > "$fx/a-compact.json" <<'EOF'
+{"device":"emulator-5554","rotation":90,"root":{"class":"FrameLayout","package":"com.example","bounds":[0,0,2400,1080],"children":[{"class":"Button","package":"com.other","contentDesc":"Save > \"x\" A","hint":"Hint","clickable":true,"longClickable":true,"focusable":true,"bounds":[10,20,30,40]}]}}
+EOF
+got=$(run_fake "$idle_a11y" "$fx/a.xml" "" full) || { echo "FAIL: fixture a exited non-zero: $got"; exit 1; }
 tree_is a "$fx/a.json" 1
+got=$(run_fake "$idle_a11y" "$fx/a.xml") || { echo "FAIL: fixture a compact exited non-zero: $got"; exit 1; }
+tree_is "a compact" "$fx/a-compact.json" 1
+
+# k. The compact rule: an id-only container and a wrapper go, the child of a zero-area node and a node of another
+# package move up (its package given again), a node below the screen goes, a contentDesc equal to text goes, and an
+# empty EditText stays.
+cat > "$fx/k.xml" <<'EOF'
+<?xml version='1.0' encoding='UTF-8' standalone='yes' ?><hierarchy rotation="0"><node class="android.widget.FrameLayout" package="com.example" bounds="[0,0][1080,2400]"><node class="android.widget.LinearLayout" package="com.example" resource-id="com.example:id/content" bounds="[0,0][1080,2400]"><node class="android.widget.FrameLayout" package="com.example" bounds="[0,100][1080,2000]"><node class="android.widget.TextView" package="com.example" text="Title" content-desc="Title" resource-id="com.example:id/title" bounds="[10,110][500,200]" /><node class="android.widget.EditText" package="com.example" resource-id="com.example:id/field" focusable="true" bounds="[10,300][1070,400]" /><node class="android.view.View" package="com.example" bounds="[0,0][0,0]"><node class="android.widget.Button" package="com.example" text="Edge" clickable="true" bounds="[0,1800][200,1900]" /></node><node class="android.widget.Button" package="com.example" text="Below" clickable="true" bounds="[0,2500][1080,2600]" /></node><node class="android.widget.FrameLayout" package="com.other" bounds="[0,2000][1080,2400]"><node class="android.widget.TextView" package="com.other" text="Widget" bounds="[10,2010][500,2100]" /></node></node></node></hierarchy>UI hierchary dumped to: /dev/tty
+EOF
+cat > "$fx/k.json" <<'EOF'
+{"device":"emulator-5554","rotation":0,"root":{"class":"FrameLayout","package":"com.example","bounds":[0,0,1080,2400],"children":[{"class":"TextView","text":"Title","resourceId":"title","bounds":[10,110,500,200]},{"class":"EditText","resourceId":"field","focusable":true,"bounds":[10,300,1070,400]},{"class":"Button","text":"Edge","clickable":true,"bounds":[0,1800,200,1900]},{"class":"TextView","package":"com.other","text":"Widget","bounds":[10,2010,500,2100]}]}}
+EOF
+got=$(run_fake "$idle_a11y" "$fx/k.xml") || { echo "FAIL: fixture k exited non-zero: $got"; exit 1; }
+tree_is k "$fx/k.json" 1
+
+# l. --detail other than compact or full, or with no value, fails before any adb call.
+if got=$(run_fake "$idle_a11y" "$fx/a.xml" "" bogus); then echo "FAIL: --detail bogus exited 0"; exit 1; fi
+error_is l INVALID_ARGS "detail must be compact or full (got 'bogus')"
+[ ! -s "$fake/calls" ] || { echo "FAIL: --detail bogus called adb: $(cat "$fake/calls")"; exit 1; }
+if got=$(ANDROID_HOME="$tmp/sdk" FAKE="$fake" node dist/cli.js ui-tree --device emulator-5554 --detail 2>/dev/null); then
+  echo "FAIL: --detail with no value exited 0"; exit 1
+fi
+[ "$(printf '%s' "$got" | code_of)" = INVALID_ARGS ] || { echo "FAIL: --detail with no value: expected INVALID_ARGS, got: $got"; exit 1; }
+[ ! -s "$fake/calls" ] || { echo "FAIL: --detail with no value called adb: $(cat "$fake/calls")"; exit 1; }
 
 # b, c. uiautomator's own failure text wins over a busy slot; dumpsys is not consulted for it.
 printf 'ERROR: could not get idle state.\n' > "$fx/b.txt"
@@ -220,10 +271,20 @@ EOF
 cat > "$fx/web-empty.json" <<'EOF'
 {"device":"emulator-5554","rotation":0,"root":{"class":"android.widget.FrameLayout","package":"dev.karagoz.probe","bounds":[0,0,1080,2400],"children":[{"class":"android.webkit.WebView","bounds":[0,63,1080,2337]}]}}
 EOF
-got=$(run_fake "$idle_a11y" "$fx/web-empty.xml" "$fx/web-full.xml") || { echo "FAIL: fixture i exited non-zero: $got"; exit 1; }
+cat > "$fx/web-full-compact.json" <<'EOF'
+{"device":"emulator-5554","rotation":0,"root":{"class":"FrameLayout","package":"dev.karagoz.probe","bounds":[0,0,1080,2400],"children":[{"class":"View","text":"Web heading","bounds":[42,105,1038,180]}]}}
+EOF
+cat > "$fx/web-empty-compact.json" <<'EOF'
+{"device":"emulator-5554","rotation":0,"root":{"class":"FrameLayout","package":"dev.karagoz.probe","bounds":[0,0,1080,2400]}}
+EOF
+got=$(run_fake "$idle_a11y" "$fx/web-empty.xml" "$fx/web-full.xml" full) || { echo "FAIL: fixture i exited non-zero: $got"; exit 1; }
 tree_is i "$fx/web-full.json" 2
-got=$(run_fake "$idle_a11y" "$fx/web-empty.xml" "$fx/killed.txt") || { echo "FAIL: fixture j exited non-zero: $got"; exit 1; }
+got=$(run_fake "$idle_a11y" "$fx/web-empty.xml" "$fx/killed.txt" full) || { echo "FAIL: fixture j exited non-zero: $got"; exit 1; }
 tree_is j "$fx/web-empty.json" 2
+got=$(run_fake "$idle_a11y" "$fx/web-empty.xml" "$fx/web-full.xml") || { echo "FAIL: fixture i compact exited non-zero: $got"; exit 1; }
+tree_is "i compact" "$fx/web-full-compact.json" 2
+got=$(run_fake "$idle_a11y" "$fx/web-empty.xml" "$fx/killed.txt") || { echo "FAIL: fixture j compact exited non-zero: $got"; exit 1; }
+tree_is "j compact" "$fx/web-empty-compact.json" 2
 
 # 10. Nothing of ours is left running on the device.
 if left=$(adb -s "$id" shell pidof uiautomator); then echo "FAIL: a uiautomator process is left on the device: $left"; exit 1; fi

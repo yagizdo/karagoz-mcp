@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { cancellation } from '../../cancellation.js';
 import { KaragozError } from '../../errors.js';
 import { runTool } from '../../tool.js';
+import { prune } from '../../tree.js';
 import { displayOf, rotation } from './devicectl.js';
 import { isRecord } from './record.js';
 import { tree } from './runner.js';
@@ -288,4 +289,27 @@ export async function readPhoneTree(
     if (!(err instanceof Error)) throw err;
     throw new KaragozError('CAPTURE_FAILED', `cannot parse the runner's tree: ${err.message}`);
   }
+}
+
+// Roles that keep an element in the compact tree without a label or value: what an agent taps, types into, scrolls
+// or has to know is covering the screen (K54).
+const KEPT_ROLES = new Set(
+  'Button Link Cell Icon Switch Slider Stepper TextField SecureTextField SearchField TextView Key Tab TabBar MenuItem Menu Picker PickerWheel SegmentedControl PageIndicator ScrollView Table CollectionView WebView Keyboard Alert Sheet NavigationBar Toolbar'.split(
+    ' ',
+  ),
+);
+
+// The compact tree (K54), for the simulator and the iPhone alike. A keyboard keeps its area and loses its keys: text
+// and key type into it.
+export function compact(root: IosNode): IosNode {
+  return prune(root, {
+    bounds: (node) => node.bounds,
+    children: (node) => node.children ?? [],
+    keep: (node) => Boolean(node.label || node.value) || KEPT_ROLES.has(node.role),
+    build: (node, children) => {
+      const out = { ...node };
+      delete out.children;
+      return node.role === 'Keyboard' || !children.length ? out : { ...out, children };
+    },
+  });
 }

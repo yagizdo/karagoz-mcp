@@ -41,8 +41,11 @@ const TOOLS: Tool[] = [
     name: 'ui_tree',
     title: 'Read the UI tree',
     description:
-      "Return the focused window's accessibility tree as JSON. Node bounds [left, top, right, bottom] are the physical pixels tap and swipe take. On an iPhone it needs karagoz's runner: install it once with install_runner.",
-    inputSchema: { type: 'object', properties: { device } },
+      "Return the focused window's accessibility tree as JSON, compact by default: nodes with no text, label or action and nodes off screen are left out. Node bounds [left, top, right, bottom] are the physical pixels tap and swipe take. On an iPhone it needs karagoz's runner: install it once with install_runner.",
+    inputSchema: {
+      type: 'object',
+      properties: { device, detail: { type: 'string', enum: ['compact', 'full'], description: 'full: every node.' } },
+    },
     annotations: { readOnlyHint: true, openWorldHint: false },
   },
   {

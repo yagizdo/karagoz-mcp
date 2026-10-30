@@ -60,7 +60,11 @@ export const commands: Record<string, Command> = {
     args: [],
     run: ({ device, out }) => screenshot(device, out),
   },
-  'ui-tree': { options: { device: { type: 'string' } }, args: [], run: ({ device }) => uiTree(device) },
+  'ui-tree': {
+    options: { device: { type: 'string' }, detail: { type: 'string' } },
+    args: [],
+    run: ({ device, detail }) => uiTree(device, detail),
+  },
   key: {
     options: { device: { type: 'string' } },
     args: ['key'],

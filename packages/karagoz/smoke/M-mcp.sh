@@ -2,8 +2,8 @@
 # Step M: `karagoz mcp` serves the 15 commands as MCP tools over stdio. The CLI lists mcp and checks its arguments;
 # the bundle holds no HTTP transport or bearer-auth code and reaches the server chunk only through import(); both
 # supported protocol versions are echoed; tools/list carries the 15 tools, their annotations and flat schemas within
-# 7,200 characters; every result and error is the CLI's JSON line; key HOME, ui_tree and an inline screenshot work on
-# the emulator; a cancelled call, stdin close, SIGTERM and SIGINT kill the call's adb child at once and the server
+# 7,400 characters; every result and error is the CLI's JSON line; key HOME, ui_tree in both details and an inline
+# screenshot work on the emulator; a cancelled call, stdin close, SIGTERM and SIGINT kill the call's adb child at once and the server
 # keeps serving after a cancel; a cancelled logs call kills its streaming simctl; UiAutomation reads on one device take turns and a cancelled waiting read never runs;
 # a cached adb that vanishes is looked up again, stays in use when an earlier candidate reappears, and is the one
 # doctor names; stdout carries only JSON-RPC and every session exits 0 when stdin closes.
@@ -253,8 +253,10 @@ for (const tool of list.tools) {
   const banned = keys(schema).filter((key) => ['oneOf', 'anyOf', 'allOf', 'pattern', 'minimum', 'maximum', 'format', 'default'].includes(key));
   if (banned.length) fail(`list: ${name} schema has ${banned.join(', ')}`);
 }
-// 7,200 since logs says what an iPhone reads without since and how long a read takes (7,151 then, K44; 7,152 after 4.7).
-if (JSON.stringify(list).length > 7200) fail(`list: ${JSON.stringify(list).length} characters, over 7200`);
+const detail = list.tools.find((tool) => tool.name === 'ui_tree')?.inputSchema.properties.detail;
+if (detail?.type !== 'string' || JSON.stringify(detail.enum) !== '["compact","full"]') fail(`list: ui_tree detail ${JSON.stringify(detail)}`);
+// 7,400 since ui_tree says what the compact tree leaves out and takes detail (7,320 then, K54).
+if (JSON.stringify(list).length > 7400) fail(`list: ${JSON.stringify(list).length} characters, over 7400`);
 
 // Parity. Fails unless the call fails with exactly the envelope want, and the server logged its message.
 async function refuses(tool, args, want) {
@@ -283,6 +285,7 @@ await refuses('screenshot', { out: '/tmp/x.jpg' }, cli('screenshot', '--out', '/
 await refuses('screenshot', { out: '/tmp/x.jpg', inline: null }, cli('screenshot', '--out', '/tmp/x.jpg'));
 await refuses('devices', { device: 'x' }, cli('devices', '--device', 'x'));
 await refuses('ui_tree', { device: 'karagoz-none' }, cli('ui-tree', '--device', 'karagoz-none'));
+await refuses('ui_tree', { detail: 'bogus' }, cli('ui-tree', '--detail', 'bogus'));
 await refuses('devices', { foo: 1 }, `{"error":{"code":"INVALID_ARGS","message":"'devices' does not take the option '--foo'"}}`);
 await refuses('screenshot', { inline: 'yes' }, `{"error":{"code":"INVALID_ARGS","message":"inline must be true or false (got 'yes')"}}`);
 for (const name of ['nope', 'ui-tree']) {
@@ -294,7 +297,11 @@ for (const name of ['nope', 'ui-tree']) {
 const home = await main.call('key', { key: 'HOME', device: id });
 if (text(home) !== `{"device":"${id}","key":"KEYCODE_HOME","code":3}`) fail(`live: key HOME: ${JSON.stringify(home)}`);
 const tree = JSON.parse(text(await main.call('ui_tree', { device: id })));
-if (tree.device !== id || typeof tree.root?.class !== 'string') fail(`live: ui_tree: ${JSON.stringify(tree).slice(0, 300)}`);
+if (tree.device !== id || typeof tree.root?.class !== 'string' || tree.root.class.includes('.')) {
+  fail(`live: ui_tree: ${JSON.stringify(tree).slice(0, 300)}`);
+}
+const full = JSON.parse(text(await main.call('ui_tree', { device: id, detail: 'full' })));
+if (full.device !== id || !full.root?.class?.includes('.')) fail(`live: ui_tree full: ${JSON.stringify(full).slice(0, 300)}`);
 const shot = await main.call('screenshot', { device: id, inline: true, out: `${tmp}/s.png` });
 const [meta, image] = shot.result?.content ?? [];
 if (shot.result?.isError || shot.result.content.length !== 2) fail(`live: screenshot: ${JSON.stringify(shot).slice(0, 300)}`);
@@ -398,7 +405,7 @@ if (main.answered(waiting)) fail('cancel: the cancelled tap was answered');
 // Queue, fake adb: two ui_tree calls on one serial take turns, and a call cancelled while it waits never reads.
 const dumps = `${tmp}/fake/dumps`;
 const dumped = () => (readFileSync(dumps, { encoding: 'utf8', flag: 'a+' }).match(/x/g) ?? []).length;
-const tiny = '{"device":"fake-1","rotation":0,"root":{"class":"android.widget.FrameLayout","package":"dev.karagoz.fake","bounds":[0,0,100,100]}}';
+const tiny = '{"device":"fake-1","rotation":0,"root":{"class":"FrameLayout","package":"dev.karagoz.fake","bounds":[0,0,100,100]}}';
 const queued = await start(fake());
 const pair = await Promise.all([1, 2].map(() => queued.call('ui_tree', { device: 'fake-1' })));
 for (const [i, res] of pair.entries()) {
