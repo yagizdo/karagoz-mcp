@@ -75,7 +75,7 @@ Codex passes a server only a short list of environment variables; `env_vars` for
 | `install_runner` | [`install-runner`](commands/install-runner.md) | `team`, `device` | open world |
 | `uninstall_runner` | [`uninstall-runner`](commands/uninstall-runner.md) | `device` | destructive |
 
-"Marked" is the tool's annotation: `readOnlyHint`, `destructiveHint`, or `openWorldHint` for `install_runner`, whose build talks to Apple's developer service. The other 11 carry `destructiveHint: false`, the other 17 `openWorldHint: false`, and all 17 a title. Clients use these to decide what needs approval and what may run in parallel.
+"Marked" is the tool's annotation: `readOnlyHint`, `destructiveHint`, or `openWorldHint` for `install_runner`, whose build talks to Apple's developer service. The other 11 carry `destructiveHint: false`, the other 17 `openWorldHint: false`, and all 18 a title. Clients use these to decide what needs approval and what may run in parallel.
 
 ## Arguments
 
