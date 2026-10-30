@@ -1,5 +1,5 @@
 #!/bin/sh
-# Step 4.4: `tap` (by coordinates and by --text/--id), `long-press`, `swipe`, `text` and `key` on a paired iPhone go to karagoz's
+# Step 4.4: `tap` (by coordinates and by --text/--id), `long-press`, `double-tap`, `swipe`, `text` and `key` on a paired iPhone go to karagoz's
 # runner as signed requests: points in the portrait panel with the interface orientation, converted from the tree's
 # pixels for every rotation and the mini; element taps match the tree and refuse a target under the software keyboard;
 # any Unicode text but control characters; the hardware buttons and the keys that type a character, other names refused
@@ -101,6 +101,9 @@ is "tap sent" "$(sent)" '/tap {"x":215,"y":466,"orientation":1}'
 out=$(k long-press 645 1398 --duration 800 --device P1) || fail "long press exited non-zero: $out"
 is "long press" "$out" '{"device":"P1","x":645,"y":1398,"duration":800}'
 is "long press sent" "$(sent)" '/tap {"x":215,"y":466,"duration":800,"orientation":1}'
+out=$(k double-tap 645 1398 --device P1) || fail "double tap exited non-zero: $out"
+is "double tap" "$out" '{"device":"P1","x":645,"y":1398}'
+is "double tap sent" "$(sent)" '/double-tap {"x":215,"y":466,"hold":50,"gap":100,"orientation":1}'
 # turned <devicectl orientation> <x> <y> <what the runner gets>; devicectl's rot270 is karagoz's rotation 90 (K34).
 turned() {
   display ",\"currentOrientation\":\"$1\"" 1290,2796
@@ -143,6 +146,8 @@ is "tap --id" "$out" '{"device":"P1","x":348,"y":366,"element":{"role":"Button",
 is "tap --id sent" "$(sent)" '/tap {"x":116,"y":122,"orientation":1}'
 out=$(k long-press --text abc --duration 600 --device P1) || fail "long-press --text on a value exited non-zero: $out"
 is "long-press --text value" "$(sent)" '/tap {"x":215,"y":278,"duration":600,"orientation":1}'
+k double-tap --id tap-button --device P1 > /dev/null || fail "double-tap --id failed"
+is "double-tap --id sent" "$(sent)" '/double-tap {"x":116,"y":122,"hold":50,"gap":100,"orientation":1}'
 marked=$(printf '\342\200\216Tap me 1')
 k tap --text "$marked" --device P1 > /dev/null || fail "tap --text with a direction mark failed"
 is "direction mark" "$(sent)" '/tap {"x":116,"y":122,"orientation":1}'
@@ -185,6 +190,9 @@ for m in event:"did not take the event" xctest:"Failed to synthesize event" priv
   echo "${m%%:*}" > "$fake/runner-mode"
   refuses "runner ${m%%:*}" HELPER_FAILED "${m#*:}" tap 645 1398 --device P1
 done
+# A runner of an older protocol still signs its answers but has no /double-tap: the caller is told to reinstall.
+echo older > "$fake/runner-mode"
+refuses "older runner" RUNNER_NOT_INSTALLED "is an older version" double-tap 645 1398 --device P1
 echo hang > "$fake/runner-mode"
 t0=$(date +%s)
 refuses "runner hangs" HELPER_FAILED "did not answer within 30 s" tap 645 1398 --device P1
@@ -197,7 +205,7 @@ wait $second || fail "ui-tree beside a tap failed: $(/bin/cat "$tmp/both.tree")"
 echo '{"result":{"apps":[]}}' > "$fake/apps.json"
 pkill -f "runner.cjs $fake"; rm -f "$fake/runner-port"
 refuses "no runner" RUNNER_NOT_INSTALLED "'karagoz install-runner --device P1' (MCP: install_runner)" tap 1 1 --device P1
-ok="$ok, runner failures, hang (30s), tap beside ui-tree, not installed"
+ok="$ok, runner failures, older runner, hang (30s), tap beside ui-tree, not installed"
 
 # 5. A real paired iPhone with karagoz's runner. Probe, the iOS smokes' test app, is built for the phone and signed by
 # fixtures/input-ios/sign.sh (a profile Xcode keeps, such as the team wildcard install-runner left); installed and
@@ -271,6 +279,8 @@ JS
   real long-press --id long-target --duration 300 --device "$phone" > /dev/null || fail "short press failed"
   sleep 1
   is "300 ms press is no long press" "$(q label long-target)" "Long 1"
+  real double-tap --id double-target --device "$phone" > /dev/null || fail "double tap failed"
+  until_is 5 "Double 1" label double-target || fail "double tap: the target reads $(q label double-target)"
   real tap --id name-field --device "$phone" > /dev/null || fail "tap on the name field failed"
   until_is 5 yes keyboard || fail "no keyboard after tapping the name field"
   real text 'karagoz çğıİş 😀' --device "$phone" > /dev/null || fail "text failed"

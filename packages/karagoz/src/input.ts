@@ -1,5 +1,6 @@
 import { resolveTarget } from './devices.js';
 import {
+  doubleTap as androidDoubleTap,
   key as androidKey,
   swipe as androidSwipe,
   tap as androidTap,
@@ -7,6 +8,10 @@ import {
   type Target,
 } from './drivers/android/input.js';
 import {
+  doubleTap as iosDoubleTap,
+  doubleTapElement,
+  doubleTapElementPhone,
+  doubleTapPhone,
   key as iosKey,
   keyPhone,
   swipe as iosSwipe,
@@ -44,6 +49,18 @@ export async function tap(device: string | undefined, target: Target, duration: 
   return resolved.kind === 'physical'
     ? tapPhone(id, target.x, target.y, duration)
     : iosTap(id, target.x, target.y, duration);
+}
+
+export async function doubleTap(device: string | undefined, target: Target, timeout: number) {
+  const resolved = await resolveTarget(device);
+  const { id } = resolved;
+  if (resolved.platform === 'android') return androidDoubleTap(id, target, timeout);
+  if (target.kind !== 'point') {
+    return resolved.kind === 'physical'
+      ? doubleTapElementPhone(id, target, timeout)
+      : doubleTapElement(id, target, timeout);
+  }
+  return resolved.kind === 'physical' ? doubleTapPhone(id, target.x, target.y) : iosDoubleTap(id, target.x, target.y);
 }
 
 export async function swipe(

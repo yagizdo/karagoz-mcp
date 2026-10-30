@@ -1,6 +1,6 @@
 import { install, launch, terminate, uninstall } from './app.js';
 import { doctor } from './doctor.js';
-import { key, swipe, tap, text, type Target } from './input.js';
+import { doubleTap, key, swipe, tap, text, type Target } from './input.js';
 import { logs } from './logs.js';
 import { installRunnerOn, uninstallRunnerFrom } from './runner.js';
 import { screenshot } from './screenshot.js';
@@ -13,7 +13,7 @@ import { KaragozError, type ErrorCode } from './errors.js';
 export type Command = {
   options: Record<string, { type: 'string' }>;
   args: readonly string[];
-  // tap and long-press can name their target with --text or --id instead of <x> <y>.
+  // tap, long-press and double-tap can name their target with --text or --id instead of <x> <y>.
   argsOptional?: true;
   run: (values: Record<string, string | undefined>, args: string[]) => Promise<unknown>;
 };
@@ -127,6 +127,17 @@ export const commands: Record<string, Command> = {
         values.duration === undefined ? LONG_PRESS_MS : integer('--duration', values.duration),
         wait(values.timeout),
       ),
+  },
+  'double-tap': {
+    options: {
+      device: { type: 'string' },
+      text: { type: 'string' },
+      id: { type: 'string' },
+      timeout: { type: 'string' },
+    },
+    args: ['x', 'y'],
+    argsOptional: true,
+    run: (values, args) => doubleTap(values.device, target('double-tap', values, args), wait(values.timeout)),
   },
   swipe: {
     options: { device: { type: 'string' }, duration: { type: 'string' } },
