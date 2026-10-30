@@ -179,6 +179,22 @@ const TOOLS: Tool[] = [
     annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
   },
   {
+    name: 'open_url',
+    title: 'Open a URL',
+    description:
+      'Open a URL in the app that handles it, or in the app named by app. On iOS it returns before the app is in front, and a simulator may first ask "Open in <app>?".',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        url: { type: 'string' },
+        app: { type: 'string', description: 'Package name or bundle id; not on an iOS simulator.' },
+        device,
+      },
+      required: ['url'],
+    },
+    annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
+  },
+  {
     name: 'terminate',
     title: 'Stop an app',
     description: 'Force-stop every process of an app.',

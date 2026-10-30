@@ -1,8 +1,8 @@
 #!/bin/sh
-# Step M: `karagoz mcp` serves the 17 commands as MCP tools over stdio. The CLI lists mcp and checks its arguments;
+# Step M: `karagoz mcp` serves the 18 commands as MCP tools over stdio. The CLI lists mcp and checks its arguments;
 # the bundle holds no HTTP transport or bearer-auth code and reaches the server chunk only through import(); both
-# supported protocol versions are echoed; tools/list carries the 17 tools, their annotations and flat schemas within
-# 9,100 characters; every result and error is the CLI's JSON line; key HOME, ui_tree in both details and an inline
+# supported protocol versions are echoed; tools/list carries the 18 tools, their annotations and flat schemas within
+# 9,600 characters; every result and error is the CLI's JSON line; key HOME, ui_tree in both details and an inline
 # screenshot work on the emulator; a cancelled call, stdin close, SIGTERM and SIGINT kill the call's adb child at once and the server
 # keeps serving after a cancel; a cancelled logs call kills its streaming simctl; UiAutomation reads on one device take turns and a cancelled waiting read never runs;
 # a cached adb that vanishes is looked up again, stays in use when an earlier candidate reappears, and is the one
@@ -231,7 +231,7 @@ for (const [i, version] of versions.entries()) {
 
 // List. The cap was 6,000 for 13 tools.
 const list = (await main.request('tools/list', {})).result;
-const names = ['devices', 'screenshot', 'ui_tree', 'tap', 'long_press', 'double_tap', 'swipe', 'text', 'key', 'install', 'launch', 'terminate', 'uninstall', 'logs', 'doctor', 'install_runner', 'uninstall_runner'];
+const names = ['devices', 'screenshot', 'ui_tree', 'tap', 'long_press', 'double_tap', 'swipe', 'text', 'key', 'install', 'launch', 'open_url', 'terminate', 'uninstall', 'logs', 'doctor', 'install_runner', 'uninstall_runner'];
 if (JSON.stringify(list?.tools?.map((tool) => tool.name).sort()) !== JSON.stringify([...names].sort())) {
   fail(`list: names ${JSON.stringify(list?.tools?.map((tool) => tool.name))}`);
 }
@@ -239,7 +239,7 @@ const readOnly = ['devices', 'ui_tree', 'logs', 'doctor'];
 const destructive = ['install', 'uninstall', 'uninstall_runner'];
 // install_runner's build registers the iPhone and an App ID with Apple's developer service.
 const openWorld = ['install_runner'];
-const required = { swipe: ['x1', 'y1', 'x2', 'y2'], text: ['text'], key: ['key'], install: ['apk'], launch: ['package'], terminate: ['package'], uninstall: ['package'] };
+const required = { swipe: ['x1', 'y1', 'x2', 'y2'], text: ['text'], key: ['key'], install: ['apk'], launch: ['package'], open_url: ['url'], terminate: ['package'], uninstall: ['package'] };
 const keys = (value) => (value && typeof value === 'object' ? Object.entries(value).flatMap(([key, inner]) => [key, ...keys(inner)]) : []);
 for (const tool of list.tools) {
   const { name, annotations: hints = {}, inputSchema: schema } = tool;
@@ -255,8 +255,8 @@ for (const tool of list.tools) {
 }
 const detail = list.tools.find((tool) => tool.name === 'ui_tree')?.inputSchema.properties.detail;
 if (detail?.type !== 'string' || JSON.stringify(detail.enum) !== '["compact","full"]') fail(`list: ui_tree detail ${JSON.stringify(detail)}`);
-// 9,100 since long_press and double_tap are tools of their own and tap lost duration (9,008 then, K55).
-if (JSON.stringify(list).length > 9100) fail(`list: ${JSON.stringify(list).length} characters, over 9100`);
+// 9,600 since open_url joined the tools (9,548 then).
+if (JSON.stringify(list).length > 9600) fail(`list: ${JSON.stringify(list).length} characters, over 9600`);
 
 // Parity. Fails unless the call fails with exactly the envelope want, and the server logged its message.
 async function refuses(tool, args, want) {
@@ -283,6 +283,8 @@ await refuses('double_tap', { x: 1, y: 2, duration: 5 }, cli('double-tap', '1', 
 await refuses('tap', { x: 1, y: 2, timeout: 5 }, cli('tap', '1', '2', '--timeout', '5'));
 await refuses('key', { key: 'NOPE' }, cli('key', 'NOPE'));
 await refuses('launch', { package: 'a;b' }, cli('launch', 'a;b'));
+await refuses('open_url', { url: 'not a url' }, cli('open-url', 'not a url'));
+await refuses('open_url', { url: 'x:y', app: 'a;b' }, cli('open-url', 'x:y', '--app', 'a;b'));
 await refuses('text', { text: '' }, cli('text', ''));
 await refuses('screenshot', { out: '/tmp/x.jpg' }, cli('screenshot', '--out', '/tmp/x.jpg'));
 await refuses('screenshot', { out: '/tmp/x.jpg', inline: null }, cli('screenshot', '--out', '/tmp/x.jpg'));
