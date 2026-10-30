@@ -345,10 +345,12 @@ export async function installOn(udid: string, path: string, timeout: number): Pr
   );
 }
 
-// Returns at spawn, before the app is in front; a running app comes to the front with the same pid (K43).
-export async function launchOn(udid: string, id: string): Promise<void> {
+// Returns at spawn, before the app is in front; a running app comes to the front with the same pid (K43). url goes to
+// the app as it launches; devicectl passes a URL to a named app only this way.
+export async function launchOn(udid: string, id: string, url?: string): Promise<void> {
+  const payload = url === undefined ? [] : ['--payload-url', url];
   const stdout = await devicectl(
-    ['device', 'process', 'launch', '--device', udid, id, '--json-output', '-', '-q'],
+    ['device', 'process', 'launch', '--device', udid, ...payload, id, '--json-output', '-', '-q'],
     PHONE_TIMEOUT_MS,
     udid,
     (chain) =>
@@ -364,6 +366,20 @@ export async function launchOn(udid: string, id: string): Promise<void> {
       `unexpected devicectl output: ${(stdout.split('\n')[0] ?? '').slice(0, 300)}`,
     );
   }
+}
+
+// Opens url with the handler the iPhone picks.
+// ponytail: unmeasured on a phone (none attached when it was written): a URL no app opens surfaces as DEVICECTL_FAILED
+// with the phone's reason. Map it to APP_NOT_FOUND once a phone shows its error chain.
+export async function openUrlOn(udid: string, url: string): Promise<void> {
+  json(
+    await devicectl(
+      ['device', 'process', 'openURL', '--device', udid, url, '--json-output', '-', '-q'],
+      PHONE_TIMEOUT_MS,
+      udid,
+      (chain) => new KaragozError('DEVICECTL_FAILED', said(chain)),
+    ),
+  );
 }
 
 // The installed app's bundle URL, system apps included; undefined when it is not installed.

@@ -1,14 +1,15 @@
 #!/bin/sh
-# Step 4.5: install, launch, terminate and uninstall reach a paired iPhone through devicectl in K28's shapes (K43).
-# Fakes prove each refusal read from devicectl's JSON error chain (INSTALL_FAILED and UNINSTALL_FAILED with the deepest
-# <domain>:<code>, the re-sign sentence on a code-signing refusal), APP_NOT_FOUND for each verb, a locked iPhone, an
-# unmapped launch failure, terminate by the app's bundle path (every process under it, a gone pid as done, nothing
-# running as done), SYSTEM_APP with no removal sent, the wrong-platform file, a slow first call, a hung install and
-# the held launch of a stopped app.
+# Step 4.5: install, launch, open-url, terminate and uninstall reach a paired iPhone through devicectl in K28's shapes
+# (K43). Fakes prove each refusal read from devicectl's JSON error chain (INSTALL_FAILED and UNINSTALL_FAILED with the
+# deepest <domain>:<code>, the re-sign sentence on a code-signing refusal), APP_NOT_FOUND for each verb, a locked
+# iPhone, an unmapped launch failure, terminate by the app's bundle path (every process under it, a gone pid as done,
+# nothing running as done), SYSTEM_APP with no removal sent, the wrong-platform file, a slow first call, a hung install
+# and the held launch of a stopped app.
 # Precondition: macOS. Fake adb, simctl and devicectl come through ANDROID_HOME and DEVELOPER_DIR under env -i. The real
 # step installs Probe (built for the phone, signed by fixtures/input-ios/sign.sh) on a paired iPhone through karagoz,
 # launches and terminates it and Settings, uninstalls Probe and reads each effect back, else it prints SKIP; the EXIT
-# trap removes Probe. Nothing but dev.karagoz.probe reaches the phone's uninstall.
+# trap removes Probe. Nothing but dev.karagoz.probe reaches the phone's uninstall. Before that, open-url opens Settings
+# with and without --app and terminates it. Fakes also prove open-url's two devicectl calls and their failures.
 set -e
 cd "$(dirname "$0")/.."
 [ "$(uname -s)" = Darwin ] || { echo "SKIP: iPhones need macOS"; echo "ok: skipped"; exit 0; }
@@ -42,6 +43,14 @@ case "\$*" in
     f=\${6##*/}
     [ -e "$fake/install-\$f" ] || { /bin/cat "$fake/installed"; exit 0; }
     /bin/cat "$fake/install-\$f"; exit 1 ;;
+  "device process launch --device P1 --payload-url "*" --json-output - -q")
+    case \$8 in dev.karagoz.nope) /bin/cat "$fake/launch-dev.karagoz.nope"; exit 1 ;; *) /bin/cat "$fake/launched" ;; esac ;;
+  "device process openURL --device P1 "*" --json-output - -q")
+    case \$6 in
+      karagoz-x://locked) /bin/cat "$fake/locked.err" >&2; exit 1 ;;
+      karagoz-x://none) /bin/cat "$fake/open-none"; exit 1 ;;
+      *) echo '{"result":{}}' ;;
+    esac ;;
   "device process launch --device P1 "*" --json-output - -q")
     [ -e "$fake/slow" ] && /bin/sleep 4
     case \$6 in
@@ -101,6 +110,7 @@ chain launch-dev.karagoz.weird $core 10002 "The application failed to launch." '
 printf '%s\n' 'ERROR: The application failed to launch. (com.apple.dt.CoreDeviceError error 10002 (0x2712))' \
   '       NSLocalizedFailureReason = Unable to launch dev.karagoz.locked because the device was not, or could not be, unlocked.' \
   > "$fake/locked.err"
+chain open-none $core 10006 "The URL could not be opened." '' $core 10006 '' "No app handles karagoz-x://none."
 gone="Failed to send signal 9 to process."
 chain kill-7001 $core 10014 "$gone" "No such process; the process may have already terminated." NSPOSIXErrorDomain 3 '' ''
 chain kill-7002 $core 10014 "$gone" "Operation not permitted." NSPOSIXErrorDomain 1 '' ''
@@ -222,6 +232,24 @@ call uninstall dev.karagoz.refused --device P1
 refuses UNINSTALL_FAILED "uninstall refused" "Failed to uninstall the app. Could not remove the app."
 reason_is "uninstall refused" MIInstallerErrorDomain:9
 
+# d2. open-url: openURL without --app, launch --payload-url with it; the URL reaches devicectl as one argument.
+url='karagoz-probe://open/p?a=1&b=2;c#frag'
+call open-url "$url" --device P1
+succeeds "open-url" "{\"device\":\"P1\",\"url\":\"$url\"}"
+[ "$(log)" = "list devices --json-output - -q
+device process openURL --device P1 $url --json-output - -q" ] || fail "open-url calls: $(log | tr '\n' ';')"
+call open-url "$url" --app dev.karagoz.probe --device P1
+succeeds "open-url --app" "{\"device\":\"P1\",\"url\":\"$url\",\"app\":\"dev.karagoz.probe\"}"
+[ "$(log)" = "list devices --json-output - -q
+device process launch --device P1 --payload-url $url dev.karagoz.probe --json-output - -q" ] ||
+  fail "open-url --app calls: $(log | tr '\n' ';')"
+call open-url "$url" --app dev.karagoz.nope --device P1
+refuses APP_NOT_FOUND "open-url --app not installed" "app 'dev.karagoz.nope' is not installed on P1"
+call open-url karagoz-x://locked --device P1
+refuses DEVICE_NOT_READY "open-url locked" "device P1 is not ready: it is locked. Unlock the iPhone and try again."
+call open-url karagoz-x://none --device P1
+refuses DEVICECTL_FAILED "open-url refused" "The URL could not be opened. No app handles karagoz-x://none."
+
 # e. A hung devicectl is killed: 31 s for an install of a .app; a launch held by a stopped app says so after 30 s.
 hung() { # <label> <seconds> <message> <karagoz arguments>
   label=$1 seconds=$2 message=$3
@@ -240,7 +268,7 @@ t1=$took
 hung "held launch" 30 "devicectl did not answer within 30s. If a debugger has the app stopped (a breakpoint, a pause or a start that waits for one), the iPhone holds the launch until the app continues. Otherwise CoreDevice's service may still be starting or be stuck." \
   launch dev.karagoz.held --device P1
 
-fakes="fakes: install, refusals, wrong platform, launch, not installed, locked, unmapped, cold (${cold}s), terminate by path, gone, idle, uninstall, system app, hung install/launch (${t1}/${took}s)"
+fakes="fakes: install, refusals, wrong platform, launch, not installed, locked, unmapped, cold (${cold}s), terminate by path, gone, idle, uninstall, system app, open-url, hung install/launch (${t1}/${took}s)"
 
 # f. A real paired iPhone, runner or not. Real tools and HOME; only codes and Probe's id are printed.
 real() { env -i HOME="$HOME" PATH=/usr/bin:/bin TMPDIR="$tmp" ANDROID_HOME="$tmp/sdk" "$node_bin" dist/cli.js "$@" 2>/dev/null; }
@@ -259,6 +287,27 @@ phone=$(real devices | "$node_bin" -e '
   const r = JSON.parse(require("fs").readFileSync(0, "utf8"));
   console.log(r.devices.find((d) => d.kind === "physical" && d.state === "paired")?.id ?? "");
 ')
+# open-url on the phone opens Settings only: a system app that keeps no history of the URL, installed on every iPhone.
+# A locked phone skips it. Terminating Settings leaves the home screen in front.
+open_ok=
+if [ -n "$phone" ]; then
+  mask() { printf '%s' "$1" | sed "s/$phone/XXXXXXXX-XXXXXXXXXXXXXXXX/g"; }
+  is_out() { [ "$1" = "$2" ] || fail "$3: got $(mask "$1"), expected $(mask "$2")"; }
+  if out=$(real open-url App-prefs: --device "$phone"); then
+    is_out "$out" "{\"device\":\"$phone\",\"url\":\"App-prefs:\"}" "real open-url"
+    [ -n "$(pids /Preferences.app/Preferences)" ] || fail "real open-url: no Settings process"
+    real terminate com.apple.Preferences --device "$phone" > /dev/null || fail "real open-url: terminate Settings failed"
+    is_out "$(real open-url App-prefs: --app com.apple.Preferences --device "$phone")" \
+      "{\"device\":\"$phone\",\"url\":\"App-prefs:\",\"app\":\"com.apple.Preferences\"}" "real open-url --app"
+    [ -n "$(pids /Preferences.app/Preferences)" ] || fail "real open-url --app: no Settings process"
+    real terminate com.apple.Preferences --device "$phone" > /dev/null || fail "real open-url --app: terminate Settings failed"
+    open_ok="real open-url: Settings, Settings by --app, "
+  elif [ "$(printf '%s' "$out" | code_of)" = DEVICE_NOT_READY ]; then
+    echo "SKIP: the iPhone is not ready for open-url (locked?)"
+  else
+    fail "real open-url: $(mask "$out")"
+  fi
+fi
 signed=
 if [ -n "$phone" ]; then
   mkdir "$tmp/probe"
@@ -274,8 +323,6 @@ elif [ -z "$signed" ]; then
   real_ok="real skipped (no profile)"
 else
   probe_phone=$phone
-  mask() { printf '%s' "$1" | sed "s/$phone/XXXXXXXX-XXXXXXXXXXXXXXXX/g"; }
-  is_out() { [ "$1" = "$2" ] || fail "$3: got $(mask "$1"), expected $(mask "$2")"; }
   is_out "$(real install "$app" --device "$phone")" "{\"device\":\"$phone\",\"path\":\"$app\"}" "real install"
   installed || fail "real install: Probe is not listed"
   launched="{\"device\":\"$phone\",\"package\":\"dev.karagoz.probe\",\"activity\":null}"
@@ -301,4 +348,4 @@ else
   real_ok="real Probe: install, launch, same pid, terminate, not running, Settings, uninstall, not installed"
 fi
 
-echo "ok: $real_ok, $fakes"
+echo "ok: $open_ok$real_ok, $fakes"
