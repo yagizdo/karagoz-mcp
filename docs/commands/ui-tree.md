@@ -6,7 +6,9 @@ karagoz ui-tree [--device <id>] [--detail compact|full]
 
 Returns the accessibility tree of the screen: on Android the focused window's, read with `uiautomator dump`; on an iOS simulator the frontmost app's, read by a helper karagoz compiles ([On an iOS simulator](#on-an-ios-simulator)); on an iPhone the frontmost app's, read by karagoz's runner on the phone ([On an iPhone](#on-an-iphone)).
 
-By default the tree is compact: a node with no text, label or action is left out and its children take its place, and a node off screen is left out. On Android the compact tree also shortens `class` and `resourceId` and leaves out a `contentDesc` equal to `text` (see the field table). `--detail full` returns every node the platform reports, unchanged. `bounds` are the same pixels in both, so `tap` takes either tree's centers. Which nodes count as text, label or action is said below each platform's field table.
+By default the tree is compact. A node with no text, label or action is left out, and its children take its place. A node off screen is left out. On Android the compact tree also shortens `class` and `resourceId` and leaves out a `contentDesc` equal to `text` (see the field table).
+
+`--detail full` returns every node the platform reports, unchanged. `bounds` are the same pixels in both, so `tap` takes either tree's centers. Which nodes count as text, label or action is said below each platform's field table.
 
 **Output** on Android (children cut short here)
 
@@ -51,7 +53,13 @@ Node fields on Android, in this order:
 | `bounds` | always | `[left, top, right, bottom]` in [screen pixels](../output.md#coordinates). Clipped to the screen: a node wholly off screen is `[0,0,0,0]`, and bottom can be above top. Up to Android 13 the clip also leaves out the status and navigation bars, so a node in the bottom band can be `[0,0,0,0]` while it is visible. |
 | `children` | when the node has any | Nodes, same shape. |
 
-Other attributes that uiautomator prints (`index`, `drawing-order`, `NAF`) are dropped. With `--detail full` every node uiautomator returns is kept. The compact tree keeps a node with `text`, `contentDesc` or `hint`, or one that is `clickable`, `longClickable`, `scrollable`, `checkable` or `password`, or an `EditText`; it drops nodes whose bounds are `[0,0,0,0]` or empty.
+Other attributes that uiautomator prints (`index`, `drawing-order`, `NAF`) are dropped. With `--detail full` every node uiautomator returns is kept. The compact tree keeps a node if any of these holds:
+
+- it has `text`, `contentDesc` or `hint`
+- it is `clickable`, `longClickable`, `scrollable`, `checkable` or `password`
+- it is an `EditText`
+
+It drops nodes whose bounds are `[0,0,0,0]` or empty.
 
 What the tree covers is what uiautomator covers: the focused window, and nodes visible to the user. Where a framework puts its labels differs: Jetpack Compose puts text in `text`, Flutter puts it in `contentDesc`.
 
@@ -103,7 +111,12 @@ Node fields, in this order:
 | `bounds` | always | `[left, top, right, bottom]` in [screen pixels](../output.md#coordinates): the frame in points times `screenshot`'s `scale`, rounded to 0.01. Not clipped to the screen: an element below the fold has a bottom past the screen's height. |
 | `children` | when the node has any | Nodes, same shape. |
 
-The compact tree keeps an element with a `label` or `value`, or one whose role is a control, a cell, a text field, a scroll view, a table, a collection view, a bar, an alert, a sheet or the keyboard; it drops elements outside the screen. On a simulator the tree is already close to that, so the two differ mostly below the fold and when the keyboard is up.
+The compact tree keeps an element if any of these holds:
+
+- it has a `label` or `value`
+- its role is a control, a cell, a text field, a scroll view, a table, a collection view, a bar, an alert, a sheet or the keyboard
+
+It drops elements outside the screen. On a simulator the tree is already close to that, so the two differ mostly below the fold and when the keyboard is up.
 
 The root is the frontmost app, or SpringBoard on the home screen. An alert, a system alert included, is in the tree in place of what it covers. Only elements on screen are listed. Keyboard keys and WebView content have not been measured. An app stopped in a debugger (an Xcode breakpoint or pause) reads as a root `Application` with `bounds` `[0,0,0,0]` and no label or children, with exit 0.
 

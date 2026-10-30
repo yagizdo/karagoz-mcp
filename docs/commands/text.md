@@ -23,7 +23,11 @@ Types into whatever has focus.
 | `device` | string | The adb serial, or the simulator's or iPhone's UDID. |
 | `text` | string | The text that was sent, as given. |
 
-**Characters.** Any text. Printable ASCII, newline (sent as Enter), tab (sent as Tab), `ç`, `Ç` and `ß` are typed with Android's `input text`. Text with any other character, such as `ğ` or an emoji, is pasted instead, all of it: karagoz copies a small helper of its own to `/data/local/tmp`, runs it, and deletes it when the call ends. The helper puts the text on the device clipboard, presses Ctrl+V, and puts the previous clip back; newlines and tabs in it are still sent as Enter and Tab. Control characters other than newline and tab fail before anything is typed:
+**Characters.** Any text. Printable ASCII, newline (sent as Enter), tab (sent as Tab), `ç`, `Ç` and `ß` are typed with Android's `input text`.
+
+Text with any other character, such as `ğ` or an emoji, is pasted instead, all of it. karagoz copies a small helper of its own to `/data/local/tmp`, runs it, and deletes it when the call ends. The helper puts the text on the device clipboard, presses Ctrl+V, and puts the previous clip back. Newlines and tabs in it are still sent as Enter and Tab.
+
+Control characters other than newline and tab fail before anything is typed:
 
 ```json
 {"error":{"code":"TEXT_UNSUPPORTED","message":"cannot type 'U+0001' on Android: control characters other than newline and tab; nothing was typed"}}
