@@ -94,6 +94,28 @@ const TOOLS: Tool[] = [
     annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
   },
   {
+    name: 'double_tap',
+    title: 'Double-tap',
+    description:
+      'Double-tap x, y in physical pixels, or the center of the node whose text or contentDesc (iOS: label or value) equals text, or whose resource id (iOS: identifier) matches id. An iPhone needs install_runner once.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        x: { type: 'number' },
+        y: { type: 'number' },
+        text: { type: 'string', description: 'Exact text or contentDesc (iOS: label or value), case-sensitive.' },
+        id: { type: 'string', description: 'Resource id, full or the part after :id/ (iOS: identifier).' },
+        timeout: {
+          type: 'integer',
+          description:
+            'With text or id: ms to keep reading the tree until the node appears; the call can run up to 6 s longer.',
+        },
+        device,
+      },
+    },
+    annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
+  },
+  {
     name: 'swipe',
     title: 'Swipe',
     description: 'Swipe from x1, y1 to x2, y2 in physical pixels. An iPhone needs install_runner once.',
