@@ -1,13 +1,14 @@
 #!/bin/sh
-# Step 3.5: on macOS install, launch, terminate and uninstall reach a booted iOS simulator through simctl in K28's
-# shapes (K36). Fakes prove every argument check before any call, the wrong-platform file, launch's output check,
+# Step 3.5: on macOS install, launch, open-url, terminate and uninstall reach a booted iOS simulator through simctl in
+# K28's shapes (K36). Fakes prove every argument check before any call, the wrong-platform file, launch's output check,
 # APP_NOT_FOUND from get_app_container, "found nothing to terminate" as success, SYSTEM_APP with no uninstall sent,
-# INSTALL_FAILED and UNINSTALL_FAILED with simctl's <domain>:<code>, target resolution and each verb's timeout message
-# over a hung simctl (terminate, install, uninstall).
+# INSTALL_FAILED and UNINSTALL_FAILED with simctl's <domain>:<code>, target resolution, each verb's timeout message
+# over a hung simctl (terminate, install, uninstall), and open-url's mapping and its --app refusal.
 # Precondition: macOS with Xcode. A booted simulator on its home screen is used when one is running and no phone is
 # attached, else the real part prints SKIP. It builds smoke/fixtures/input-ios, installs it as .app and .ipa,
-# launches, terminates and uninstalls dev.karagoz.probe, tries a bundle with no Info.plist, then checks the app is gone,
-# the home screen is on the page it recorded and listapps is as before. System apps never reach the real simulator.
+# launches, opens a karagoz-probe: URL in, terminates and uninstalls dev.karagoz.probe, tries a bundle with no
+# Info.plist, then checks the app is gone, the home screen is on the page it recorded and listapps is as before. System
+# apps never reach the real simulator.
 # Fake simctl comes through DEVELOPER_DIR, fake adb through ANDROID_HOME, all under env -i; the adb server on the
 # default port is never touched.
 set -e
@@ -39,6 +40,13 @@ q() { node -e '
   walk(root);
   console.log(process.argv[1] === "root" ? root.label ?? "" : all.find((n) => n.identifier === "spotlight-pill")?.value ?? "");
 ' "$1"; }
+# The label of Probe's opened-url text, or nothing.
+opened() { node -e '
+  const all = [];
+  const walk = (n) => { all.push(n); (n.children ?? []).forEach(walk); };
+  walk(JSON.parse(require("fs").readFileSync(0, "utf8")).root);
+  console.log(all.find((n) => n.identifier === "opened-url")?.label ?? "");
+'; }
 # The installed bundle ids, sorted.
 apps() {
   "$framework" listapps "$booted" > "$tmp/apps.plist"
@@ -128,6 +136,11 @@ case "\$*" in
   # exec, as for the hung terminate.
   "install A1 $fake/Hang.app") exec /bin/sleep 97.51 ;;
   "uninstall A1 dev.karagoz.hang") exec /bin/sleep 97.51 ;;
+  "openurl A1 karagoz-x://none")
+    err LSApplicationWorkspaceErrorDomain 115 'Simulator device failed to open karagoz-x://none.'
+    exit 115 ;;
+  "openurl A1 karagoz-x://bad") err NSOSStatusErrorDomain -50 'Simulator device failed to open karagoz-x://bad.'; exit 206 ;;
+  "openurl A1 "*) ;;
   *) echo "fake simctl: unexpected arguments: \$*" >&2; exit 1 ;;
 esac
 FAKE
@@ -275,7 +288,22 @@ t1=$took
 hung "hung install" install 31 install "$fake/Hang.app" --device A1
 t2=$took
 hung "hung uninstall" removal 30 uninstall dev.karagoz.hang --device A1
-fakes="fakes: arguments, other platform, launch, not installed, idle, system app, refusals, targets, hung terminate/install/uninstall (${t1}/${t2}/${took}s)"
+t3=$took
+
+# k. open-url: the URL reaches simctl as one argument; LaunchServices' 115 is APP_NOT_FOUND, other refusals keep
+# simctl's text, and --app is refused before any openurl.
+url='karagoz-probe://open/p?a=1&b=2;c#frag'
+call open-url "$url" --device A1
+succeeds open-url "{\"device\":\"A1\",\"url\":\"$url\"}"
+has_call open-url calls "openurl A1 $url"
+call open-url karagoz-x://none --device A1
+refuses APP_NOT_FOUND "open-url unhandled" "no app on A1 opens 'karagoz-x://none'"
+call open-url karagoz-x://bad --device A1
+refuses SIMCTL_FAILED "open-url refused"
+call open-url "$url" --app dev.karagoz.probe --device A1
+refuses NOT_SUPPORTED "open-url --app" "an iOS simulator opens a URL only in the app the system picks; run open-url without --app"
+lacks_call "open-url --app" calls openurl
+fakes="fakes: arguments, other platform, launch, not installed, idle, system app, refusals, targets, hung terminate/install/uninstall (${t1}/${t2}/${t3}s), open-url"
 
 # Real simulator: Probe as .app and .ipa, each effect read back, then everything as recorded.
 phone=$({ command -v adb >/dev/null && adb devices | awk 'NR > 1 && $1 != "" && $1 !~ /^emulator-/'; ioreg -p IOUSB -w0 | grep -iE 'iPhone|iPad'; } || true)
@@ -342,6 +370,22 @@ for label in "real terminate" "real terminate again"; do
   done
 done
 
+# open-url returns before Probe is in front, and iOS first asks "Open in “Probe”?" for another app's scheme; Probe then
+# shows the URL it got.
+url='karagoz-probe://open/p?a=1&b=2;c#frag'
+r open-url "$url"
+succeeds "real open-url" "{\"device\":\"$booted\",\"url\":\"$url\"}"
+i=0
+until [ "$(tree > "$tmp/tree.json"; opened < "$tmp/tree.json")" = "opened:$url" ]; do
+  if grep -qF 'Open in “Probe”?' "$tmp/tree.json"; then real tap --text Open --device "$booted" >/dev/null; fi
+  i=$((i + 1))
+  [ "$i" -lt 20 ] || fail "real open-url: Probe does not show opened:$url"
+  sleep 0.5
+done
+r open-url nosuchscheme://x
+refuses APP_NOT_FOUND "real open-url unhandled" "no app on $booted opens 'nosuchscheme://x'"
+r terminate dev.karagoz.probe
+
 r install "$tmp/bad/Probe.app"
 refuses INSTALL_FAILED "real install without Info.plist"
 reason_is "real install without Info.plist" IXErrorDomain:13
@@ -354,4 +398,4 @@ for verb in uninstall launch terminate; do
   refuses APP_NOT_FOUND "real $verb after uninstall" "app 'dev.karagoz.probe' is not installed on $booted"
 done
 
-echo "ok: real $booted: install .app and .ipa, launch, terminate, refused bundle, uninstall, $fakes"
+echo "ok: real $booted: install .app and .ipa, launch, terminate, open-url, refused bundle, uninstall, $fakes"

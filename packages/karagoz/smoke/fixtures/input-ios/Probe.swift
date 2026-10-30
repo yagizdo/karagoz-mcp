@@ -1,6 +1,6 @@
 // The app the iOS smokes drive on a simulator. Every input leaves a mark ui-tree shows: a counter in a label, the
-// field's echo, the selected text, the first visible row. Each launch argument goes to the unified log, where smoke
-// 3.6 reads it back.
+// field's echo, the selected text, the first visible row, the last URL it was opened with. Each launch argument goes to
+// the unified log, where smoke 3.6 reads it back.
 import SwiftUI
 import os
 
@@ -12,6 +12,7 @@ struct ContentView: View {
   @State private var doubles = 0
   @State private var words = "hello world"
   @State private var selection: TextSelection?
+  @State private var opened = ""
 
   // A word a double tap selected; empty for a caret or several ranges.
   private var selected: String {
@@ -38,6 +39,8 @@ struct ContentView: View {
             .autocorrectionDisabled()
           Button("Press") { presses += 1 }.accessibilityIdentifier("press-button")
           Text("pressed \(presses)").accessibilityIdentifier("press-count")
+          // Only after open-url, so the rows every other smoke reads stay where they are.
+          if !opened.isEmpty { Text("opened:\(opened)").accessibilityIdentifier("opened-url") }
         }
         Section("Rows") {
           ForEach(1...40, id: \.self) { Text("Row \($0)") }
@@ -45,6 +48,7 @@ struct ContentView: View {
       }
       .navigationTitle("Probe")
     }
+    .onOpenURL { opened = $0.absoluteString }
   }
 }
 
