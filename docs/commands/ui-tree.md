@@ -71,7 +71,7 @@ What the tree covers is what uiautomator covers: the focused window, and nodes v
 **Notes**
 
 - On Android one read takes 2.4 to 3.3 s; a screen with a fresh WebView about 5.3 s. The idle failure arrives after about 12 s.
-- Output size on the screens measured was about 900 to 6,200 tokens.
+- Output size on the screens measured: compact about 800 to 2,300 tokens, full about 2,900 to 5,400.
 - While a read runs, accessibility services such as TalkBack are unbound, and apps see accessibility as enabled. A service that requests the accessibility button is taken off the button and shortcut and stays off; add it back in the accessibility settings.
 
 ## On an iOS simulator
