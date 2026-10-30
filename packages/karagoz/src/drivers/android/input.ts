@@ -1,6 +1,7 @@
 import { fileURLToPath } from 'node:url';
 import { KaragozError } from '../../errors.js';
 import { cancellation } from '../../cancellation.js';
+import { DOUBLE_TAP_GAP_MS, DOUBLE_TAP_HOLD_MS } from '../../gesture.js';
 import { adb, TIMEOUT_MS } from './adb.js';
 import { readTree, type UiNode } from './ui-tree.js';
 
@@ -176,6 +177,31 @@ export async function tap(id: string, target: Target, duration: number | undefin
   const element = { ...node };
   delete element.children;
   return { ...(await press(id, x, y, duration)), element };
+}
+
+// The four events come from the helper's one process: two input calls are two process starts, 17-232 ms each on an
+// emulator, and selected a word 1 time in 14 (K55).
+async function twice(id: string, x: number, y: number) {
+  await adb(['-s', id, 'push', HELPER, REMOTE]);
+  const line = `CLASSPATH=${REMOTE} app_process / TextHelper double-tap ${x} ${y} ${DOUBLE_TAP_HOLD_MS} ${DOUBLE_TAP_GAP_MS}`;
+  try {
+    await adb(['-s', id, 'shell', `${line}; s=$?; ${CLEANUP}; exit $s`], HELPER_TIMEOUT_MS);
+  } catch (err) {
+    if (blocked(err)) throw new KaragozError('INPUT_BLOCKED', BLOCKED);
+    // Only the helper prints a double-tap: line; without one adb itself failed (a device gone), which stays ADB_FAILED.
+    const error = err instanceof KaragozError && err.code === 'ADB_FAILED' && /^double-tap: (.*)$/m.exec(err.message);
+    if (error) throw new KaragozError('HELPER_FAILED', `the input helper failed on the device: ${error[1]}`);
+    throw err;
+  }
+  return { device: id, x, y };
+}
+
+export async function doubleTap(id: string, target: Target, timeout: number) {
+  if (target.kind === 'point') return twice(id, target.x, target.y);
+  const { node, x, y } = await locate(id, target, timeout);
+  const element = { ...node };
+  delete element.children;
+  return { ...(await twice(id, x, y)), element };
 }
 
 export async function swipe(id: string, x1: number, y1: number, x2: number, y2: number, duration = SWIPE_MS) {

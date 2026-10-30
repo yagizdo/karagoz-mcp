@@ -7,6 +7,7 @@ import android.view.InputDevice;
 import android.view.InputEvent;
 import android.view.KeyCharacterMap;
 import android.view.KeyEvent;
+import android.view.MotionEvent;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.nio.charset.StandardCharsets;
@@ -17,6 +18,9 @@ import java.util.Base64;
 // It saves the primary clip, pastes the text with Ctrl+V (newline and tab as Enter and Tab keys) and puts the saved
 // clip back, all in one VM: each app_process start costs 1-2 s. On failure it exits 1 and prints its error on stderr,
 // then one line on the clipboard: "clip: kept" (never changed), "clip: restored" or "clip: lost: <error>".
+//   CLASSPATH=<jar> app_process / TextHelper double-tap <x> <y> <holdMs> <gapMs>
+// plays two touches at one point from this one process, so the gap between them is its own and not a process start's.
+// On failure it exits 1 and prints "double-tap: <error>" on stderr. Base64 has no "-", so no text reads as double-tap.
 public final class TextHelper {
   private static final String SHELL = "com.android.shell";
   // SystemUI shows no "copied" overlay for a shell clip carrying this extra (Android 13+).
@@ -33,6 +37,16 @@ public final class TextHelper {
   private static Method inject;
 
   public static void main(String[] args) {
+    if (args.length == 5 && args[0].equals("double-tap")) {
+      try {
+        resolveInput();
+        doubleTap(Float.parseFloat(args[1]), Float.parseFloat(args[2]), Long.parseLong(args[3]), Long.parseLong(args[4]));
+      } catch (Throwable t) {
+        System.err.println("double-tap: " + describe(t));
+        System.exit(1);
+      }
+      System.exit(0);
+    }
     String text;
     ClipData saved;
     try {
@@ -43,15 +57,7 @@ public final class TextHelper {
       clipboard = Class.forName("android.content.IClipboard$Stub")
           .getMethod("asInterface", IBinder.class)
           .invoke(null, binder);
-      // InputManagerGlobal from Android 14; InputManager.getInstance() is gone by Android 17.
-      Class<?> manager;
-      try {
-        manager = Class.forName("android.hardware.input.InputManagerGlobal");
-      } catch (ClassNotFoundException e) {
-        manager = Class.forName("android.hardware.input.InputManager");
-      }
-      input = manager.getMethod("getInstance").invoke(null);
-      inject = manager.getMethod("injectInputEvent", InputEvent.class, int.class);
+      resolveInput();
       saved = (ClipData) call("getPrimaryClip", null);
     } catch (Throwable t) {
       fail(describe(t), "kept");
@@ -77,6 +83,48 @@ public final class TextHelper {
     }
     if (error != null || !clip.equals("restored")) fail(error, clip);
     System.exit(0);
+  }
+
+  // InputManagerGlobal from Android 14; InputManager.getInstance() is gone by Android 17.
+  private static void resolveInput() throws Exception {
+    Class<?> manager;
+    try {
+      manager = Class.forName("android.hardware.input.InputManagerGlobal");
+    } catch (ClassNotFoundException e) {
+      manager = Class.forName("android.hardware.input.InputManager");
+    }
+    input = manager.getMethod("getInstance").invoke(null);
+    inject = manager.getMethod("injectInputEvent", InputEvent.class, int.class);
+  }
+
+  // Down, hold, up, gap, down, hold, up, each stamped with the real time, built as the input command builds a tap.
+  private static void doubleTap(float x, float y, long hold, long gap) throws Exception {
+    for (int i = 0; i < 2; i++) {
+      if (i > 0) Thread.sleep(gap);
+      long down = SystemClock.uptimeMillis();
+      touch(down, down, MotionEvent.ACTION_DOWN, x, y);
+      Thread.sleep(hold);
+      touch(down, SystemClock.uptimeMillis(), MotionEvent.ACTION_UP, x, y);
+    }
+  }
+
+  private static void touch(long down, long time, int action, float x, float y) throws Exception {
+    MotionEvent.PointerProperties properties = new MotionEvent.PointerProperties();
+    properties.id = 0;
+    properties.toolType = MotionEvent.TOOL_TYPE_FINGER;
+    MotionEvent.PointerCoords coords = new MotionEvent.PointerCoords();
+    coords.x = x;
+    coords.y = y;
+    coords.pressure = action == MotionEvent.ACTION_DOWN ? 1 : 0;
+    coords.size = 1;
+    MotionEvent event = MotionEvent.obtain(down, time, action, 1, new MotionEvent.PointerProperties[] {properties},
+        new MotionEvent.PointerCoords[] {coords}, 0, 0, 1, 1, 0, 0, InputDevice.SOURCE_TOUCHSCREEN, 0);
+    try {
+      if (!Boolean.TRUE.equals(inject.invoke(input, event, WAIT_FOR_FINISH)))
+        throw new IllegalStateException("the device did not take the touch");
+    } finally {
+      event.recycle();
+    }
   }
 
   private static void fail(String error, String clip) {
