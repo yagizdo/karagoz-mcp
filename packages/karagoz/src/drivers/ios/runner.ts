@@ -751,7 +751,7 @@ function runnerError(parsed: unknown, status: number, code: ErrorCode, prefix: s
 export async function input(
   udid: string,
   on: On,
-  route: '/tap' | '/swipe' | '/text' | '/button',
+  route: '/tap' | '/double-tap' | '/swipe' | '/text' | '/button',
   body: Record<string, unknown>,
   playMs: number,
 ): Promise<void> {

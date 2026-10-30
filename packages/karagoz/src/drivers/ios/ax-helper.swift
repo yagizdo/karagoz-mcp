@@ -4,7 +4,8 @@
 // testmanagerd, as Xcode 27's own device tools do (K34, K35). Contract with src/drivers/ios/ui-tree.ts and input.ts:
 //   ax <developer dir> <udid>
 //     exit 0: one JSON object, {"screen":{"width","height","scale"},"root":<node>}, frames in points
-//   ax <developer dir> <udid> tap <rx> <ry> <holdMs> | swipe <rx1> <ry1> <rx2> <ry2> <durationMs> | key <usage>
+//   ax <developer dir> <udid> tap <rx> <ry> <holdMs> | doubletap <rx> <ry> <holdMs> <gapMs>
+//     | swipe <rx1> <ry1> <rx2> <ry2> <durationMs> | key <usage>
 //     | button <page> <usage> | type <characters per second> <text>
 //     ratios of the unrotated portrait panel; exit 0 and no output once the input is sent
 //   exit 2: unavailable on this Xcode (a private class, selector or symbol is missing); 3: this screen could not be
@@ -81,7 +82,7 @@ let hidService = "com.apple.coredevice.feature.remote.hid.digitizer"
 
 // One touch, key or button through DTUHID. Sent once: only the service's readiness is waited for (K11, K35).
 func hid(_ device: SimDeviceP, _ input: [String]) -> Never {
-  let shapes = ["tap": 3, "swipe": 5, "key": 1, "button": 2]
+  let shapes = ["tap": 3, "doubletap": 4, "swipe": 5, "key": 1, "button": 2]
   guard let mode = input.first, shapes[mode] == input.count - 1 else {
     quit(unavailable, "unknown input: \(input.joined(separator: " "))")
   }
@@ -186,6 +187,14 @@ func hid(_ device: SimDeviceP, _ input: [String]) -> Never {
   if let reason = barrier(4) { quit(notAnswering, "dtuhidd did not answer: \(reason)") }
   switch mode {
   case "tap":
+    touch(values[0], values[1], 0)
+    pause(values[2])
+    touch(values[0], values[1], 2)
+  case "doubletap":
+    touch(values[0], values[1], 0)
+    pause(values[2])
+    touch(values[0], values[1], 2)
+    pause(values[3])
     touch(values[0], values[1], 0)
     pause(values[2])
     touch(values[0], values[1], 2)
