@@ -1,17 +1,17 @@
 #!/bin/sh
-# Step 2.5: install, launch, terminate and uninstall on a physical phone, with the smoke's own test app: each verb
-# prints its JSON line, an upgrade installs, a downgrade and a file that is not an APK are refused with Android's code,
-# and a package with no launcher activity or none installed is refused with karagoz's code.
+# Step 2.5: install, launch, open-url, terminate and uninstall on a physical phone, with the smoke's own test app: each
+# verb prints its JSON line, an upgrade installs, a downgrade and a file that is not an APK are refused with Android's
+# code, and a package with no launcher activity or none installed is refused with karagoz's code.
 # Precondition: the build only; a phone is optional, and no emulator is needed. If a phone is used: state device, and
 # a JDK and Android SDK build-tools with one platform on this machine (as smoke 1.5).
 # What reaches a phone: reads (`adb devices`, the getprop of `devices`, `pm path`, `pidof`, and the `cmd package
-# query-activities` of `launch`); `adb install -r --no-incremental` of dev.karagoz.smoke (two 8.5 KB versions built
-# on this run, and a one-byte file Android refuses); `am start` and `am force-stop` of dev.karagoz.smoke; `cmd package
-# uninstall dev.karagoz.smoke`; on exit, `adb uninstall dev.karagoz.smoke` and `input keyevent 3` (HOME). Play Protect
-# may scan the test app and, with "Improve harmful app detection" on, send it to Google; it holds a manifest only. It
-# starts and stops no other app, writes no setting, and leaves the phone on its home screen. After an install that
-# times out it sends nothing more: the prompt on the screen is the owner's. The adb server on the default port is never
-# stopped or restarted.
+# query-activities` of `launch`); `adb install -r --no-incremental` of dev.karagoz.smoke (two 8.5 KB versions built on
+# this run, and a one-byte file Android refuses); `am start` (its launcher activity, and a karagoz-smoke: URL with -p
+# dev.karagoz.smoke) and `am force-stop` of dev.karagoz.smoke; `cmd package uninstall dev.karagoz.smoke`; on exit, `adb
+# uninstall dev.karagoz.smoke` and `input keyevent 3` (HOME). Play Protect may scan the test app and, with "Improve
+# harmful app detection" on, send it to Google; it holds a manifest only. It starts and stops no other app, writes no
+# setting, and leaves the phone on its home screen. After an install that times out it sends nothing more: the prompt on
+# the screen is the owner's. The adb server on the default port is never stopped or restarted.
 set -e
 cd "$(dirname "$0")/.."
 npm run --silent build
@@ -121,6 +121,19 @@ run terminate dev.karagoz.smoke
 if running; then fail "dev.karagoz.smoke still runs after terminate"; fi
 run terminate dev.karagoz.smoke
 
+# 7a. open-url into the test app, then stop it again. The URL's handling is proven on the emulator (smoke 1.5); a
+# phone's dumpsys would also list its owner's tasks, so only the result and the process are checked here.
+url="karagoz-smoke://open/p?a=1&b=2;c#frag"
+run open-url "$url" --app dev.karagoz.smoke
+[ "$out" = "{\"device\":\"$serial\",\"url\":\"$url\",\"app\":\"dev.karagoz.smoke\"}" ] || fail "open-url printed another result"
+i=0
+until running; do
+  i=$((i + 1))
+  [ "$i" -lt 10 ] || fail "no dev.karagoz.smoke process within 10 s after open-url"
+  sleep 1
+done
+run terminate dev.karagoz.smoke
+
 # 8. An upgrade installs; the old version on top of it is refused with Android's code.
 run install "$tmp/smoke-v2.apk"
 refuses "INSTALL_FAILED INSTALL_FAILED_VERSION_DOWNGRADE" install "$tmp/smoke.apk"
@@ -145,4 +158,4 @@ for verb in launch terminate uninstall; do
   refuses APP_NOT_FOUND "$verb" dev.karagoz.smoke
 done
 
-echo "ok: physical install, launch, terminate, upgrade, downgrade refused, not an apk, $launchable, uninstall, not found 3"
+echo "ok: physical install, launch, terminate, open-url, upgrade, downgrade refused, not an apk, $launchable, uninstall, not found 3"
