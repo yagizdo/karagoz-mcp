@@ -1,6 +1,6 @@
 // How the compact pass reads and rebuilds one platform's nodes. build gets the node's kept children and its nearest
 // kept ancestor (undefined for the root), so a driver can compare a field against what the kept tree inherits.
-export type Shape<T> = {
+type Shape<T> = {
   bounds: (node: T) => number[];
   children: (node: T) => T[];
   keep: (node: T) => boolean;
