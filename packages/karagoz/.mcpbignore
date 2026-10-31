@@ -1,0 +1,9 @@
+# The Claude Desktop extension holds only what the server runs: dist/, package.json for "type": "module",
+# manifest.json and the license files.
+*
+!dist
+!dist/**
+!package.json
+!manifest.json
+!LICENSE
+!THIRD_PARTY_NOTICES.txt

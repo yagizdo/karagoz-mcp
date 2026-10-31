@@ -1,0 +1,44 @@
+{
+  "manifest_version": "0.3",
+  "name": "karagoz",
+  "display_name": "Karagoz",
+  "version": "0.2.0",
+  "description": "Device automation for Android emulators and phones, iOS simulators and iPhones. No daemon.",
+  "author": {
+    "name": "yagizdo",
+    "url": "https://github.com/yagizdo"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/yagizdo/karagoz-mcp"
+  },
+  "homepage": "https://karagozmcp.com",
+  "documentation": "https://github.com/yagizdo/karagoz-mcp/blob/main/docs/mcp.md",
+  "license": "MIT",
+  "server": {
+    "type": "node",
+    "entry_point": "dist/cli.js",
+    "mcp_config": {
+      "command": "node",
+      "args": ["${__dirname}/dist/cli.js", "mcp"],
+      "env": {
+        "ANDROID_HOME": "${user_config.android_home}"
+      }
+    }
+  },
+  "user_config": {
+    "android_home": {
+      "type": "directory",
+      "title": "Android SDK",
+      "description": "Only when adb is not on PATH and the SDK is not at Android Studio's default location.",
+      "required": false,
+      "default": ""
+    }
+  },
+  "compatibility": {
+    "platforms": ["darwin", "win32"],
+    "runtimes": {
+      "node": ">=22"
+    }
+  }
+}
