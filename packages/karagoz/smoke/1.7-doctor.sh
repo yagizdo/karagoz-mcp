@@ -158,7 +158,9 @@ mkdir -p "$tmp/e/platform-tools"
 : > "$tmp/e/platform-tools/adb"
 chmod 755 "$tmp/e/platform-tools/adb"
 doc PATH="$tmp/empty" ANDROID_HOME="$tmp/e"
-is ENOEXEC "$(home_failed "$tmp/e/platform-tools/adb" 'spawn ENOEXEC')"
+# Linux runs an empty file through /bin/sh (POSIX execvp), so adb version prints nothing instead of failing to spawn.
+if [ "$(uname)" = Darwin ]; then enoexec='spawn ENOEXEC'; else enoexec="no Version line in 'adb version' output: "; fi
+is ENOEXEC "$(home_failed "$tmp/e/platform-tools/adb" "$enoexec")"
 
 : > "$tmp/afile"
 doc PATH="$tmp/empty" ANDROID_HOME="$tmp/afile"
