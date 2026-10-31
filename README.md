@@ -113,7 +113,7 @@ Every command except `devices`, `doctor` and `mcp` works on one device. When mor
 
 Every command prints one line of JSON on stdout: its result with exit code `0`, or `{"error":{"code":"<CODE>","message":"<text>"}}` with exit code `1`. Branch on `error.code`, not on the message.
 
-[Output, arguments and coordinates](https://github.com/yagizdo/karagoz-mcp/blob/main/docs/output.md) · [Error codes](https://github.com/yagizdo/karagoz-mcp/blob/main/docs/error-codes.md)
+[Output, arguments and coordinates](https://github.com/yagizdo/karagoz-mcp/blob/main/docs/output.md) · [Error codes](https://github.com/yagizdo/karagoz-mcp/blob/main/docs/error-codes.md) · [Known limitations](https://github.com/yagizdo/karagoz-mcp/blob/main/docs/known-limitations.md)
 
 ## MCP server
 
