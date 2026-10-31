@@ -1,0 +1,46 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - "**"
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    # A branch of this repository is already checked by its push; a pull request runs only from a fork
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name != github.repository
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # The engines floor and the current LTS
+        node: ["22", "24"]
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm run build
+
+      # The smokes that need no device, no adb and no Xcode. The others need a running emulator, an Android SDK, a phone
+      # or macOS, and the iOS ones only print SKIP off macOS.
+      - name: Smoke tests
+        run: |
+          sh packages/karagoz/smoke/0b-version.sh
+          sh packages/karagoz/smoke/1.7-doctor.sh
+          sh packages/karagoz/smoke/S-package.sh
+          sh packages/karagoz/smoke/C-mcpb.sh
