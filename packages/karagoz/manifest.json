@@ -2,7 +2,7 @@
   "manifest_version": "0.3",
   "name": "karagoz",
   "display_name": "Karagoz",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Device automation for Android emulators and phones, iOS simulators and iPhones. No daemon.",
   "author": {
     "name": "yagizdo",

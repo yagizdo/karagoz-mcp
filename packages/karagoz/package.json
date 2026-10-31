@@ -1,6 +1,6 @@
 {
   "name": "karagoz-mcp",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Device automation for Android emulators and phones, iOS simulators and iPhones: a CLI and an MCP server that starts no daemon of its own and installs nothing on an Android device by itself.",
   "keywords": [
     "mcp",
