@@ -8,7 +8,7 @@ How to register `karagoz mcp` with each client, and what its tools take, return 
 
 Every example runs the published package with `npx`. From a clone, use `node /abs/path/karagoz-mcp/packages/karagoz/dist/cli.js mcp` instead.
 
-Claude Code and Codex were run against this server. The Claude Desktop, Cursor and VS Code entries follow their documentation and were not run.
+Claude Code, Codex and the Claude Desktop extension were run against this server. The Claude Desktop config file, Cursor and VS Code entries follow their documentation and were not run.
 
 **Claude Code**
 
@@ -18,7 +18,11 @@ claude mcp add karagoz -- npx -y karagoz-mcp mcp
 
 The server starts in the directory `claude` started in, with the shell's environment. A call still running after 2 minutes becomes a background task.
 
-**Claude Desktop**, in `~/Library/Application Support/Claude/claude_desktop_config.json` on macOS or `%APPDATA%\Claude\claude_desktop_config.json` on Windows; quit and restart Desktop after editing:
+**Claude Desktop**
+
+Download [`karagoz.mcpb`](https://github.com/yagizdo/karagoz-mcp/releases/latest/download/karagoz.mcpb) from the latest release and open it: Desktop asks to install the extension and runs it with its own Node.js. Set **Android SDK** in the extension's settings only when `adb` is not on `PATH` and the SDK is not at Android Studio's default location. Desktop does not update the extension; install the new file after each release.
+
+Or in `~/Library/Application Support/Claude/claude_desktop_config.json` on macOS or `%APPDATA%\Claude\claude_desktop_config.json` on Windows; quit and restart Desktop after editing:
 
 ```json
 {"mcpServers":{"karagoz":{"command":"npx","args":["-y","karagoz-mcp","mcp"],"env":{"ANDROID_HOME":"/Users/me/Library/Android/sdk"}}}}
@@ -26,7 +30,11 @@ The server starts in the directory `claude` started in, with the shell's environ
 
 Desktop starts servers with part of your environment and possibly `/` as the working directory, so set `ANDROID_HOME` in `env` when `adb` is not on the `PATH` it passes, and use absolute paths.
 
-**Cursor**, in `.cursor/mcp.json` in the project or `~/.cursor/mcp.json`:
+**Cursor** 3.15.12 or newer:
+
+[![Add to Cursor](https://cursor.com/deeplink/mcp-install-dark.svg)](https://cursor.com/link/mcp/install?name=karagoz&config=eyJ0eXBlIjoic3RkaW8iLCJjb21tYW5kIjoibnB4IiwiYXJncyI6WyIteSIsImthcmFnb3otbWNwIiwibWNwIl19)
+
+The link carries `{"type":"stdio","command":"npx","args":["-y","karagoz-mcp","mcp"]}`, base64-encoded. Or in `.cursor/mcp.json` in the project or `~/.cursor/mcp.json`:
 
 ```json
 {"mcpServers":{"karagoz":{"type":"stdio","command":"npx","args":["-y","karagoz-mcp","mcp"]}}}
@@ -40,12 +48,15 @@ Desktop starts servers with part of your environment and possibly `/` as the wor
 
 or from the command line: `code --add-mcp '{"name":"karagoz","command":"npx","args":["-y","karagoz-mcp","mcp"]}'`.
 
-**Codex**, in `~/.codex/config.toml`:
+**Codex**
+
+```sh
+codex mcp add karagoz -- npx -y karagoz-mcp mcp
+```
+
+Then add these two lines under `[mcp_servers.karagoz]` in `~/.codex/config.toml`; the command cannot write them:
 
 ```toml
-[mcp_servers.karagoz]
-command = "npx"
-args = ["-y", "karagoz-mcp", "mcp"]
 env_vars = ["ANDROID_HOME", "ANDROID_SDK_ROOT", "KARAGOZ_DEVICE", "ANDROID_SERIAL", "DEVELOPER_DIR"]
 tool_timeout_sec = 600
 ```

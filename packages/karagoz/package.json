@@ -41,11 +41,13 @@
   "scripts": {
     "build": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\" && esbuild src/cli.ts --bundle --platform=node --format=esm --target=node22 --splitting --outdir=dist && node -e \"const fs = require('fs'); fs.copyFileSync('src/drivers/ios/ax-helper.swift', 'dist/ax-helper.swift'); fs.copyFileSync('src/drivers/android/text-helper/text-helper.jar', 'dist/text-helper.jar'); for (const d of ['KaragozRunner.xcodeproj', 'KaragozRunner']) fs.cpSync('../ios-runner/' + d, 'dist/ios-runner/' + d, { recursive: true, filter: (f) => !f.includes('xcuserdata') })\"",
     "prepack": "npm run build && node -e \"for (const f of ['README.md', 'LICENSE']) require('fs').copyFileSync('../../' + f, f)\"",
+    "mcpb": "npm run prepack && mcpb pack . karagoz.mcpb",
     "typecheck": "tsc",
     "lint": "oxlint src && prettier --check src",
     "format": "prettier --write src"
   },
   "devDependencies": {
+    "@anthropic-ai/mcpb": "2.1.2",
     "@modelcontextprotocol/server": "2.3.1",
     "@types/node": "^22.20.4",
     "esbuild": "^0.28.2",
