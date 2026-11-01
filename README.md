@@ -1,5 +1,7 @@
 <div align="center">
 
+<a href="https://karagozmcp.com/?utm_source=github&utm_medium=readme"><img src="https://raw.githubusercontent.com/yagizdo/karagoz-mcp/main/.github/assets/banner.png" alt="Karagöz: device automation for mobile apps on an Android emulator, Android device, iOS simulator and iOS device. karagoz ui-tree on emulator-5554 returns the Chrome icon with bounds [581,1905,754,2100], and karagoz tap --text Chrome taps it at x 667.5, y 2002.5." width="100%"></a>
+
 # Karagöz
 
 [![npm version](https://img.shields.io/npm/v/karagoz-mcp.svg)](https://www.npmjs.com/package/karagoz-mcp)
