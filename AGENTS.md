@@ -65,6 +65,7 @@ Paths below are relative to `packages/karagoz/src/`.
 
 - Code, comments, commit messages and public documentation are in English.
 - Commits follow Conventional Commits, sized to the change: an imperative subject of 72 characters or fewer, lowercase after the colon, and a short body wrapped at 72 whenever the change carries behavior or a decision. No file lists, no story of how it was found, no pointer into the untracked journal.
+- No AI attribution in commits or pull requests: no "Generated with" lines, no session links, no `Co-Authored-By:` trailer naming an AI tool. GitHub turns those trailers into contributor credits.
 - One branch per step, `feat/<step>-<topic>` off `main` (`feat/4.7-ios-device-closure`), landing through one PR. A one-line fix or a typo goes straight to `main`.
 - Before calling a change done, run `npm run typecheck` and `npm run lint` from the repository root; both must exit 0. `npm run format` fixes what the format check reports.
 - Merge gate: on the branch head, `npm run typecheck`, `npm run lint` and every `packages/karagoz/smoke/*.sh` with an emulator running; a booted simulator also runs the simulator smokes' real parts. Phone parts SKIP, so the gate never needs a phone, and a review never stands in for the run. After a passing gate, rerun it only when `src/`, `package.json`, the lockfile or a smoke that runs without a phone changed, or `main` moved.
