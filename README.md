@@ -23,10 +23,13 @@ Device automation for mobile apps. One tool for four targets: Android emulator, 
 - [Scope](#scope)
 - [Status](#status)
 - [Getting started](#getting-started)
+- [MCP server](#mcp-server)
+- [Things to ask your agent](#things-to-ask-your-agent)
 - [Commands](#commands)
 - [Output and errors](#output-and-errors)
-- [MCP server](#mcp-server)
-- [Development](#development)
+- [How it works](#how-it-works)
+- [FAQ](#faq)
+- [Contributing](#contributing)
 - [License](#license)
 
 ## Why karagoz
@@ -47,7 +50,7 @@ karagoz is the primitive layer. Each command does one thing and exits.
 
 ## Status
 
-Early development. Every command runs on all four targets, except `install-runner`, which runs only on iPhones, and `uninstall-runner`, which runs on iPhones and on simulators of a Mac that never had Xcode 27. Windows and Linux have not been run.
+Early development. Every command runs on all four targets, except `install-runner`, which runs only on iPhones, and `uninstall-runner`, which runs on iPhones and on simulators of a Mac that never had Xcode 27. For Windows and Linux, see the [FAQ](#faq).
 
 ## Getting started
 
@@ -87,6 +90,79 @@ $ karagoz screenshot --out home.png
 
 `karagoz ui-tree` prints the screen's accessibility tree; `tap --text` above found its target in that tree.
 
+## MCP server
+
+```
+karagoz mcp
+```
+
+Starts an MCP server for an AI agent on stdin and stdout. It opens no port: the client starts the process and talks to it over stdio. The 18 commands are its tools, and each tool returns the JSON line the CLI prints.
+
+### Claude Code
+
+```sh
+claude mcp add karagoz -- npx -y karagoz-mcp mcp
+```
+
+### Claude Desktop
+
+Download [`karagoz.mcpb`](https://github.com/yagizdo/karagoz-mcp/releases/latest/download/karagoz.mcpb) from the latest release and open it. Desktop installs it as an extension.
+
+### Cursor
+
+[![Add to Cursor](https://cursor.com/deeplink/mcp-install-dark.svg)](https://cursor.com/link/mcp/install?name=karagoz&config=eyJ0eXBlIjoic3RkaW8iLCJjb21tYW5kIjoibnB4IiwiYXJncyI6WyIteSIsImthcmFnb3otbWNwIiwibWNwIl19)
+
+Or in `.cursor/mcp.json`:
+
+```json
+{"mcpServers":{"karagoz":{"type":"stdio","command":"npx","args":["-y","karagoz-mcp","mcp"]}}}
+```
+
+### VS Code
+
+In `.vscode/mcp.json`:
+
+```json
+{"servers":{"karagoz":{"type":"stdio","command":"npx","args":["-y","karagoz-mcp","mcp"]}}}
+```
+
+### Codex
+
+```sh
+codex mcp add karagoz -- npx -y karagoz-mcp mcp
+```
+
+Then add these two lines under `[mcp_servers.karagoz]` in `~/.codex/config.toml`. The command cannot write them, and without them Codex hides `ANDROID_HOME` from karagoz and cuts long calls short:
+
+```toml
+env_vars = ["ANDROID_HOME", "ANDROID_SDK_ROOT", "KARAGOZ_DEVICE", "ANDROID_SERIAL", "DEVELOPER_DIR"]
+tool_timeout_sec = 600
+```
+
+[Other ways to register each client, running from a clone, and the tools' arguments, results and behavior](https://github.com/yagizdo/karagoz-mcp/blob/main/docs/mcp.md).
+
+### Token cost
+
+What the server adds to a Claude Code session, measured on 2026-10-30 with Claude Code 2.1.306 and `claude-opus-5-5`: input tokens of the first API call with karagoz registered, minus the same call with no MCP server.
+
+| Case | Tokens |
+| --- | --- |
+| Every session, tool search on (the default): the 18 tool names and `instructions` | 410 |
+| All 18 definitions, loaded by one `ToolSearch` call | 3,634 |
+| Every session, tool search off (`ENABLE_TOOL_SEARCH=false`): every definition and `instructions` | 3,476 |
+
+The `tools/list` result is 9,547 characters, `instructions` 398. One `ui_tree` of the launcher home screen is 5,127 characters (11,767 with `detail: full`).
+
+## Things to ask your agent
+
+Once the server is registered, describe the task to your agent. It reads the screen with `ui_tree` and calls one tool per step.
+
+- "Open Settings on the emulator and turn on dark mode."
+- "Install `./build/app-debug.apk`, open it, and tell me what the first screen shows."
+- "On the sign-in screen, type `test@example.com` into the email field and tap Continue."
+- "Open `myapp://orders/42` on the iOS simulator and take a screenshot."
+- "The app closes right after launch on the emulator. Show me its last 50 log lines."
+
 ## Commands
 
 | Command | Does |
@@ -119,86 +195,36 @@ Every command prints one line of JSON on stdout: its result with exit code `0`, 
 
 [Output, arguments and coordinates](https://github.com/yagizdo/karagoz-mcp/blob/main/docs/output.md) · [Error codes](https://github.com/yagizdo/karagoz-mcp/blob/main/docs/error-codes.md) · [Known limitations](https://github.com/yagizdo/karagoz-mcp/blob/main/docs/known-limitations.md)
 
-## MCP server
+## How it works
 
-```
-karagoz mcp
-```
+A command finds the device, runs the platform's own tool for the job, and turns the answer into one JSON line. `karagoz mcp` calls the same code.
 
-Starts an MCP server for an AI agent on stdin and stdout. It opens no port: the client starts the process and talks to it over stdio. The 18 commands are its tools, and each tool returns the JSON line the CLI prints. The server code loads only when `mcp` runs, so the other commands start as fast as before.
+| Target | Screen | Accessibility tree | Input | Apps | Logs |
+| --- | --- | --- | --- | --- | --- |
+| Android emulator and phone | `adb` `screencap` | `uiautomator dump` | `input`; text outside ASCII and `double-tap` through a helper copied to the device for the call | `adb install`, `am`, `pm`, `cmd package` | `logcat` |
+| iOS simulator | `simctl io screenshot` | karagoz's Swift helper, compiled on first use with Xcode's `swiftc` | The helper: the simulator's input service, and XCUIAutomation for `text` (Xcode 27). On a Mac that never had Xcode 27, karagoz's runner inside the simulator | `simctl` | `log show` inside the simulator |
+| iPhone | `devicectl` | karagoz's runner, an XCUITest bundle that `xcodebuild` starts and karagoz reaches over USB | karagoz's runner | `devicectl` | The phone's log relay over USB, read with macOS's `log` |
 
-### Claude Code
+## FAQ
 
-```sh
-claude mcp add karagoz -- npx -y karagoz-mcp mcp
-```
+**What does karagoz install on my device?**
+Nothing by itself, apart from the simulator runner in [Why karagoz](#why-karagoz). Typing text outside ASCII on Android copies a small helper to `/data/local/tmp` and deletes it when the call ends ([`text`](https://github.com/yagizdo/karagoz-mcp/blob/main/docs/commands/text.md)).
 
-### Claude Desktop
+**What does an iPhone need?**
+A Mac with Xcode and the iPhone paired, with Developer Mode on. Reading the screen and input also need a USB cable, UI Automation on, and karagoz's runner, installed once with [`install-runner`](https://github.com/yagizdo/karagoz-mcp/blob/main/docs/commands/install-runner.md). A free Apple ID signs the runner for 7 days ([Known limitations](https://github.com/yagizdo/karagoz-mcp/blob/main/docs/known-limitations.md)).
 
-Download [`karagoz.mcpb`](https://github.com/yagizdo/karagoz-mcp/releases/latest/download/karagoz.mcpb) from the latest release and open it: Desktop asks to install the extension and runs it with its own Node.js. Set **Android SDK** in the extension's settings only when `adb` is not on `PATH` and the SDK is not at Android Studio's default location. Desktop does not update the extension; install the new file after each release.
+**Why does `screenshot` return a path, not the image?**
+The tree answers most questions about a screen as text. The PNG is kept at full resolution on disk, with the scale needed to measure against it. Over MCP, `inline: true` also returns the image, which the client scales down, so take coordinates from the tree ([MCP results](https://github.com/yagizdo/karagoz-mcp/blob/main/docs/mcp.md#results)).
 
-Or in `~/Library/Application Support/Claude/claude_desktop_config.json` on macOS or `%APPDATA%\Claude\claude_desktop_config.json` on Windows; quit and restart Desktop after editing:
+**Does it work on Windows or Linux?**
+iOS targets need macOS. Android targets need only Node and `adb`, and karagoz looks for `adb` in the Windows and Linux SDK folders too, but no device command has been run on either system yet. On Linux, CI runs the type check, lint, build and the smoke tests that need no device.
 
-```json
-{"mcpServers":{"karagoz":{"command":"npx","args":["-y","karagoz-mcp","mcp"],"env":{"ANDROID_HOME":"/Users/me/Library/Android/sdk"}}}}
-```
+**Can another UI automation tool run at the same time?**
+On Android only one UiAutomation client can be connected, so `ui-tree`, and a tap by `--text` or `--id`, return `AUTOMATION_BUSY` while another holds it. On an iOS simulator, `text` fails the same way while a UI test runs ([Error codes](https://github.com/yagizdo/karagoz-mcp/blob/main/docs/error-codes.md)).
 
-Desktop starts servers with part of your environment and possibly `/` as the working directory, so set `ANDROID_HOME` in `env` when `adb` is not on the `PATH` it passes, and use absolute paths.
+## Contributing
 
-### Cursor
-
-Cursor 3.15.12 or newer:
-
-[![Add to Cursor](https://cursor.com/deeplink/mcp-install-dark.svg)](https://cursor.com/link/mcp/install?name=karagoz&config=eyJ0eXBlIjoic3RkaW8iLCJjb21tYW5kIjoibnB4IiwiYXJncyI6WyIteSIsImthcmFnb3otbWNwIiwibWNwIl19)
-
-The link carries `{"type":"stdio","command":"npx","args":["-y","karagoz-mcp","mcp"]}`, base64-encoded. Or in `.cursor/mcp.json` in the project or `~/.cursor/mcp.json`:
-
-```json
-{"mcpServers":{"karagoz":{"type":"stdio","command":"npx","args":["-y","karagoz-mcp","mcp"]}}}
-```
-
-### VS Code
-
-In `.vscode/mcp.json` in the workspace:
-
-```json
-{"servers":{"karagoz":{"type":"stdio","command":"npx","args":["-y","karagoz-mcp","mcp"]}}}
-```
-
-or from the command line: `code --add-mcp '{"name":"karagoz","command":"npx","args":["-y","karagoz-mcp","mcp"]}'`.
-
-### Codex
-
-```sh
-codex mcp add karagoz -- npx -y karagoz-mcp mcp
-```
-
-Then add these two lines under `[mcp_servers.karagoz]` in `~/.codex/config.toml`; the command cannot write them:
-
-```toml
-env_vars = ["ANDROID_HOME", "ANDROID_SDK_ROOT", "KARAGOZ_DEVICE", "ANDROID_SERIAL", "DEVELOPER_DIR"]
-tool_timeout_sec = 600
-```
-
-Codex passes a server only a short list of environment variables; `env_vars` forwards the ones karagoz reads. `tool_timeout_sec` covers long `tap` waits and big installs.
-
-[Running from a clone, the tools, their arguments, results and behavior](https://github.com/yagizdo/karagoz-mcp/blob/main/docs/mcp.md).
-
-### Token cost
-
-What the server adds to a Claude Code session, measured on 2026-10-30 with Claude Code 2.1.306 and `claude-opus-5-5`: input tokens of the first API call with karagoz registered, minus the same call with no MCP server.
-
-| Case | Tokens |
-| --- | --- |
-| Every session, tool search on (the default): the 18 tool names and `instructions` | 410 |
-| All 18 definitions, loaded by one `ToolSearch` call | 3,634 |
-| Every session, tool search off (`ENABLE_TOOL_SEARCH=false`): every definition and `instructions` | 3,476 |
-
-The `tools/list` result is 9,547 characters, `instructions` 398. One `ui_tree` of the launcher home screen is 5,127 characters (11,767 with `detail: full`).
-
-## Development
-
-Build, checks and smoke scripts: [docs/development.md](https://github.com/yagizdo/karagoz-mcp/blob/main/docs/development.md).
+Bug reports and pull requests are welcome. [CONTRIBUTING.md](https://github.com/yagizdo/karagoz-mcp/blob/main/CONTRIBUTING.md) covers what to put in an issue, the checks a pull request needs, and what device data must never be posted.
 
 ## License
 
