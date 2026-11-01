@@ -90,6 +90,10 @@ $ karagoz screenshot --out home.png
 
 `karagoz ui-tree` prints the screen's accessibility tree; `tap --text` above found its target in that tree.
 
+Claude Code with the [MCP server](#mcp-server) on an iOS simulator, in real time. The right side lists each karagoz call and part of the JSON it returned.
+
+![An iOS simulator next to a list of tool calls. Asked to open Settings on the iOS simulator and turn on dark mode, Claude Code calls devices, launch, ui_tree, tap on the Appearance row by id, ui_tree, tap on Dark by text, and ui_tree, and the simulator switches to dark mode.](https://raw.githubusercontent.com/yagizdo/karagoz-mcp/main/.github/assets/demo.gif)
+
 ## MCP server
 
 ```
