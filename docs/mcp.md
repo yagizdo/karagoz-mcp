@@ -108,7 +108,7 @@ A real exchange, one line per message, `-->` sent and `<--` received. The `data`
 
 ```
 --> {"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"devices","arguments":{}}}
-<-- {"result":{"content":[{"type":"text","text":"{\"devices\":[{\"id\":\"emulator-5554\",\"platform\":\"android\",\"kind\":\"emulator\",\"state\":\"device\",\"name\":\"Medium_Phone_API_36.1\"}]}"}]},"jsonrpc":"2.0","id":2}
+<-- {"result":{"content":[{"type":"text","text":"{\"devices\":[{\"id\":\"emulator-5554\",\"platform\":\"android\",\"kind\":\"emulator\",\"state\":\"device\",\"name\":\"Medium_Phone_API_37.0\",\"os\":\"17\",\"api\":37}]}"}]},"jsonrpc":"2.0","id":2}
 --> {"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"tap","arguments":{"x":1}}}
 <-- {"result":{"content":[{"type":"text","text":"{\"error\":{\"code\":\"INVALID_ARGS\",\"message\":\"'tap' needs <x> <y>\"}}"}],"isError":true},"jsonrpc":"2.0","id":3}
 --> {"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"screenshot","arguments":{"out":"/Users/me/home.png","inline":true}}}

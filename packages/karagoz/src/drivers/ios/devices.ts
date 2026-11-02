@@ -32,15 +32,17 @@ export async function runtimeOf(udid: string): Promise<string | undefined> {
 // Only running, available simulators are listed: karagoz cannot boot one, and adb lists only running devices too (K18
 // 3.1 note).
 export async function listSimulators() {
-  return (await iosRuntimes())
-    .flatMap(([, list]) => list)
-    .flatMap((device: unknown) => {
+  return (await iosRuntimes()).flatMap(([runtime, list]) => {
+    // com.apple.CoreSimulator.SimRuntime.iOS-26-5 is iOS 26.5.
+    const os = runtime.slice(IOS_RUNTIME.length).replace(/-/g, '.') || null;
+    return list.flatMap((device: unknown) => {
       if (!isRecord(device)) return [];
       const { udid, name, state, isAvailable } = device;
       if (typeof udid !== 'string' || typeof name !== 'string' || typeof state !== 'string') return [];
       if (isAvailable !== true || state === 'Shutdown') return [];
-      return [{ id: udid, platform: 'ios' as const, kind: 'simulator' as const, state, name }];
+      return [{ id: udid, platform: 'ios' as const, kind: 'simulator' as const, state, name, os }];
     });
+  });
 }
 
 // undefined once the simulator can take commands; karagoz knows no step that helps with another state.

@@ -97,6 +97,7 @@ case "$*" in
     if mkdir "$FAKE/lock" 2>/dev/null; then sleep 1; echo x >> "$FAKE/dumps"; cat "$FAKE/tree.xml"; rmdir "$FAKE/lock"
     else echo 'ERROR: another dump is running'; fi ;;
   *'shell dumpsys accessibility') echo '    Ui Automation[id=0, flags=0]' ;;
+  *'shell getprop ro.build.version.release; getprop ro.build.version.sdk') printf '15\n35\n' ;;
   *) echo "fake adb: unexpected arguments: $*" >&2; exit 1 ;;
 esac
 FAKE
@@ -352,7 +353,7 @@ if (faked.answered(hung)) fail('cancel: the cancelled call was answered');
 if (faked.stderr.some((line) => line.startsWith('karagoz:'))) fail(`cancel: stderr ${JSON.stringify(faked.stderr)}`);
 rmSync(hang);
 const listed = await faked.call('devices', {});
-if (text(listed) !== '{"devices":[{"id":"fake-1","platform":"android","kind":"physical","state":"device","name":null}]}') {
+if (text(listed) !== '{"devices":[{"id":"fake-1","platform":"android","kind":"physical","state":"device","name":null,"os":"15","api":35}]}') {
   fail(`cancel: devices after the cancel: ${JSON.stringify(listed)}`);
 }
 

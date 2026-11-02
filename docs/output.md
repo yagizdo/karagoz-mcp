@@ -2,6 +2,8 @@
 
 Every command prints exactly one line of JSON on stdout and exits, except `mcp`, which speaks JSON-RPC on stdout until stdin closes ([MCP server](mcp.md)).
 
+That line is what you get whenever stdout is not a terminal: a pipe, the MCP server, or an agent's shell that runs commands without one (Claude Code's does). When stdout is a terminal, an agent's shell that runs commands in one included, [`devices`](commands/devices.md) and [`doctor`](commands/doctor.md) print a summary for a person instead, and every other command prints the same JSON indented over several lines. An error is the one line either way, and the exit code and stderr do not change.
+
 - **Success:** the command's result object, exit code `0`.
 - **Failure:** an error object, exit code `1`:
 

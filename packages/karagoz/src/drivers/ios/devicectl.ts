@@ -154,7 +154,15 @@ export async function listPhones() {
     if (device.visibilityClass !== undefined && device.visibilityClass !== 'default') return [];
     if (typeof udid !== 'string' || typeof pairingState !== 'string') return [];
     const name = typeof marketingName === 'string' ? marketingName : null;
-    return [{ id: udid, platform: 'ios' as const, kind: 'physical' as const, state: pairingState, name }];
+    // Xcode 27 nests the version in software, Xcode 15-26 give it as a string in deviceProperties.
+    const software = isRecord(properties.software) ? properties.software.osVersionNumber : undefined;
+    const version = isRecord(software)
+      ? software.stringValue
+      : isRecord(device.deviceProperties)
+        ? device.deviceProperties.osVersionNumber
+        : undefined;
+    const os = typeof version === 'string' ? version : null;
+    return [{ id: udid, platform: 'ios' as const, kind: 'physical' as const, state: pairingState, name, os }];
   });
 }
 

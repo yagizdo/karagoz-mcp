@@ -4,6 +4,7 @@ import { doubleTap, key, swipe, tap, text, type Target } from './input.js';
 import { logs } from './logs.js';
 import { installRunnerOn, uninstallRunnerFrom } from './runner.js';
 import { screenshot } from './screenshot.js';
+import { devicesText, doctorText } from './terminal.js';
 import { uiTree } from './ui-tree.js';
 import { listAll } from './devices.js';
 import { KaragozError, type ErrorCode } from './errors.js';
@@ -16,6 +17,8 @@ export type Command = {
   // tap, long-press and double-tap can name their target with --text or --id instead of <x> <y>.
   argsOptional?: true;
   run: (values: Record<string, string | undefined>, args: string[]) => Promise<unknown>;
+  // What the CLI prints instead of the JSON when stdout is a terminal (K68).
+  text?: (values: Record<string, string | undefined>, args: string[]) => Promise<string>;
 };
 
 // Screen pixels, decimals allowed: a bounds center can be a half, and input reads floats (K25). A minus sign never gets
@@ -83,7 +86,7 @@ function wait(timeout: string | undefined): number {
 }
 
 export const commands: Record<string, Command> = {
-  devices: { options: {}, args: [], run: () => listAll() },
+  devices: { options: {}, args: [], run: () => listAll(), text: async () => devicesText(await listAll()) },
   screenshot: {
     options: { device: { type: 'string' }, out: { type: 'string' } },
     args: [],
@@ -202,7 +205,7 @@ export const commands: Record<string, Command> = {
         lines === undefined ? undefined : count('--lines', lines),
       ),
   },
-  doctor: { options: {}, args: [], run: () => doctor() },
+  doctor: { options: {}, args: [], run: () => doctor(), text: async () => doctorText(await doctor()) },
   'install-runner': {
     options: { device: { type: 'string' }, team: { type: 'string' } },
     args: [],

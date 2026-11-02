@@ -92,8 +92,15 @@ Or without installing: `npx -y karagoz-mcp devices`. To build from source: [Deve
 
 ```sh
 $ karagoz devices
-{"devices":[{"id":"emulator-5554","platform":"android","kind":"emulator","state":"device","name":"Medium_Phone_API_36.1"}]}
+Found 1 device:
+  Medium_Phone_API_37.0 • emulator-5554 • emulator • Android 17 (API 37) • device
 
+Missing a device? Run karagoz doctor.
+```
+
+When stdout is not a terminal, as in a pipe or Claude Code's shell, every command prints one line of JSON, shown here; at a terminal the other commands indent it.
+
+```sh
 $ karagoz tap --text Chrome
 {"device":"emulator-5554","x":667.5,"y":2002.5,"element":{"class":"android.widget.TextView","text":"Chrome","contentDesc":"Chrome","clickable":true,"longClickable":true,"focusable":true,"bounds":[581,1905,754,2100]}}
 
@@ -237,7 +244,7 @@ Every command except `devices`, `doctor` and `mcp` works on one device. When mor
 
 ## Output and errors
 
-Every command prints one line of JSON on stdout: its result with exit code `0`, or `{"error":{"code":"<CODE>","message":"<text>"}}` with exit code `1`. Branch on `error.code`, not on the message.
+Every command prints one line of JSON on stdout: its result with exit code `0`, or `{"error":{"code":"<CODE>","message":"<text>"}}` with exit code `1`. Branch on `error.code`, not on the message. At a terminal, `devices` and `doctor` print a summary instead and the other commands indent their JSON; when stdout is not a terminal, as in a pipe, the line is printed.
 
 [Output, arguments and coordinates](https://github.com/yagizdo/karagoz-mcp/blob/main/docs/output.md) · [Error codes](https://github.com/yagizdo/karagoz-mcp/blob/main/docs/error-codes.md) · [Known limitations](https://github.com/yagizdo/karagoz-mcp/blob/main/docs/known-limitations.md)
 

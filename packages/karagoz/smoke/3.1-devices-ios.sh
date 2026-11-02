@@ -36,8 +36,8 @@ printf '#!/bin/sh\necho %s\n' "'{\"result\":{\"devices\":[]}}'" > "$tmp/dev/usr/
 chmod +x "$tmp/sdk/platform-tools/adb" "$tmp/dev/usr/bin/devicectl"
 # karagoz with only the fakes: no real adb on PATH or in the default SDK under this HOME.
 run() { env -i HOME="$tmp/home" PATH=/usr/bin:/bin "$@" "$node_bin" dist/cli.js devices 2>/dev/null; }
-android='{"id":"fake-1","platform":"android","kind":"physical","state":"device","name":null}'
-ios='{"id":"A1","platform":"ios","kind":"simulator","state":"Booted","name":"iPhone 17 Pro"},{"id":"A2","platform":"ios","kind":"simulator","state":"Booting","name":"iPhone 17"},{"id":"A5","platform":"ios","kind":"simulator","state":"Booted","name":"iPad Air 11-inch (M3)"}'
+android='{"id":"fake-1","platform":"android","kind":"physical","state":"device","name":null,"os":null,"api":null}'
+ios='{"id":"A1","platform":"ios","kind":"simulator","state":"Booted","name":"iPhone 17 Pro","os":"26.2"},{"id":"A2","platform":"ios","kind":"simulator","state":"Booting","name":"iPhone 17","os":"26.2"},{"id":"A5","platform":"ios","kind":"simulator","state":"Booted","name":"iPad Air 11-inch (M3)","os":"26.2"}'
 is() { [ "$2" = "$3" ] || fail "$1: expected $3, got $2"; }
 
 # 1. Real Mac: the iOS rows are what CoreSimulator's own simctl lists as running and available iOS simulators.
@@ -46,9 +46,11 @@ framework=/Library/Developer/PrivateFrameworks/CoreSimulator.framework/Versions/
 out=$(run ANDROID_HOME="$tmp/sdk") || fail "devices exited non-zero: $(echo "$out" | code_of)"
 want=$("$framework" list devices --json | node -e '
   const { devices } = JSON.parse(require("fs").readFileSync(0, "utf8"));
-  const rows = Object.entries(devices).filter(([k]) => k.startsWith("com.apple.CoreSimulator.SimRuntime.iOS-")).flatMap(([, l]) => l)
+  const prefix = "com.apple.CoreSimulator.SimRuntime.iOS-";
+  const rows = Object.entries(devices).filter(([k]) => k.startsWith(prefix))
+    .flatMap(([k, l]) => l.map((d) => ({ ...d, os: k.slice(prefix.length).replace(/-/g, ".") })))
     .filter((d) => d.isAvailable === true && d.state !== "Shutdown")
-    .map((d) => ({ id: d.udid, platform: "ios", kind: "simulator", state: d.state, name: d.name }));
+    .map((d) => ({ id: d.udid, platform: "ios", kind: "simulator", state: d.state, name: d.name, os: d.os }));
   console.log(JSON.stringify(rows));
 ')
 got=$(echo "$out" | node -e '
