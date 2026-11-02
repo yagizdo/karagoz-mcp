@@ -43,7 +43,7 @@ Device automation for mobile apps. One tool for four targets: Android emulator, 
 - **What happened, as a code.** `am force-stop` on an app that is not installed says nothing, `simctl` and `devicectl` report success for uninstalling an app that is not there, and Android answers a missing package with the code it gives a package it will not remove. karagoz checks first and returns `APP_NOT_FOUND`. A refused install is `INSTALL_FAILED` with the platform's own code in `reason`, not text to parse.
 - **One contract on four targets.** The same commands, flags, device selection, [output and error codes](#output-and-errors) on an Android emulator, an Android phone, an iOS simulator and an iPhone. The MCP server returns the CLI's JSON line unchanged.
 - **The accessibility tree first.** To see the screen, read `ui-tree` before taking a screenshot. The tree is text a program can search, costs a few hundred to a few thousand tokens, and gives the bounds needed to tap. A screenshot is written to disk at full resolution and returned as a path, with its pixel size, logical size and scale (and safe area on Android) to measure against; the CLI never prints the image.
-- **It installs only what you ask and starts no daemon of its own.** karagoz installs nothing on a device by itself, with one exception: on a Mac that never had Xcode 27, the first `tap`, `long-press`, `double-tap`, `swipe`, `text` or `key` on a simulator installs karagoz's runner there ([Requirements](https://github.com/yagizdo/karagoz-mcp/blob/main/docs/requirements.md)). `install` installs only the app you pass it, and `install-runner` only karagoz's runner. Each command is one process that exits when it answers, and `karagoz mcp` lives as long as the client that started it. Only karagoz's runner, on an iPhone or on that simulator, stays up between calls, and it stops itself 10 minutes after its last use.
+- **It installs only what you ask and starts no daemon of its own.** Each command exits when it answers, and `karagoz mcp` exits with its client. Only karagoz's runner stays up between calls, and it stops 10 minutes after its last use. The one thing karagoz installs unasked is that runner, on a simulator of a Mac that never had Xcode 27 ([FAQ](#faq)).
 
 ---
 
@@ -75,7 +75,7 @@ Early development. Every command runs on all four targets, except `install-runne
 - Node 22 or newer.
 - **Android:** `adb` from Android platform-tools, and a running emulator or a phone with USB debugging on.
 - **iOS simulator** (macOS): Xcode, opened once, and a booted simulator. `tap`, `long-press`, `double-tap`, `swipe`, `text` and `key` need Xcode 27 or newer, or a Mac that never had Xcode 27, where they go through karagoz's runner.
-- **iPhone** (macOS): Xcode 15 or newer (27 for `screenshot`) and the iPhone paired with the Mac. `screenshot`, `install`, `launch`, `open-url`, `terminate` and `uninstall` need Developer Mode on; `logs` needs a USB cable; `ui-tree`, `tap`, `long-press`, `double-tap`, `swipe`, `text` and `key` need both, plus UI Automation on and karagoz's runner, which [`install-runner`](https://github.com/yagizdo/karagoz-mcp/blob/main/docs/commands/install-runner.md) installs.
+- **iPhone** (macOS): Xcode 15 or newer (27 for `screenshot`), the iPhone paired with the Mac, and Developer Mode on. `ui-tree` and the input commands also need a USB cable, UI Automation on, and karagoz's runner, which [`install-runner`](https://github.com/yagizdo/karagoz-mcp/blob/main/docs/commands/install-runner.md) installs.
 
 [What each command needs, and how karagoz finds `adb` and Xcode](https://github.com/yagizdo/karagoz-mcp/blob/main/docs/requirements.md).
 
@@ -261,20 +261,40 @@ A command finds the device, runs the platform's own tool for the job, and turns 
 
 ## FAQ
 
-**What does karagoz install on my device?**
-Nothing by itself, apart from the simulator runner in [Why karagoz](#why-karagoz). Typing text outside ASCII on Android copies a small helper to `/data/local/tmp` and deletes it when the call ends ([`text`](https://github.com/yagizdo/karagoz-mcp/blob/main/docs/commands/text.md)).
+<details>
+<summary>What does karagoz install on my device?</summary>
 
-**What does an iPhone need?**
+Nothing by itself, with one exception: on a Mac that never had Xcode 27, the first `tap`, `long-press`, `double-tap`, `swipe`, `text` or `key` on a simulator installs karagoz's runner there ([Requirements](https://github.com/yagizdo/karagoz-mcp/blob/main/docs/requirements.md)). Typing text outside ASCII on Android copies a small helper to `/data/local/tmp` and deletes it when the call ends ([`text`](https://github.com/yagizdo/karagoz-mcp/blob/main/docs/commands/text.md)).
+
+</details>
+
+<details>
+<summary>What does an iPhone need?</summary>
+
 A Mac with Xcode and the iPhone paired, with Developer Mode on. Reading the screen and input also need a USB cable, UI Automation on, and karagoz's runner, installed once with [`install-runner`](https://github.com/yagizdo/karagoz-mcp/blob/main/docs/commands/install-runner.md). A free Apple ID signs the runner for 7 days ([Known limitations](https://github.com/yagizdo/karagoz-mcp/blob/main/docs/known-limitations.md)).
 
-**Why does `screenshot` return a path, not the image?**
-The tree answers most questions about a screen as text. The PNG is kept at full resolution on disk, with the scale needed to measure against it. Over MCP, `inline: true` also returns the image, which the client scales down, so take coordinates from the tree ([MCP results](https://github.com/yagizdo/karagoz-mcp/blob/main/docs/mcp.md#results)).
+</details>
 
-**Does it work on Windows or Linux?**
-iOS targets need macOS. Android targets need only Node and `adb`, and karagoz looks for `adb` in the Windows and Linux SDK folders too, but no device command has been run on either system yet. On Linux, CI runs the type check, lint, build and the smoke tests that need no device.
+<details>
+<summary>Why does <code>screenshot</code> return a path, not the image?</summary>
 
-**Can another UI automation tool run at the same time?**
+The tree answers most questions about a screen as text. karagoz keeps the PNG at full resolution on disk, with the scale needed to measure against it. Over MCP, `inline: true` also returns the image, which the client scales down, so take coordinates from the tree ([MCP results](https://github.com/yagizdo/karagoz-mcp/blob/main/docs/mcp.md#results)).
+
+</details>
+
+<details>
+<summary>Does it work on Windows or Linux?</summary>
+
+iOS targets need macOS. Android targets need only Node and `adb`, and karagoz looks for `adb` in the Windows and Linux SDK folders too. No device command has been run on either system yet. On Linux, CI runs the type check, lint, build and the smoke tests that need no device.
+
+</details>
+
+<details>
+<summary>Can another UI automation tool run at the same time?</summary>
+
 On Android only one UiAutomation client can be connected, so `ui-tree`, and a tap by `--text` or `--id`, return `AUTOMATION_BUSY` while another holds it. On an iOS simulator, `text` fails the same way while a UI test runs ([Error codes](https://github.com/yagizdo/karagoz-mcp/blob/main/docs/error-codes.md)).
+
+</details>
 
 ---
 
@@ -290,4 +310,4 @@ Bug reports and pull requests are welcome. [CONTRIBUTING.md](https://github.com/
 
 ## License
 
-MIT
+[MIT](https://github.com/yagizdo/karagoz-mcp/blob/main/LICENSE) © 2026 Yılmaz Yağız Dokumacı
