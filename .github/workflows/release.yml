@@ -22,7 +22,8 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           # npm 11.5.1+ is needed for trusted publishing; Node 22 ships npm 10
-          node-version: "24"
+          # Pinned to a patch with the Brotli fix (CVE-2026-111497)
+          node-version: "24.22.1"
           registry-url: "https://registry.npmjs.org"
           package-manager-cache: false
 
