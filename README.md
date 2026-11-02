@@ -32,6 +32,8 @@ Device automation for mobile apps. One tool for four targets: Android emulator, 
 - [Contributing](#contributing)
 - [License](#license)
 
+---
+
 <a id="why-karagoz"></a>
 
 ## Why karagoz
@@ -43,6 +45,8 @@ Device automation for mobile apps. One tool for four targets: Android emulator, 
 - **The accessibility tree first.** To see the screen, read `ui-tree` before taking a screenshot. The tree is text a program can search, costs a few hundred to a few thousand tokens, and gives the bounds needed to tap. A screenshot is written to disk at full resolution and returned as a path, with its pixel size, logical size and scale (and safe area on Android) to measure against; the CLI never prints the image.
 - **It installs only what you ask and starts no daemon of its own.** karagoz installs nothing on a device by itself, with one exception: on a Mac that never had Xcode 27, the first `tap`, `long-press`, `double-tap`, `swipe`, `text` or `key` on a simulator installs karagoz's runner there ([Requirements](https://github.com/yagizdo/karagoz-mcp/blob/main/docs/requirements.md)). `install` installs only the app you pass it, and `install-runner` only karagoz's runner. Each command is one process that exits when it answers, and `karagoz mcp` lives as long as the client that started it. Only karagoz's runner, on an iPhone or on that simulator, stays up between calls, and it stops itself 10 minutes after its last use.
 
+---
+
 <a id="scope"></a>
 
 ## Scope
@@ -52,11 +56,15 @@ karagoz is the primitive layer. Each command does one thing and exits.
 - **Not a test framework.** No assertions, no test runner, no recorded flows, no retry policy, no reports. `tap --timeout` waits for a node to appear; it never repeats an action.
 - **Not a design comparison tool.** Figma diffing, measurement and reporting belong a layer above. karagoz produces the raw input, and the metadata to measure it with, but does not interpret it.
 
+---
+
 <a id="status"></a>
 
 ## Status
 
 Early development. Every command runs on all four targets, except `install-runner`, which runs only on iPhones, and `uninstall-runner`, which runs on iPhones and on simulators of a Mac that never had Xcode 27. For Windows and Linux, see the [FAQ](#faq).
+
+---
 
 <a id="getting-started"></a>
 
@@ -101,6 +109,8 @@ $ karagoz screenshot --out home.png
 Claude Code with the [MCP server](#mcp-server) on an iOS simulator, in real time. The right side lists each karagoz call and part of the JSON it returned.
 
 ![An iOS simulator next to a list of tool calls. Asked to open Settings on the iOS simulator and turn on dark mode, Claude Code calls devices, launch, ui_tree, tap on the Appearance row by id, ui_tree, tap on Dark by text, and ui_tree, and the simulator switches to dark mode.](https://raw.githubusercontent.com/yagizdo/karagoz-mcp/main/.github/assets/demo.gif)
+
+---
 
 <a id="mcp-server"></a>
 
@@ -177,6 +187,8 @@ What the server adds to a Claude Code session, measured on 2026-10-30 with Claud
 
 The `tools/list` result is 9,547 characters, `instructions` 398. One `ui_tree` of the launcher home screen is 5,127 characters (11,767 with `detail: full`).
 
+---
+
 <a id="things-to-ask-your-agent"></a>
 
 ## Things to ask your agent
@@ -188,6 +200,8 @@ Once the server is registered, describe the task to your agent. It reads the scr
 - "On the sign-in screen, type `test@example.com` into the email field and tap Continue."
 - "Open `myapp://orders/42` on the iOS simulator and take a screenshot."
 - "The app closes right after launch on the emulator. Show me its last 50 log lines."
+
+---
 
 <a id="commands"></a>
 
@@ -217,6 +231,8 @@ Once the server is registered, describe the task to your agent. It reads the scr
 
 Every command except `devices`, `doctor` and `mcp` works on one device. When more than one is listed, pick it with `--device <id or name>` or `KARAGOZ_DEVICE`: [Device selection](https://github.com/yagizdo/karagoz-mcp/blob/main/docs/device-selection.md).
 
+---
+
 <a id="output-and-errors"></a>
 
 ## Output and errors
@@ -224,6 +240,8 @@ Every command except `devices`, `doctor` and `mcp` works on one device. When mor
 Every command prints one line of JSON on stdout: its result with exit code `0`, or `{"error":{"code":"<CODE>","message":"<text>"}}` with exit code `1`. Branch on `error.code`, not on the message.
 
 [Output, arguments and coordinates](https://github.com/yagizdo/karagoz-mcp/blob/main/docs/output.md) · [Error codes](https://github.com/yagizdo/karagoz-mcp/blob/main/docs/error-codes.md) · [Known limitations](https://github.com/yagizdo/karagoz-mcp/blob/main/docs/known-limitations.md)
+
+---
 
 <a id="how-it-works"></a>
 
@@ -236,6 +254,8 @@ A command finds the device, runs the platform's own tool for the job, and turns 
 | Android emulator and phone | `adb` `screencap` | `uiautomator dump` | `input`; text outside ASCII and `double-tap` through a helper copied to the device for the call | `adb install`, `am`, `pm`, `cmd package` | `logcat` |
 | iOS simulator | `simctl io screenshot` | karagoz's Swift helper, compiled on first use with Xcode's `swiftc` | The helper: the simulator's input service, and XCUIAutomation for `text` (Xcode 27). On a Mac that never had Xcode 27, karagoz's runner inside the simulator | `simctl` | `log show` inside the simulator |
 | iPhone | `devicectl` | karagoz's runner, an XCUITest bundle that `xcodebuild` starts and karagoz reaches over USB | karagoz's runner | `devicectl` | The phone's log relay over USB, read with macOS's `log` |
+
+---
 
 <a id="faq"></a>
 
@@ -256,11 +276,15 @@ iOS targets need macOS. Android targets need only Node and `adb`, and karagoz lo
 **Can another UI automation tool run at the same time?**
 On Android only one UiAutomation client can be connected, so `ui-tree`, and a tap by `--text` or `--id`, return `AUTOMATION_BUSY` while another holds it. On an iOS simulator, `text` fails the same way while a UI test runs ([Error codes](https://github.com/yagizdo/karagoz-mcp/blob/main/docs/error-codes.md)).
 
+---
+
 <a id="contributing"></a>
 
 ## Contributing
 
 Bug reports and pull requests are welcome. [CONTRIBUTING.md](https://github.com/yagizdo/karagoz-mcp/blob/main/CONTRIBUTING.md) covers what to put in an issue, the checks a pull request needs, and what device data must never be posted.
+
+---
 
 <a id="license"></a>
 
