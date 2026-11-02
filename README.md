@@ -155,6 +155,16 @@ tool_timeout_sec = 600
 
 [Other ways to register each client, running from a clone, and the tools' arguments, results and behavior](https://github.com/yagizdo/karagoz-mcp/blob/main/docs/mcp.md).
 
+### Agent instructions
+
+Optional. Add this to your `CLAUDE.md`, `AGENTS.md` or your agent's rules, or ask your agent to add it, and it uses karagoz for a request about a device without being told to:
+
+```markdown
+## Mobile devices
+
+For anything on an Android emulator or phone, an iOS simulator or an iPhone (reading the screen, tapping, typing, screenshots, installing or launching an app, logs), use karagoz instead of calling adb, xcrun simctl, devicectl or xcodebuild yourself. Use the karagoz MCP tools when they are available; otherwise run `npx -y karagoz-mcp <command>`. Read the screen with ui-tree before taking a screenshot, tap by text or id, and branch on error.code.
+```
+
 ### Token cost
 
 What the server adds to a Claude Code session, measured on 2026-10-30 with Claude Code 2.1.306 and `claude-opus-5-5`: input tokens of the first API call with karagoz registered, minus the same call with no MCP server.
