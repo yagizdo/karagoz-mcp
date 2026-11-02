@@ -1,5 +1,5 @@
 #!/bin/sh
-# Step 2.1: an emulator attached with `adb connect` lists as an emulator with its AVD name and can be targeted by
+# Step 2.1: an emulator attached with `adb connect` lists as an emulator with its AVD name, release and API level and can be targeted by
 # that name; NO_DEVICE mentions a phone with USB debugging; an image from before 2021 is named from
 # ro.kernel.qemu.avd_name (fake adb); a physical device, when one is listed, is named by its ro.product.model.
 # Precondition: an emulator is running (emulator -avd <name>); a phone with USB debugging on is optional.
@@ -67,7 +67,9 @@ esac
 # 3. The same emulator over TCP: kind emulator, its AVD name, and targetable by that name.
 on_test adb connect "127.0.0.1:$adb_port" >/dev/null
 out=$(on_test node dist/cli.js devices) || { echo "FAIL: devices with the TCP entry exited non-zero: $out"; exit 1; }
-want="{\"devices\":[{\"id\":\"127.0.0.1:$adb_port\",\"platform\":\"android\",\"kind\":\"emulator\",\"state\":\"device\",\"name\":\"$name\"}]}"
+release=$(adb -s "$id" shell getprop ro.build.version.release | tr -d '\r')
+sdk=$(adb -s "$id" shell getprop ro.build.version.sdk | tr -d '\r')
+want="{\"devices\":[{\"id\":\"127.0.0.1:$adb_port\",\"platform\":\"android\",\"kind\":\"emulator\",\"state\":\"device\",\"name\":\"$name\",\"os\":\"$release\",\"api\":$sdk}]}"
 [ "$out" = "$want" ] || { echo "FAIL: TCP entry listed as $out, expected $want"; exit 1; }
 res=$(on_test node dist/cli.js screenshot --device "$name" --out "$tmp/tcp.png") \
   || { echo "FAIL: screenshot --device $name on the TCP entry exited non-zero: $res"; exit 1; }
@@ -79,13 +81,14 @@ case $(printf '%s' "$miss" | message_of) in
   *) echo "FAIL: DEVICE_NOT_FOUND message does not list 127.0.0.1:$adb_port ($name): $miss"; exit 1 ;;
 esac
 
-# 4. An image from before 2021 keeps the AVD name under ro.kernel.qemu. None is installed here, so a fake adb on an
+# 4. An image from before 2021 keeps the AVD name under ro.kernel.qemu, and its release and API level are read. None is installed here, so a fake adb on an
 # otherwise empty PATH answers as one would over TCP.
 mkdir "$tmp/fake"
 cat > "$tmp/fake/adb" <<'EOF'
 #!/bin/sh
 case "$*" in
   devices) printf 'List of devices attached\n127.0.0.1:5557\tdevice\n\n' ;;
+  '-s 127.0.0.1:5557 shell getprop ro.build.version.release; getprop ro.build.version.sdk') printf '9\n28\n' ;;
   '-s 127.0.0.1:5557 shell '*) printf 'sdk_phone_x86\n\n1\nranchu\n\nOld_API_28\n' ;;
   *) exit 1 ;;
 esac
@@ -93,7 +96,7 @@ EOF
 chmod +x "$tmp/fake/adb"
 out=$(env -i HOME="$tmp" PATH="$tmp/fake" DEVELOPER_DIR="$tmp/dev" "$(command -v node)" dist/cli.js devices) \
   || { echo "FAIL: devices with the fake adb exited non-zero: $out"; exit 1; }
-want='{"devices":[{"id":"127.0.0.1:5557","platform":"android","kind":"emulator","state":"device","name":"Old_API_28"}]}'
+want='{"devices":[{"id":"127.0.0.1:5557","platform":"android","kind":"emulator","state":"device","name":"Old_API_28","os":"9","api":28}]}'
 [ "$out" = "$want" ] || { echo "FAIL: old image listed as $out, expected $want"; exit 1; }
 
 # 5. A physical device on the default server, if one is listed: its name is ro.product.model, read here directly.
@@ -110,6 +113,9 @@ else
   model=$(adb -s "$serial" shell getprop ro.product.model) || { echo "FAIL: getprop ro.product.model failed"; exit 1; }
   got=$(printf '%s' "$phone" | node -p 'JSON.parse(require("fs").readFileSync(0, "utf8")).name')
   [ "$got" = "$model" ] || { echo "FAIL: physical device name is '$got', ro.product.model is '$model'"; exit 1; }
+  release=$(adb -s "$serial" shell getprop ro.build.version.release | tr -d '\r')
+  got=$(printf '%s' "$phone" | node -p 'JSON.parse(require("fs").readFileSync(0, "utf8")).os')
+  [ "$got" = "$release" ] || { echo "FAIL: physical device os is '$got', ro.build.version.release is '$release'"; exit 1; }
 fi
 
 echo "ok: tcp-emulator, no-device, old-image, $physical"

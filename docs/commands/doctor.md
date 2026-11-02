@@ -89,6 +89,21 @@ On macOS the same line goes on with `xcode`, shown here alone:
 
 The exit code is `0` whenever the report is printed, with adb or Xcode missing or broken as well. Check `adb.status` and `xcode.status`.
 
+**At a terminal**
+
+When stdout is a terminal, `doctor` prints a summary for a person instead of the JSON line. When stdout is not a terminal (a pipe, the MCP server, an agent's shell that runs commands without one), it prints the JSON above.
+
+```
+[✓] adb 37.0.1-15733141 from ANDROID_HOME
+[✓] Xcode 27.2 (27B52) /Applications/Xcode.app/Contents/Developer
+[!] iPhone
+    ! runner not built: karagoz install-runner builds it for a connected iPhone
+
+! Doctor found issues in 1 category.
+```
+
+One section each for adb, Xcode (macOS) and what the iPhone commands need (macOS). A green `[✓]` means ready, a yellow `[!]` works with something still to do, a red `[✗]` missing or broken: adb's and Xcode's mark follows their `status`, the iPhone section's the worst line under it. Under a section only what is wrong is listed, with what to do: the install text when adb is not `ok`, an adb karagoz passed over because it failed, each broken Xcode tool, a missing signing team or runner build (yellow), and a signing or runner check that failed or a broken `xcodebuild`, usbmuxd, `tar` or `log` (red). The ok parts are left out; the JSON has them. The last line counts the sections that are not ready. `NO_COLOR` turns the colors off.
+
 **Errors:** `INVALID_ARGS` for any argument or option (`'doctor' does not take the option '--device'`), `INTERNAL`.
 
 **Notes**

@@ -43,8 +43,14 @@ try {
           process.exit(code);
         });
       }
-      const result = await cancellation.run(controller.signal, () => command.run(given, rest));
-      process.stdout.write(`${JSON.stringify(result)}\n`);
+      // A person at a terminal gets text or indented JSON; a pipe, an agent's shell and the smokes get one line (K68).
+      const tty = process.stdout.isTTY;
+      const output = await cancellation.run(controller.signal, async () =>
+        tty && command.text
+          ? command.text(given, rest)
+          : JSON.stringify(await command.run(given, rest), null, tty ? 2 : undefined),
+      );
+      process.stdout.write(`${output}\n`);
     }
   }
 } catch (err) {

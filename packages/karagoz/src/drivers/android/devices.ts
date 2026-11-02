@@ -68,11 +68,27 @@ export async function entries(): Promise<Entry[]> {
     });
 }
 
+// The Android release and API level, in one chained call as in probe(). Only a device in state `device` runs a shell;
+// a failure leaves both unknown rather than failing the listing.
+async function version(id: string, state: string): Promise<{ os: string | null; api: number | null }> {
+  if (state !== 'device') return { os: null, api: null };
+  let out: string;
+  try {
+    out = await adb(['-s', id, 'shell', 'getprop ro.build.version.release; getprop ro.build.version.sdk']);
+  } catch (err) {
+    if (cancellation.getStore()?.aborted) throw err;
+    return { os: null, api: null };
+  }
+  const [release, sdk] = out.split('\n').map((line) => line.trim());
+  const api = Number(sdk);
+  return { os: release || null, api: Number.isInteger(api) && api > 0 ? api : null };
+}
+
 export async function listDevices() {
   return Promise.all(
     (await entries()).map(async ({ id, state }) => {
-      const { kind, name } = await describe({ id, state });
-      return { id, platform: 'android', kind, state, name };
+      const [{ kind, name }, { os, api }] = await Promise.all([describe({ id, state }), version(id, state)]);
+      return { id, platform: 'android' as const, kind, state, name, os, api };
     }),
   );
 }

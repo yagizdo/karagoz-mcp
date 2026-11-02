@@ -7,7 +7,14 @@ import { KaragozError } from './errors.js';
 
 type Platform = 'android' | 'ios';
 type Listing<T> = { platform: Platform; rows: T[] } | { platform: Platform; error: KaragozError };
-type Ios = { id: string; platform: 'ios'; kind: 'simulator' | 'physical'; state: string; name: string | null };
+type Ios = {
+  id: string;
+  platform: 'ios';
+  kind: 'simulator' | 'physical';
+  state: string;
+  name: string | null;
+  os: string | null;
+};
 // A device as resolution sees it. Android names stay null until no id matches: each one costs an adb call (K21).
 type AndroidCandidate = { id: string; platform: 'android'; state: string; name: string | null };
 type Candidate = AndroidCandidate | Ios;
@@ -61,7 +68,7 @@ function requested(device: string | undefined) {
   return undefined;
 }
 
-const NO_DEVICE = IS_MAC
+export const NO_DEVICE = IS_MAC
   ? 'no device found. Start an emulator (emulator -avd <name>), connect a phone with USB debugging on, or boot a simulator (xcrun simctl boot <name>; on Xcode 26 and older, open -a Simulator also boots one).'
   : 'no device found. Start an emulator (emulator -avd <name>) or connect a phone with USB debugging on.';
 
@@ -118,17 +125,20 @@ async function find(device: string | undefined): Promise<Candidate> {
 }
 
 // Each driver knows its tool's states: undefined means ready, else the hint, empty when there is none.
+export function hint(target: Candidate): string | undefined {
+  return target.platform === 'android'
+    ? notReadyAndroid(target.state)
+    : target.kind === 'simulator'
+      ? notReadySimulator(target.state)
+      : notReadyPhone(target.state);
+}
+
 function ready(target: Candidate): string {
-  const hint =
-    target.platform === 'android'
-      ? notReadyAndroid(target.state)
-      : target.kind === 'simulator'
-        ? notReadySimulator(target.state)
-        : notReadyPhone(target.state);
-  if (hint === undefined) return target.id;
+  const hinted = hint(target);
+  if (hinted === undefined) return target.id;
   throw new KaragozError(
     'DEVICE_NOT_READY',
-    `device ${target.id} is not ready (state: ${target.state}).${hint ? ` ${hint}` : ''}`,
+    `device ${target.id} is not ready (state: ${target.state}).${hinted ? ` ${hinted}` : ''}`,
   );
 }
 
