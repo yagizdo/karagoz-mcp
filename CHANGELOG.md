@@ -2,6 +2,22 @@
 
 All notable changes to karagoz-mcp are documented in this file. The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.2] - 2026-11-02
+
+The commands and the MCP server are unchanged from 0.3.1.
+
+### Added
+
+- This changelog, with every release so far ([`073c252`](https://github.com/yagizdo/karagoz-mcp/commit/073c252))
+
+### Changed
+
+- The contributing guide has a section on using AI tools for a contribution ([`ffa53a0`](https://github.com/yagizdo/karagoz-mcp/commit/ffa53a0))
+
+### Fixed
+
+- On the npm page, a Contents link in the README no longer scrolls its heading off the top of the screen ([`e3ab399`](https://github.com/yagizdo/karagoz-mcp/commit/e3ab399))
+
 ## [0.3.1] - 2026-11-01
 
 The commands and the MCP server are unchanged from 0.3.0. This release updates the README that ships with the package and shows on npm.
@@ -59,6 +75,7 @@ Needs Node 22 or newer, adb for Android, and Xcode on macOS for iOS. On a simula
 
 As a 0.x release, the JSON output and the error codes may still change in a minor version.
 
+[0.3.2]: https://github.com/yagizdo/karagoz-mcp/compare/v0.3.1...v0.3.2
 [0.3.1]: https://github.com/yagizdo/karagoz-mcp/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/yagizdo/karagoz-mcp/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/yagizdo/karagoz-mcp/compare/v0.1.1...v0.2.0
