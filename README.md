@@ -75,7 +75,7 @@ Early development. Every command runs on all four targets, except `install-runne
 - Node 22 or newer.
 - **Android:** `adb` from Android platform-tools, and a running emulator or a phone with USB debugging on.
 - **iOS simulator** (macOS): Xcode, opened once, and a booted simulator. `tap`, `long-press`, `double-tap`, `swipe`, `text` and `key` need Xcode 27 or newer, or a Mac that never had Xcode 27, where they go through karagoz's runner.
-- **iPhone** (macOS): Xcode 15 or newer (27 for `screenshot`), the iPhone paired with the Mac, and Developer Mode on. `ui-tree` and the input commands also need a USB cable, UI Automation on, and karagoz's runner, which [`install-runner`](https://github.com/yagizdo/karagoz-mcp/blob/main/docs/commands/install-runner.md) installs.
+- **iPhone** (macOS): Xcode 15 or newer, the iPhone paired with the Mac, and Developer Mode on. `ui-tree`, the input commands, and `screenshot` on a Mac without Xcode 27 also need a USB cable, UI Automation on, and karagoz's runner, which [`install-runner`](https://github.com/yagizdo/karagoz-mcp/blob/main/docs/commands/install-runner.md) installs.
 
 [What each command needs, and how karagoz finds `adb` and Xcode](https://github.com/yagizdo/karagoz-mcp/blob/main/docs/requirements.md).
 
@@ -260,7 +260,7 @@ A command finds the device, runs the platform's own tool for the job, and turns 
 | --- | --- | --- | --- | --- | --- |
 | Android emulator and phone | `adb` `screencap` | `uiautomator dump` | `input`; text outside ASCII and `double-tap` through a helper copied to the device for the call | `adb install`, `am`, `pm`, `cmd package` | `logcat` |
 | iOS simulator | `simctl io screenshot` | karagoz's Swift helper, compiled on first use with Xcode's `swiftc` | The helper: the simulator's input service, and XCUIAutomation for `text` (Xcode 27). On a Mac that never had Xcode 27, karagoz's runner inside the simulator | `simctl` | `log show` inside the simulator |
-| iPhone | `devicectl` | karagoz's runner, an XCUITest bundle that `xcodebuild` starts and karagoz reaches over USB | karagoz's runner | `devicectl` | The phone's log relay over USB, read with macOS's `log` |
+| iPhone | `devicectl`; on a Mac without Xcode 27, karagoz's runner | karagoz's runner, an XCUITest bundle that `xcodebuild` starts and karagoz reaches over USB | karagoz's runner | `devicectl` | The phone's log relay over USB, read with macOS's `log` |
 
 ---
 
