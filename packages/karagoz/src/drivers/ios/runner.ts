@@ -38,13 +38,13 @@ const READ_TIMEOUT_MS = 30_000;
 // One usbmux connect and /health, which the runner answers off its main thread.
 const HEALTH_TIMEOUT_MS = 3_000;
 
-// UIInterfaceOrientation's raw values for a rotation, as input sends them and /screenshot answers them: K34's rotation
-// turns the way Android's does, so 90 is UIKit's landscape right (K42).
-export const ORIENTATION = new Map([
-  [0, 1],
-  [90, 4],
-  [180, 2],
-  [270, 3],
+// K34's rotation for each UIInterfaceOrientation raw value /screenshot answers: the phone turned counter-clockwise (90)
+// leaves the interface in landscape right (3), which UIKit defines as UIDeviceOrientationLandscapeLeft.
+const ROTATION = new Map([
+  [1, 0],
+  [2, 180],
+  [3, 90],
+  [4, 270],
 ]);
 
 // Where this Mac keeps the secret of the runner it last started on a device, and a simulator runner's port; every karagoz
@@ -512,8 +512,8 @@ export async function screenshot(udid: string): Promise<{ png: Buffer; scale: nu
   if (typeof png !== 'string' || typeof scale !== 'number' || !Number.isFinite(scale) || scale <= 0) {
     throw new KaragozError('CAPTURE_FAILED', `the runner's answer has no image or scale: ${body.slice(0, 100)}`);
   }
-  const turn = [...ORIENTATION].find(([, raw]) => raw === orientation)?.[0];
-  return { png: Buffer.from(png, 'base64'), scale, rotation: turn ?? null };
+  const rotation = typeof orientation === 'number' ? ROTATION.get(orientation) : undefined;
+  return { png: Buffer.from(png, 'base64'), scale, rotation: rotation ?? null };
 }
 
 // The runner's refusal, by its error text or else the status; a changed private interface is HELPER_FAILED (K41).

@@ -318,8 +318,9 @@ refuses "runner hangs" CAPTURE_FAILED "did not answer within 30 s" ui-tree --dev
 rm "$fake/runner-mode"
 
 # 5b. screenshot on a Mac whose devicectl has no capture verb: the runner's PNG as written, its scale with the
-# 1080x2340 rule, its orientation as K34's rotation (3 is 270, 4 is 90), none as null; the displays read (rot0 here)
-# is not used. Its failures keep their codes; a protocol-3 runner names both ways out.
+# 1080x2340 rule, its orientation as K34's rotation (landscape right, 3, is the phone turned counter-clockwise: 90; 4
+# is 270), none as null; the displays read (rot0 here) is not used. Its failures keep their codes; a protocol-3 runner
+# names both ways out.
 before=$(shots)
 runner_shot portrait 3 1
 out=$(k screenshot --device P1 --out "$tmp/shot.png") || fail "runner screenshot exited non-zero: $out"
@@ -329,10 +330,10 @@ is "runner screenshot: one /screenshot" "$(shots)" $((before + 1))
 runner_shot landscape 3 3
 out=$(k screenshot --device P1 --out "$tmp/shot.png") || fail "landscape right exited non-zero: $out"
 is "landscape right" "$(printf '%s' "$out" | shot_line landscape)" \
-  '{"device":"P1","pixels":{"width":2796,"height":1290},"logical":{"width":932,"height":430},"scale":3,"safeArea":null,"rotation":270}'
+  '{"device":"P1","pixels":{"width":2796,"height":1290},"logical":{"width":932,"height":430},"scale":3,"safeArea":null,"rotation":90}'
 runner_shot landscape 3 4
 out=$(k screenshot --device P1 --out "$tmp/shot.png") || fail "landscape left exited non-zero: $out"
-is "landscape left" "$(printf '%s' "$out" | rotation_of)" 90
+is "landscape left" "$(printf '%s' "$out" | rotation_of)" 270
 runner_shot portrait 3
 out=$(k screenshot --device P1 --out "$tmp/shot.png") || fail "no orientation exited non-zero: $out"
 is "no orientation" "$(printf '%s' "$out" | rotation_of)" null
@@ -341,7 +342,7 @@ out=$(k screenshot --device P1 --out "$tmp/shot.png") || fail "runner mini exite
 is "runner mini" "$(printf '%s' "$out" | shot_line mini)" \
   '{"device":"P1","pixels":{"width":1080,"height":2340},"logical":{"width":375,"height":812.5},"scale":2.88,"safeArea":null,"rotation":0}'
 runner_shot portrait 3 3
-refuses "runner portrait under landscape" CAPTURE_FAILED "the screen rotated during the capture (rotation 270, screenshot 1290x2796)" \
+refuses "runner portrait under landscape" CAPTURE_FAILED "the screen rotated during the capture (rotation 90, screenshot 1290x2796)" \
   screenshot --device P1
 echo '{"png":"","scale":3}' > "$fake/screenshot.json"
 refuses "runner, empty image" CAPTURE_FAILED - screenshot --device P1
