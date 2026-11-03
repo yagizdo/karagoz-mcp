@@ -1,5 +1,7 @@
 import CryptoKit
 import Foundation
+import ImageIO
+import UniformTypeIdentifiers
 import XCTest
 
 // The host side (packages/karagoz/src/drivers/ios/runner.ts) mirrors the port, the protocol number, the two headers and
@@ -7,11 +9,11 @@ import XCTest
 // "karagoz-res\n<nonce>\n<status>\n<body>" for its answer (K41, K42). A simulator shares the Mac's loopback, so the host
 // picks a free port for each simulator start and passes it as KARAGOZ_PORT; an iPhone gets none and keeps 27753 (K49).
 private let port: UInt16 = UInt16(ProcessInfo.processInfo.environment["KARAGOZ_PORT"] ?? "") ?? 27753
-// 3 since /double-tap: the host takes an older runner, which answers that route with a 404, as one to reinstall.
-private let protocolVersion = 3
+// 4 since /screenshot: the host takes an older runner, which answers that route with a 404, as one to reinstall.
+private let protocolVersion = 4
 private let nonceHeader = "x-karagoz-nonce"
 private let macHeader = "x-karagoz-mac"
-// No /tree or input for this long ends the test, and xcodebuild exits with it: the runner stops itself, no daemon (K3).
+// No /tree, /screenshot or input for this long ends the test, and xcodebuild exits with it: the runner stops itself, no daemon (K3).
 private let idleSeconds: TimeInterval = 600
 // XCTest cannot cancel a job on main, and a blocked main thread serves nothing more, so past its budget (this, plus the
 // gesture or typing time for input) the runner answers and exits.
@@ -224,6 +226,8 @@ final class Runner: XCTestCase {
       respond(connection, 200, ["protocol": protocolVersion], nonce: nonce)
     case ("GET", "/tree"):
       job(connection, nonce, jobSeconds, "the snapshot") { self.snapshot() }
+    case ("GET", "/screenshot"):
+      job(connection, nonce, jobSeconds, "the screenshot") { self.screenshot() }
     case ("POST", "/tap"), ("POST", "/double-tap"), ("POST", "/swipe"), ("POST", "/text"), ("POST", "/button"):
       input(connection, nonce, path, body)
     default:
@@ -437,6 +441,40 @@ final class Runner: XCTestCase {
     }
   }
 
+  // For a Mac whose devicectl cannot capture. On a phone XCUITest's image keeps the portrait panel while the interface
+  // turns (two independent reports), and devicectl's follows the interface, so a landscape one is turned to match.
+  @MainActor
+  private func screenshot() -> (Int, [String: Any]) {
+    let shot = XCUIScreen.main.screenshot()
+    guard let image = shot.image.cgImage else {
+      return (500, ["error": "the screenshot has no bitmap", "kind": "snapshot"])
+    }
+    let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
+    // The app's interface orientation: XCUIDevice's is the phone's, landscape under an app that stays portrait. Unknown
+    // when the private read is missing, which leaves the image as it is.
+    let raw = (try? front(springboard)).flatMap { property($0, "interfaceOrientation") as? NSNumber }?.intValue
+    let orientation = raw.flatMap { (1...4).contains($0) ? $0 : nil }
+    var png = shot.pngRepresentation
+    var (width, height) = (image.width, image.height)
+    if let orientation, orientation >= 3, height > width {
+      guard let turned = quarterTurn(image, clockwise: orientation == 4) else {
+        return (500, ["error": "cannot turn the screenshot to the interface orientation", "kind": "snapshot"])
+      }
+      png = turned
+      (width, height) = (height, width)
+    }
+    // XCTest has no public scale and UIScreen.main is deprecated from iOS 26: pixels over SpringBoard's points, long
+    // side to long side whichever way the frame turned.
+    let frame = springboard.frame
+    let scale = Double(max(width, height)) / Double(max(frame.width, frame.height))
+    guard scale.isFinite, scale > 0 else {
+      return (500, ["error": "cannot read the screen's size in points", "kind": "snapshot"])
+    }
+    var answer: [String: Any] = ["png": png.base64EncodedString(), "scale": scale]
+    if let orientation { answer["orientation"] = orientation }
+    return (200, answer)
+  }
+
   // The app in front: XCTest's own list of active applications, minus SpringBoard, the first one running in the
   // foreground; SpringBoard (the Home screen) when none is. No public API names the frontmost app (K41).
   @MainActor
@@ -510,6 +548,35 @@ final class Runner: XCTestCase {
       }
     }
   }
+}
+
+// A quarter turn (landscape left is clockwise) in the image's own color space and depth, as a PNG. A layout CoreGraphics
+// cannot draw into is redrawn premultiplied at the same depth.
+private func quarterTurn(_ image: CGImage, clockwise: Bool) -> Data? {
+  let (width, height) = (image.height, image.width)
+  let space = image.colorSpace ?? CGColorSpaceCreateDeviceRGB()
+  let canvas = { (info: UInt32) in
+    CGContext(data: nil, width: width, height: height, bitsPerComponent: image.bitsPerComponent, bytesPerRow: 0,
+      space: space, bitmapInfo: info)
+  }
+  guard let context = canvas(image.bitmapInfo.rawValue) ?? canvas(CGImageAlphaInfo.premultipliedLast.rawValue) else {
+    return nil
+  }
+  // The origin is the bottom left: turn about it, then move the image back onto the canvas.
+  if clockwise {
+    context.translateBy(x: 0, y: CGFloat(height))
+    context.rotate(by: -.pi / 2)
+  } else {
+    context.translateBy(x: CGFloat(width), y: 0)
+    context.rotate(by: .pi / 2)
+  }
+  context.draw(image, in: CGRect(x: 0, y: 0, width: image.width, height: image.height))
+  let data = NSMutableData()
+  guard let turned = context.makeImage(),
+    let destination = CGImageDestinationCreateWithData(data, UTType.png.identifier as CFString, 1, nil)
+  else { return nil }
+  CGImageDestinationAddImage(destination, turned, nil)
+  return CGImageDestinationFinalize(destination) ? data as Data : nil
 }
 
 // JSONSerialization refuses NaN and infinity; an element without a frame reports zeros.

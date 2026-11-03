@@ -29,7 +29,7 @@ import { CACHE_HINT, CACHE_ROOT, ownedDir, xcode } from './xcode.js';
 // 'karagoz-res\n<nonce>\n<status>\n<body>' for its answer. Every request and answer is signed with the secret of the
 // runner's start, which never travels (K42).
 const PORT = 27753;
-const PROTOCOL = 3;
+const PROTOCOL = 4;
 const NONCE_HEADER = 'X-Karagoz-Nonce';
 const MAC_HEADER = 'X-Karagoz-Mac';
 const SECRET = /^[0-9a-f]{64}$/;
@@ -202,7 +202,7 @@ async function request(
 type Health = 'up' | 'down' | 'old' | 'stranger';
 
 // up: this Mac's runner answers, signed; down: nothing listens; old: a 4.3 runner, which signs nothing, or a signed one
-// of an older protocol, which lacks a route this karagoz sends (protocol 2 has no /double-tap); stranger:
+// of an older protocol, which lacks a route this karagoz sends (protocol 3 has no /screenshot); stranger:
 // anything else listening there, or no secret here to tell. A listener that accepts and does not answer is a stranger
 // too: the runner answers /health off its main thread, and starting another would replace the secret of a live one.
 async function health(udid: string, on: On): Promise<Health> {
