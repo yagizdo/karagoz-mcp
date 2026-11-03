@@ -5,7 +5,7 @@ import { DOUBLE_TAP_GAP_MS, DOUBLE_TAP_HOLD_MS } from '../../gesture.js';
 import { runTool } from '../../tool.js';
 import { displayOf, rotation } from './devicectl.js';
 import { runtimeOf } from './devices.js';
-import { input, type On } from './runner.js';
+import { input, ORIENTATION, type On } from './runner.js';
 import { panelScale } from './screenshot.js';
 import { simctl } from './simctl.js';
 import {
@@ -153,15 +153,6 @@ async function panel(udid: string, rotated?: number | null) {
 }
 
 type Display = Awaited<ReturnType<typeof displayOf>>;
-
-// UIInterfaceOrientation's raw values for a rotation: K34's rotation turns the way Android's does, so 90 is UIKit's
-// landscape right (K42).
-const ORIENTATION = new Map([
-  [0, 1],
-  [90, 4],
-  [180, 2],
-  [270, 3],
-]);
 
 // An iPhone's runner takes the portrait panel's points and the interface orientation: the tree's pixels divided by the
 // scale the tree used (the mini rule), turned by K35's table over the panel in points (K42).

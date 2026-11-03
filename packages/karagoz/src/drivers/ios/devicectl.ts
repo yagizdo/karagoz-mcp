@@ -248,13 +248,10 @@ export async function captureScreen(udid: string, file: string): Promise<void> {
     );
   } catch (err) {
     // Xcode 26's devicectl has no capture verb and rejects the call at argument parsing (Unknown option '--device'),
-    // a usage text no device failure prints (K40).
+    // a usage text no device failure prints (K40). capturePhone takes NOT_SUPPORTED as the cue to ask the runner.
     const message = err instanceof KaragozError && err.code === 'DEVICECTL_FAILED' ? err.message.toLowerCase() : '';
     if (message.includes("unknown option '") || message.includes("unexpected argument 'capture'")) {
-      throw new KaragozError(
-        'NOT_SUPPORTED',
-        "'screenshot' on an iPhone needs Xcode 27 or later: this Mac's devicectl has no 'device capture screenshot'. Install Xcode 27 and open it once.",
-      );
+      throw new KaragozError('NOT_SUPPORTED', "this Mac's devicectl has no 'device capture screenshot'");
     }
     throw err;
   }

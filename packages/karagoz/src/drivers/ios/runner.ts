@@ -38,6 +38,15 @@ const READ_TIMEOUT_MS = 30_000;
 // One usbmux connect and /health, which the runner answers off its main thread.
 const HEALTH_TIMEOUT_MS = 3_000;
 
+// UIInterfaceOrientation's raw values for a rotation, as input sends them and /screenshot answers them: K34's rotation
+// turns the way Android's does, so 90 is UIKit's landscape right (K42).
+export const ORIENTATION = new Map([
+  [0, 1],
+  [90, 4],
+  [180, 2],
+  [270, 3],
+]);
+
 // Where this Mac keeps the secret of the runner it last started on a device, and a simulator runner's port; every karagoz
 // process of this user reads them.
 const secretPath = (udid: string) => join(CACHE_ROOT, 'runner', `${udid}.token`);
@@ -476,6 +485,35 @@ export async function tree(udid: string): Promise<unknown> {
   }
   if (status === 200 && isRecord(parsed) && parsed.root !== undefined) return parsed.root;
   throw runnerError(parsed, status, 'CAPTURE_FAILED', '');
+}
+
+// The iPhone's screen from the runner, for a Mac whose devicectl cannot capture: the PNG, the scale the runner measured
+// and the interface orientation as K34's rotation, null when the runner could not read it.
+export async function screenshot(udid: string): Promise<{ png: Buffer; scale: number; rotation: number | null }> {
+  await ensure(udid, 'iphone');
+  const { status, body, signed } = await request(
+    udid,
+    'iphone',
+    'GET',
+    '/screenshot',
+    '',
+    READ_TIMEOUT_MS,
+    'CAPTURE_FAILED',
+  );
+  if (!signed) throw stranger(udid, 'iphone');
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(body);
+  } catch {
+    throw new KaragozError('CAPTURE_FAILED', `cannot parse the runner's answer: ${body.slice(0, 100)}`);
+  }
+  if (status !== 200 || !isRecord(parsed)) throw runnerError(parsed, status, 'CAPTURE_FAILED', '');
+  const { png, scale, orientation } = parsed;
+  if (typeof png !== 'string' || typeof scale !== 'number' || !Number.isFinite(scale) || scale <= 0) {
+    throw new KaragozError('CAPTURE_FAILED', `the runner's answer has no image or scale: ${body.slice(0, 100)}`);
+  }
+  const turn = [...ORIENTATION].find(([, raw]) => raw === orientation)?.[0];
+  return { png: Buffer.from(png, 'base64'), scale, rotation: turn ?? null };
 }
 
 // The runner's refusal, by its error text or else the status; a changed private interface is HELPER_FAILED (K41).
