@@ -61,4 +61,4 @@ Without `--app`, runs `devicectl device process openURL`; with it, `devicectl de
 {"device":"XXXXXXXX-XXXXXXXXXXXXXXXX","url":"myapp://item/42","app":"com.example.app"}
 ```
 
-- `APP_NOT_FOUND`: `app 'dev.karagoz.nope' is not installed on <UDID>` for `--app`. A locked iPhone gives `DEVICE_NOT_READY`. Any other refusal, such as a URL no app opens, is `DEVICECTL_FAILED` with devicectl's description and the phone's reason.
+- `APP_NOT_FOUND`: `no app on <UDID> opens 'nosuchscheme://x'` without `--app`, `app 'dev.karagoz.nope' is not installed on <UDID>` with it. A locked iPhone gives `DEVICE_NOT_READY`. Any other refusal is `DEVICECTL_FAILED` with devicectl's description and the phone's reason.

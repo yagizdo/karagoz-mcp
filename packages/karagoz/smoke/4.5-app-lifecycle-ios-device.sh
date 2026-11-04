@@ -48,7 +48,7 @@ case "\$*" in
   "device process openURL --device P1 "*" --json-output - -q")
     case \$6 in
       karagoz-x://locked) /bin/cat "$fake/locked.err" >&2; exit 1 ;;
-      karagoz-x://none) /bin/cat "$fake/open-none"; exit 1 ;;
+      karagoz-x://none | karagoz-x://refused) /bin/cat "$fake/open-\${6#karagoz-x://}"; exit 1 ;;
       *) echo '{"result":{}}' ;;
     esac ;;
   "device process launch --device P1 "*" --json-output - -q")
@@ -110,7 +110,8 @@ chain launch-dev.karagoz.weird $core 10002 "The application failed to launch." '
 printf '%s\n' 'ERROR: The application failed to launch. (com.apple.dt.CoreDeviceError error 10002 (0x2712))' \
   '       NSLocalizedFailureReason = Unable to launch dev.karagoz.locked because the device was not, or could not be, unlocked.' \
   > "$fake/locked.err"
-chain open-none $core 10006 "The URL could not be opened." '' $core 10006 '' "No app handles karagoz-x://none."
+chain open-none $core 10007 "Unable to determine the default application for the specified URL." ''
+chain open-refused $core 10006 "The URL could not be opened." '' $core 10006 '' "The phone refused karagoz-x://refused."
 gone="Failed to send signal 9 to process."
 chain kill-7001 $core 10014 "$gone" "No such process; the process may have already terminated." NSPOSIXErrorDomain 3 '' ''
 chain kill-7002 $core 10014 "$gone" "Operation not permitted." NSPOSIXErrorDomain 1 '' ''
@@ -248,7 +249,9 @@ refuses APP_NOT_FOUND "open-url --app not installed" "app 'dev.karagoz.nope' is 
 call open-url karagoz-x://locked --device P1
 refuses DEVICE_NOT_READY "open-url locked" "device P1 is not ready: it is locked. Unlock the iPhone and try again."
 call open-url karagoz-x://none --device P1
-refuses DEVICECTL_FAILED "open-url refused" "The URL could not be opened. No app handles karagoz-x://none."
+refuses APP_NOT_FOUND "open-url no app" "no app on P1 opens 'karagoz-x://none'"
+call open-url karagoz-x://refused --device P1
+refuses DEVICECTL_FAILED "open-url refused" "The URL could not be opened. The phone refused karagoz-x://refused."
 
 # e. A hung devicectl is killed: 31 s for an install of a .app; a launch held by a stopped app says so after 30 s.
 hung() { # <label> <seconds> <message> <karagoz arguments>

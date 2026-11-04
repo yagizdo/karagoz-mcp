@@ -374,15 +374,18 @@ export async function launchOn(udid: string, id: string, url?: string): Promise<
 }
 
 // Opens url with the handler the iPhone picks.
-// ponytail: unmeasured on a phone (none attached when it was written): a URL no app opens surfaces as DEVICECTL_FAILED
-// with the phone's reason. Map it to APP_NOT_FOUND once a phone shows its error chain.
 export async function openUrlOn(udid: string, url: string): Promise<void> {
   json(
     await devicectl(
       ['device', 'process', 'openURL', '--device', udid, url, '--json-output', '-', '-q'],
       PHONE_TIMEOUT_MS,
       udid,
-      (chain) => new KaragozError('DEVICECTL_FAILED', said(chain)),
+      (chain) =>
+        // A URL no app opens is this one link: "Unable to determine the default application for the specified URL."
+        // (measured, devicectl 651.32).
+        has(chain, 'com.apple.dt.CoreDeviceError', 10007)
+          ? new KaragozError('APP_NOT_FOUND', `no app on ${udid} opens '${url}'`)
+          : new KaragozError('DEVICECTL_FAILED', said(chain)),
     ),
   );
 }
