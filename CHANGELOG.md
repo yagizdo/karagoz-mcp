@@ -13,10 +13,7 @@ The commands and the MCP server are unchanged from 0.3.1.
 ### Changed
 
 - The contributing guide has a section on using AI tools for a contribution ([`ffa53a0`](https://github.com/yagizdo/karagoz-mcp/commit/ffa53a0))
-
-### Fixed
-
-- On the npm page, a Contents link in the README no longer scrolls its heading off the top of the screen ([`e3ab399`](https://github.com/yagizdo/karagoz-mcp/commit/e3ab399))
+- The README has an anchor before each heading Contents links to, meant to keep the heading on screen on the npm page. On that page a Contents link stopped scrolling instead, and 0.4.0 removes the anchors ([`e3ab399`](https://github.com/yagizdo/karagoz-mcp/commit/e3ab399))
 
 ## [0.3.1] - 2026-11-01
 

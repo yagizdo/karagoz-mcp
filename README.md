@@ -34,8 +34,6 @@ Device automation for mobile apps. One tool for four targets: Android emulator, 
 
 ---
 
-<a id="why-karagoz"></a>
-
 ## Why karagoz
 
 `adb`, `simctl` and `devicectl` run the command; karagoz tells you what the command actually did.
@@ -47,8 +45,6 @@ Device automation for mobile apps. One tool for four targets: Android emulator, 
 
 ---
 
-<a id="scope"></a>
-
 ## Scope
 
 karagoz is the primitive layer. Each command does one thing and exits.
@@ -58,15 +54,11 @@ karagoz is the primitive layer. Each command does one thing and exits.
 
 ---
 
-<a id="status"></a>
-
 ## Status
 
 Early development. Every command runs on all four targets, except `install-runner`, which runs only on iPhones, and `uninstall-runner`, which runs on iPhones and on simulators of a Mac that never had Xcode 27. For Windows and Linux, see the [FAQ](#faq).
 
 ---
-
-<a id="getting-started"></a>
 
 ## Getting started
 
@@ -118,8 +110,6 @@ Claude Code with the [MCP server](#mcp-server) on an iOS simulator, in real time
 ![An iOS simulator next to a list of tool calls. Asked to open Settings on the iOS simulator and turn on dark mode, Claude Code calls devices, launch, ui_tree, tap on the Appearance row by id, ui_tree, tap on Dark by text, and ui_tree, and the simulator switches to dark mode.](https://raw.githubusercontent.com/yagizdo/karagoz-mcp/main/.github/assets/demo.gif)
 
 ---
-
-<a id="mcp-server"></a>
 
 ## MCP server
 
@@ -196,8 +186,6 @@ The `tools/list` result is 9,547 characters, `instructions` 398. One `ui_tree` o
 
 ---
 
-<a id="things-to-ask-your-agent"></a>
-
 ## Things to ask your agent
 
 Once the server is registered, describe the task to your agent. It reads the screen with `ui_tree` and calls one tool per step.
@@ -209,8 +197,6 @@ Once the server is registered, describe the task to your agent. It reads the scr
 - "The app closes right after launch on the emulator. Show me its last 50 log lines."
 
 ---
-
-<a id="commands"></a>
 
 ## Commands
 
@@ -240,8 +226,6 @@ Every command except `devices`, `doctor` and `mcp` works on one device. When mor
 
 ---
 
-<a id="output-and-errors"></a>
-
 ## Output and errors
 
 Every command prints one line of JSON on stdout: its result with exit code `0`, or `{"error":{"code":"<CODE>","message":"<text>"}}` with exit code `1`. Branch on `error.code`, not on the message. At a terminal, `devices` and `doctor` print a summary instead and the other commands indent their JSON; when stdout is not a terminal, as in a pipe, the line is printed.
@@ -249,8 +233,6 @@ Every command prints one line of JSON on stdout: its result with exit code `0`, 
 [Output, arguments and coordinates](https://github.com/yagizdo/karagoz-mcp/blob/main/docs/output.md) · [Error codes](https://github.com/yagizdo/karagoz-mcp/blob/main/docs/error-codes.md) · [Known limitations](https://github.com/yagizdo/karagoz-mcp/blob/main/docs/known-limitations.md)
 
 ---
-
-<a id="how-it-works"></a>
 
 ## How it works
 
@@ -263,8 +245,6 @@ A command finds the device, runs the platform's own tool for the job, and turns 
 | iPhone | `devicectl` | karagoz's runner, an XCUITest bundle that `xcodebuild` starts and karagoz reaches over USB | karagoz's runner | `devicectl` | The phone's log relay over USB, read with macOS's `log` |
 
 ---
-
-<a id="faq"></a>
 
 ## FAQ
 
@@ -305,15 +285,11 @@ On Android only one UiAutomation client can be connected, so `ui-tree`, and a ta
 
 ---
 
-<a id="contributing"></a>
-
 ## Contributing
 
 Bug reports and pull requests are welcome. [CONTRIBUTING.md](https://github.com/yagizdo/karagoz-mcp/blob/main/CONTRIBUTING.md) covers what to put in an issue, the checks a pull request needs, and what device data must never be posted.
 
 ---
-
-<a id="license"></a>
 
 ## License
 
