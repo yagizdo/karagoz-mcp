@@ -2,6 +2,23 @@
 
 All notable changes to karagoz-mcp are documented in this file. The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0] - 2026-11-04
+
+### Added
+
+- At a terminal, `doctor` and `devices` print a readable summary with what to do under each problem, and every other command indents its JSON. A pipe, the MCP server and an agent shell without a terminal still get the one JSON line ([`41b0f4e`](https://github.com/yagizdo/karagoz-mcp/commit/41b0f4e))
+- `devices` rows have `os`, and Android rows also have `api` ([`41b0f4e`](https://github.com/yagizdo/karagoz-mcp/commit/41b0f4e))
+
+### Changed
+
+- The README has a block to add to `CLAUDE.md` or `AGENTS.md`, so an agent uses karagoz for a device request without being told to ([`2da20be`](https://github.com/yagizdo/karagoz-mcp/commit/2da20be))
+- The README's FAQ answers fold, and a horizontal rule separates its sections ([`f3a5fb1`](https://github.com/yagizdo/karagoz-mcp/commit/f3a5fb1), [`c3729e2`](https://github.com/yagizdo/karagoz-mcp/commit/c3729e2))
+- The anchors 0.3.2 added to the README are gone, so a Contents link on the npm page targets the heading's own id again ([`8411c45`](https://github.com/yagizdo/karagoz-mcp/commit/8411c45))
+
+### Fixed
+
+- `open-url` on an iPhone reports `APP_NOT_FOUND` instead of `DEVICECTL_FAILED` for a URL no app opens, as on Android and the simulator ([`a245f14`](https://github.com/yagizdo/karagoz-mcp/commit/a245f14))
+
 ## [0.3.2] - 2026-11-02
 
 The commands and the MCP server are unchanged from 0.3.1.
@@ -72,6 +89,7 @@ Needs Node 22 or newer, adb for Android, and Xcode on macOS for iOS. On a simula
 
 As a 0.x release, the JSON output and the error codes may still change in a minor version.
 
+[0.4.0]: https://github.com/yagizdo/karagoz-mcp/compare/v0.3.2...v0.4.0
 [0.3.2]: https://github.com/yagizdo/karagoz-mcp/compare/v0.3.1...v0.3.2
 [0.3.1]: https://github.com/yagizdo/karagoz-mcp/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/yagizdo/karagoz-mcp/compare/v0.2.0...v0.3.0
