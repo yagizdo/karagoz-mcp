@@ -29,7 +29,7 @@ import { CACHE_HINT, CACHE_ROOT, ownedDir, xcode } from './xcode.js';
 // 'karagoz-res\n<nonce>\n<status>\n<body>' for its answer. Every request and answer is signed with the secret of the
 // runner's start, which never travels (K42).
 const PORT = 27753;
-const PROTOCOL = 3;
+const PROTOCOL = 4;
 const NONCE_HEADER = 'X-Karagoz-Nonce';
 const MAC_HEADER = 'X-Karagoz-Mac';
 const SECRET = /^[0-9a-f]{64}$/;
@@ -37,6 +37,15 @@ const SECRET = /^[0-9a-f]{64}$/;
 const READ_TIMEOUT_MS = 30_000;
 // One usbmux connect and /health, which the runner answers off its main thread.
 const HEALTH_TIMEOUT_MS = 3_000;
+
+// K34's rotation for each UIInterfaceOrientation raw value /screenshot answers: the phone turned counter-clockwise (90)
+// leaves the interface in landscape right (3), which UIKit defines as UIDeviceOrientationLandscapeLeft.
+const ROTATION = new Map([
+  [1, 0],
+  [2, 180],
+  [3, 90],
+  [4, 270],
+]);
 
 // Where this Mac keeps the secret of the runner it last started on a device, and a simulator runner's port; every karagoz
 // process of this user reads them.
@@ -202,7 +211,7 @@ async function request(
 type Health = 'up' | 'down' | 'old' | 'stranger';
 
 // up: this Mac's runner answers, signed; down: nothing listens; old: a 4.3 runner, which signs nothing, or a signed one
-// of an older protocol, which lacks a route this karagoz sends (protocol 2 has no /double-tap); stranger:
+// of an older protocol, which lacks a route this karagoz sends (protocol 3 has no /screenshot); stranger:
 // anything else listening there, or no secret here to tell. A listener that accepts and does not answer is a stranger
 // too: the runner answers /health off its main thread, and starting another would replace the secret of a live one.
 async function health(udid: string, on: On): Promise<Health> {
@@ -476,6 +485,35 @@ export async function tree(udid: string): Promise<unknown> {
   }
   if (status === 200 && isRecord(parsed) && parsed.root !== undefined) return parsed.root;
   throw runnerError(parsed, status, 'CAPTURE_FAILED', '');
+}
+
+// The iPhone's screen from the runner, for a Mac whose devicectl cannot capture: the PNG, the scale the runner measured
+// and the interface orientation as K34's rotation, null when the runner could not read it.
+export async function screenshot(udid: string): Promise<{ png: Buffer; scale: number; rotation: number | null }> {
+  await ensure(udid, 'iphone');
+  const { status, body, signed } = await request(
+    udid,
+    'iphone',
+    'GET',
+    '/screenshot',
+    '',
+    READ_TIMEOUT_MS,
+    'CAPTURE_FAILED',
+  );
+  if (!signed) throw stranger(udid, 'iphone');
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(body);
+  } catch {
+    throw new KaragozError('CAPTURE_FAILED', `cannot parse the runner's answer: ${body.slice(0, 100)}`);
+  }
+  if (status !== 200 || !isRecord(parsed)) throw runnerError(parsed, status, 'CAPTURE_FAILED', '');
+  const { png, scale, orientation } = parsed;
+  if (typeof png !== 'string' || typeof scale !== 'number' || !Number.isFinite(scale) || scale <= 0) {
+    throw new KaragozError('CAPTURE_FAILED', `the runner's answer has no image or scale: ${body.slice(0, 100)}`);
+  }
+  const rotation = typeof orientation === 'number' ? ROTATION.get(orientation) : undefined;
+  return { png: Buffer.from(png, 'base64'), scale, rotation: rotation ?? null };
 }
 
 // The runner's refusal, by its error text or else the status; a changed private interface is HELPER_FAILED (K41).

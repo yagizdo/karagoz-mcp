@@ -6,7 +6,9 @@
 # refuses to start one that is not installed, maps its raw snapshot to K34's tree in pixels, compact by default and
 # every element with --detail full (K54), and maps every start and read failure to its code (K41). Each start puts a fresh secret in a 0600 file and a 0600 copy of the build's
 # .xctestrun, never on xcodebuild's command line; every request and answer is signed with it, and an older runner, a
-# stranger, a squatter, a listener that never answers and a taken port each get their own refusal (K42).
+# stranger, a squatter, a listener that never answers and a taken port each get their own refusal (K42). `screenshot`
+# on a Mac whose devicectl has no capture verb asks the runner for the image, its scale and orientation; without the
+# runner, or with a protocol-3 one, it names install-runner and Xcode 27; a devicectl with the verb never reaches it.
 # Precondition: macOS. Fake adb, simctl, devicectl and xcodebuild come through ANDROID_HOME and DEVELOPER_DIR under
 # env -i, Xcode's preferences through a fake HOME, usbmuxd through USBMUXD_SOCKET_ADDRESS (a fake daemon forwarding to
 # a fake runner). The real step reads a paired iPhone's tree when `karagoz devices` lists one whose runner is installed,
@@ -54,6 +56,7 @@ case "\$*" in
   "device profile list --device "*" --type provisioning --json-output - -q") /bin/cat "$fake/profiles.json" ;;
   "device profile remove --device "*" -q") echo "\$6" >> "$fake/removed" ;;
   "device info displays --device "*" --json-output - -q") /bin/cat "$fake/displays.json" ;;
+  "device capture screenshot --device "*" --destination "*" -q") exec /bin/sh "$fake/capture" "\$7" ;;
   *) exit 1 ;;
 esac
 FAKE
@@ -86,6 +89,29 @@ echo '{"devices":{}}' > "$fake/sims.json"
 printf 'echo %s\n' "'{\"result\":{\"apps\":[]}}'" > "$fake/apps"
 : > "$fake/install"
 echo '{"result":{"configurationProfiles":[],"provisioningProfiles":[]}}' > "$fake/profiles.json"
+# Xcode 26's devicectl has no capture verb and fails at argument parsing (506.6's text).
+printf '%s\n' "/bin/echo \"Error: Unknown option '--device'\" >&2; /bin/echo 'Usage: devicectl device [--verbose] <subcommand>' >&2; exit 64" > "$fake/capture"
+# PNG headers, all karagoz reads: the runner's portrait, landscape and mini images, and devicectl's (16 bit).
+"$node_bin" -e '
+  const { crc32 } = require("zlib");
+  const chunk = (type, data) => {
+    const t = Buffer.from(type, "latin1"), len = Buffer.alloc(4), crc = Buffer.alloc(4);
+    len.writeUInt32BE(data.length);
+    crc.writeUInt32BE(crc32(Buffer.concat([t, data])));
+    return Buffer.concat([len, t, data, crc]);
+  };
+  const png = (w, h, depth) => {
+    const ihdr = Buffer.alloc(13);
+    ihdr.writeUInt32BE(w);
+    ihdr.writeUInt32BE(h, 4);
+    ihdr[8] = depth;
+    ihdr[9] = 6;
+    return Buffer.concat([Buffer.from("89504e470d0a1a0a", "hex"), chunk("IHDR", ihdr), chunk("IEND", Buffer.alloc(0))]);
+  };
+  for (const [name, w, h, depth] of [["portrait", 1290, 2796, 8], ["landscape", 2796, 1290, 8], ["mini", 1080, 2340, 8], ["devicectl", 1290, 2796, 16]]) {
+    require("fs").writeFileSync(`${process.argv[1]}/${name}.png`, png(w, h, depth));
+  }
+' "$fake"
 phone() { printf '{"visibilityClass":"default","properties":{"hardware":{"udid":"%s","reality":"physical","platform":"iOS","marketingName":"iPhone 14 Pro Max"},"connection":{"pairingState":"%s","transportType":"wired","tunnelState":"disconnected"}}}' "$1" "$2"; }
 echo "{\"result\":{\"devices\":[$(phone P1 paired),$(phone P2 unpaired)]}}" > "$fake/list.json"
 # teams <account>=<id>:<name>:<free>...: Xcode's IDEProvisioningTeamByIdentifier as an XML plist.
@@ -188,6 +214,22 @@ runner_installed() { printf 'echo %s\n' "'{\"result\":{\"apps\":[{\"bundleIdenti
 runner_installed abcde12345
 stop_runner() { pkill -f "runner.cjs $fake"; pkill -f "sleep 97\.43"; rm -f "$fake/runner-port"; while pgrep -f "runner.cjs $fake" > /dev/null; do sleep 0.1; done; }
 starts() { /usr/bin/grep -c test-without-building "$fake/xcodebuild" || true; }
+# runner_shot <png> <scale> [orientation]: what the fake runner's /screenshot answers.
+runner_shot() { "$node_bin" -e '
+  const [png, scale, orientation] = process.argv.slice(1);
+  const out = { png: require("fs").readFileSync(png).toString("base64"), scale: Number(scale) };
+  if (orientation) out.orientation = Number(orientation);
+  console.log(JSON.stringify(out));
+' "$fake/$1.png" "$2" "$3" > "$fake/screenshot.json"; }
+shots() { /usr/bin/grep -c . "$fake/shots" 2>/dev/null || true; }
+# The result line without its path; "bytes differ" unless the file at path holds the bytes of $fake/<png>.
+shot_line() { "$node_bin" -e '
+  const fs = require("fs"), r = JSON.parse(fs.readFileSync(0, "utf8"));
+  if (!fs.readFileSync(r.path).equals(fs.readFileSync(process.argv[1]))) { console.log("bytes differ"); process.exit(); }
+  delete r.path;
+  console.log(JSON.stringify(r));
+' "$fake/$1.png"; }
+rotation_of() { "$node_bin" -e 'console.log(JSON.parse(require("fs").readFileSync(0, "utf8")).rotation)'; }
 cat > "$fake/tree.json" <<'JSON'
 {"root":{"type":2,"label":"Probe","frame":[0,0,430,932],"children":[{"type":1,"frame":[0,0,430,932],"children":[
 {"type":48,"label":"Title","heading":true,"frame":[16,60,200,40]},
@@ -275,6 +317,52 @@ refuses "runner hangs" CAPTURE_FAILED "did not answer within 30 s" ui-tree --dev
 [ $(($(date +%s) - t0)) -le 40 ] || fail "hang took $(($(date +%s) - t0)) s"
 rm "$fake/runner-mode"
 
+# 5b. screenshot on a Mac whose devicectl has no capture verb: the runner's PNG as written, its scale with the
+# 1080x2340 rule, its orientation as K34's rotation (landscape right, 3, is the phone turned counter-clockwise: 90; 4
+# is 270), none as null; the displays read (rot0 here) is not used. Its failures keep their codes; a protocol-3 runner
+# names both ways out.
+before=$(shots)
+runner_shot portrait 3 1
+out=$(k screenshot --device P1 --out "$tmp/shot.png") || fail "runner screenshot exited non-zero: $out"
+is "runner screenshot" "$(printf '%s' "$out" | shot_line portrait)" \
+  '{"device":"P1","pixels":{"width":1290,"height":2796},"logical":{"width":430,"height":932},"scale":3,"safeArea":null,"rotation":0}'
+is "runner screenshot: one /screenshot" "$(shots)" $((before + 1))
+runner_shot landscape 3 3
+out=$(k screenshot --device P1 --out "$tmp/shot.png") || fail "landscape right exited non-zero: $out"
+is "landscape right" "$(printf '%s' "$out" | shot_line landscape)" \
+  '{"device":"P1","pixels":{"width":2796,"height":1290},"logical":{"width":932,"height":430},"scale":3,"safeArea":null,"rotation":90}'
+runner_shot landscape 3 4
+out=$(k screenshot --device P1 --out "$tmp/shot.png") || fail "landscape left exited non-zero: $out"
+is "landscape left" "$(printf '%s' "$out" | rotation_of)" 270
+runner_shot portrait 3
+out=$(k screenshot --device P1 --out "$tmp/shot.png") || fail "no orientation exited non-zero: $out"
+is "no orientation" "$(printf '%s' "$out" | rotation_of)" null
+runner_shot mini 2.88 1
+out=$(k screenshot --device P1 --out "$tmp/shot.png") || fail "runner mini exited non-zero: $out"
+is "runner mini" "$(printf '%s' "$out" | shot_line mini)" \
+  '{"device":"P1","pixels":{"width":1080,"height":2340},"logical":{"width":375,"height":812.5},"scale":2.88,"safeArea":null,"rotation":0}'
+runner_shot portrait 3 3
+refuses "runner portrait under landscape" CAPTURE_FAILED "the screen rotated during the capture (rotation 90, screenshot 1290x2796)" \
+  screenshot --device P1
+echo '{"png":"","scale":3}' > "$fake/screenshot.json"
+refuses "runner, empty image" CAPTURE_FAILED - screenshot --device P1
+echo snapshot > "$fake/runner-mode"
+refuses "runner screenshot fails" CAPTURE_FAILED kAXErrorIllegalArgument screenshot --device P1
+echo older > "$fake/runner-mode"
+refuses "screenshot, protocol-3 runner" RUNNER_NOT_INSTALLED \
+  "is an older version on iPhone P1. Install it with 'karagoz install-runner --device P1' (MCP: install_runner). Or install Xcode 27" \
+  screenshot --device P1
+rm "$fake/runner-mode"
+# A devicectl with the verb: its own PNG and the displays read, and the runner is never asked.
+before=$(shots)
+cp "$fake/capture" "$tmp/capture.old"
+printf '%s\n' "/bin/cat '$fake/devicectl.png' > \"\$1\"" > "$fake/capture"
+out=$(k screenshot --device P1 --out "$tmp/shot.png") || fail "devicectl screenshot exited non-zero: $out"
+is "devicectl screenshot" "$(printf '%s' "$out" | shot_line devicectl)" \
+  '{"device":"P1","pixels":{"width":1290,"height":2796},"logical":{"width":430,"height":932},"scale":3,"safeArea":null,"rotation":0}'
+is "devicectl screenshot: no /screenshot" "$(shots)" "$before"
+mv "$tmp/capture.old" "$fake/capture"
+
 # Not attached by cable (no entry, a Wi-Fi entry only, or gone before Connect); usbmuxd's serial matches in any case.
 # Then a stopped runner: not installed, or installed without a build here, never starts one.
 : > "$fake/usb"
@@ -292,6 +380,8 @@ stop_runner
 before=$(starts)
 printf 'echo %s\n' "'{\"result\":{\"apps\":[]}}'" > "$fake/apps"
 refuses "not installed" RUNNER_NOT_INSTALLED "'karagoz install-runner --device P1' (MCP: install_runner)" ui-tree --device P1
+refuses "screenshot, not installed" RUNNER_NOT_INSTALLED \
+  "'karagoz install-runner --device P1' (MCP: install_runner). Or install Xcode 27 and open it once" screenshot --device P1
 runner_installed fffff66666
 refuses "no build here" RUNNER_NOT_INSTALLED "built by another karagoz or Xcode" ui-tree --device P1
 is "never started" "$(starts)" "$before"
@@ -415,4 +505,4 @@ else
   case "$real_ok" in real*) ;; *) fail "real tree: $real_ok" ;; esac
 fi
 
-echo "ok: $real_ok, teams, build arguments, failures, targets, uninstall, mapping, mini, compact, read failures, not on USB, Wi-Fi only, serial case, gone before Connect, not installed, start failures, start budget (60s), MCP and CLI SIGTERM during a start, lock, devices, doctor, landscape keyboard, secret, signatures, older runner, stranger, squatter, mute listener, port taken, locked start"
+echo "ok: $real_ok, teams, build arguments, failures, targets, uninstall, mapping, mini, compact, read failures, not on USB, Wi-Fi only, serial case, gone before Connect, not installed, start failures, start budget (60s), MCP and CLI SIGTERM during a start, lock, devices, doctor, landscape keyboard, secret, signatures, older runner, stranger, squatter, mute listener, port taken, locked start, runner screenshot"

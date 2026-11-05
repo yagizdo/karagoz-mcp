@@ -154,8 +154,9 @@ async function panel(udid: string, rotated?: number | null) {
 
 type Display = Awaited<ReturnType<typeof displayOf>>;
 
-// UIInterfaceOrientation's raw values for a rotation: K34's rotation turns the way Android's does, so 90 is UIKit's
-// landscape right (K42).
+// The raw UIInterfaceOrientation the touch record gets for a rotation (K42). UIKit names 4 landscape left, yet K34's 90
+// is the interface in landscape right (3, ROTATION in runner.ts); taps landed with this table at 90 and 270 on the
+// measured phone, so it stays until one shows the record reading the value.
 const ORIENTATION = new Map([
   [0, 1],
   [90, 4],

@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { KaragozError } from '../../errors.js';
 import { pngSize } from '../../png.js';
 import { captureScreen, displayOf, rotation } from './devicectl.js';
+import { screenshot as runnerScreenshot } from './runner.js';
 import { simctl } from './simctl.js';
 
 // ponytail: the 12 mini and 13 mini render 375 pt wide and downsample to a 1080x2340 panel; UIKit gives apps
@@ -62,17 +63,26 @@ export async function capture(udid: string) {
 
 // A paired iPhone. The PNG is devicectl's own bytes, 16 bits per channel Display P3 on the measured phone, and follows
 // the interface orientation; the safe area has no source outside the app (K40). The capture's failure is reported before
-// the displays read's, so a devicectl without the verb always reads as NOT_SUPPORTED.
+// the displays read's. A devicectl without the verb (Xcode 26 and older) hands the capture to karagoz's runner: its PNG
+// is XCUITest's, turned by the runner to follow the interface, and its scale and rotation replace the displays read.
 export async function capturePhone(udid: string) {
   const [shot, shown] = await Promise.allSettled([shoot((file) => captureScreen(udid, file)), displayOf(udid)]);
-  if (shot.status === 'rejected') throw shot.reason;
-  if (shown.status === 'rejected') throw shown.reason;
-  const png = shot.value;
-  const { scale, rotation: turned } = shown.value;
+  let png: Buffer, scale: number, turned: number | null, source: string;
+  if (shot.status === 'fulfilled') {
+    if (shown.status === 'rejected') throw shown.reason;
+    png = shot.value;
+    ({ scale, rotation: turned } = shown.value);
+    source = 'devicectl';
+  } else if (shot.reason instanceof KaragozError && shot.reason.code === 'NOT_SUPPORTED') {
+    ({ png, scale, rotation: turned } = await fromRunner(udid));
+    source = "karagoz's runner";
+  } else {
+    throw shot.reason;
+  }
   const pixels = pngSize(png);
-  if (!pixels) throw new KaragozError('CAPTURE_FAILED', 'devicectl returned no image data');
+  if (!pixels) throw new KaragozError('CAPTURE_FAILED', `${source} returned no image data`);
   // iPhone and iPad panels are portrait in their native orientation, so a quarter turn means a landscape PNG; the two
-  // calls disagree when the screen turned between them.
+  // calls disagree when the screen turned between them, the runner's image and orientation when it turned mid-read.
   const landscape = pixels.width > pixels.height;
   if (turned !== null && (turned === 90 || turned === 270) !== landscape) {
     throw new KaragozError(
@@ -81,4 +91,19 @@ export async function capturePhone(udid: string) {
     );
   }
   return { png, pixels, scale: panelScale(pixels.width, pixels.height, scale), safeArea: null, rotation: turned };
+}
+
+// No automatic install (0.1.0): without the runner the caller gets both ways out.
+async function fromRunner(udid: string) {
+  try {
+    return await runnerScreenshot(udid);
+  } catch (err) {
+    if (err instanceof KaragozError && err.code === 'RUNNER_NOT_INSTALLED') {
+      throw new KaragozError(
+        'RUNNER_NOT_INSTALLED',
+        `${err.message} Or install Xcode 27 and open it once: its devicectl takes the screenshot without the runner.`,
+      );
+    }
+    throw err;
+  }
 }

@@ -2,8 +2,8 @@
 # Step 4.2: on macOS `screenshot` captures a paired iPhone with devicectl in the K22 shape (pixels from the PNG, scale
 # from the primary display's pointScale with the 1080x2340 rule, rotation from its currentOrientation, null safeArea)
 # and writes devicectl's own bytes. An unpaired or still-pairing iPhone is refused before any capture; devicectl's
-# phone-state failures, an older devicectl without the verb, a hung or empty capture, a missing scale and a rotation
-# during the capture map to their codes (K40, K21 4.2 note, K43).
+# phone-state failures, a hung or empty capture, a missing scale and a rotation during the capture map to their codes
+# (K40, K21 4.2 note, K43). An older devicectl without the verb goes to karagoz's runner, which smoke 4.3 fakes.
 # Precondition: macOS with Xcode. The real step captures a paired iPhone when `karagoz devices` lists one, else it
 # prints SKIP; its image stays in this script's temp directory, removed at exit. Fake adb, simctl and devicectl come
 # through ANDROID_HOME and DEVELOPER_DIR under env -i; the adb server on the default port is never touched.
@@ -213,17 +213,7 @@ err_of 'ERROR: A connection to this device could not be established. (com.apple.
 refuses "no connection" DEVICECTL_FAILED - screenshot --device P1
 case "$(printf '%s' "$out" | message_of)" in "ERROR: A connection to this device could not be established."*) ;; *) fail "DEVICECTL_FAILED lost devicectl's text: $out" ;; esac
 
-# 5. An older devicectl rejects the verb at argument parsing (Xcode 26's 506.6 text); its failure wins over the displays
-# read, whether that read works or fails.
-old="needs Xcode 27 or later: this Mac's devicectl has no 'device capture screenshot'. Install Xcode 27 and open it once."
-err_of "$(printf '%s\n%s\n%s' "Error: Unknown option '--device'" \
-  'Usage: devicectl device [--verbose] [--quiet] [--timeout <seconds>] [--json-output <path>] [--log-output <path>] <subcommand>' \
-  "  See 'devicectl device --help' for more information.")" 64
-refuses "older devicectl" NOT_SUPPORTED "'screenshot' on an iPhone $old" screenshot --device P1
-echo 'exit 1' > "$fake/displays"
-refuses "older devicectl, displays failing" NOT_SUPPORTED "'screenshot' on an iPhone $old" screenshot --device P1
-
-# 6. A hung capture ends at the 30 s timeout and leaves no process behind; a capture with no PNG, displays without a
+# 5. A hung capture ends at the 30 s timeout and leaves no process behind; a capture with no PNG, displays without a
 # scale and a rotation the PNG contradicts are CAPTURE_FAILED; no devicectl means no iPhone to find.
 rot rot0
 cap 'exec /bin/sleep 97.46'
@@ -247,7 +237,7 @@ devdir=$tmp/nodc
 refuses "no devicectl" DEVICE_NOT_FOUND - screenshot --device P1
 devdir=$tmp/dev
 
-# 7. No failure left a temp directory.
+# 6. No failure left a temp directory.
 leftover "a failed capture"
 
-echo "ok: $ok, fixtures, readiness, failures, old devicectl, hung (${took}s)"
+echo "ok: $ok, fixtures, readiness, failures, hung (${took}s)"

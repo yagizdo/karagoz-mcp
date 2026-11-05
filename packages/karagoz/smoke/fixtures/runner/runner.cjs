@@ -1,9 +1,10 @@
 // The fake runner for smokes 3.4, 4.3 and 4.4: node runner.cjs <fake dir> <xctestrun>. Like the real one it takes
 // KARAGOZ_TOKEN, and a simulator's KARAGOZ_PORT, from the .xctestrun's EnvironmentVariables, refuses a request without
 // a valid MAC (401, unsigned) and signs every other answer (K42). Each input (POST) is appended to $fake/inputs as
-// "<route> <body>". $fake/runner-mode steers it: old, older, stranger, squatter and mute change /health; hang, close,
-// private, snapshot, event and xctest change /tree and the input routes; /health answers signed protocol 3 in every
-// other mode, older signed protocol 2.
+// "<route> <body>"; /screenshot appends to $fake/shots and answers $fake/screenshot.json, any other GET appends to
+// $fake/trees and answers $fake/tree.json. $fake/runner-mode steers it: old, older, stranger, squatter and mute change
+// /health; hang, close, private, snapshot, event and xctest change every other route; /health answers signed protocol
+// 4 in every other mode, older signed protocol 3.
 const http = require("http"), fs = require("fs"), crypto = require("crypto");
 const [, , fake, xctestrun] = process.argv;
 const env = /<key>EnvironmentVariables<\/key>\s*<dict>([\s\S]*?)<\/dict>/.exec(fs.readFileSync(xctestrun, "utf8"))?.[1] ?? "";
@@ -40,9 +41,10 @@ const server = http.createServer((req, res) => {
       fs.appendFileSync(fake + "/refused", `${req.method} ${req.url}\n`);
       return answer(401, { error: "unauthorized", kind: "auth" }, null);
     }
-    if (req.url === "/health") return answer(200, { protocol: m === "older" ? 2 : 3 });
+    if (req.url === "/health") return answer(200, { protocol: m === "older" ? 3 : 4 });
+    const shot = req.url === "/screenshot";
     if (req.method === "POST") fs.appendFileSync(fake + "/inputs", `${req.url} ${body}\n`);
-    else fs.appendFileSync(fake + "/trees", "1\n");
+    else fs.appendFileSync(fake + (shot ? "/shots" : "/trees"), "1\n");
     if (m === "hang") return;
     if (m === "close") return req.socket.destroy();
     const errors = {
@@ -53,7 +55,7 @@ const server = http.createServer((req, res) => {
     };
     if (errors[m]) return answer(500, { error: errors[m], kind: m });
     if (req.method === "POST") return answer(200, {});
-    answer(200, JSON.parse(fs.readFileSync(fake + "/tree.json", "utf8")));
+    answer(200, JSON.parse(fs.readFileSync(fake + (shot ? "/screenshot.json" : "/tree.json"), "utf8")));
   });
 });
 const port = Number(/<key>KARAGOZ_PORT<\/key>\s*<string>(\d+)<\/string>/.exec(env)?.[1] ?? 0);
