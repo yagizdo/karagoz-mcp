@@ -4,7 +4,7 @@
 karagoz open-url <url> [--app <id>] [--device <id>]
 ```
 
-Opens a URL, such as a deep link (`myapp://item/42`) or a web link, in the app the system picks for it, or in the app named by `--app`.
+Opens a URL, such as a deep link (`myapp://item/42`) or a web link, in the app the system picks, or in the app named by `--app`.
 
 | Option | Default | Meaning |
 | --- | --- | --- |
@@ -43,14 +43,14 @@ Opens a URL, such as a deep link (`myapp://item/42`) or a web link, in the app t
 
 ## On an iOS simulator
 
-Runs `simctl openurl`. `--app` is refused: `NOT_SUPPORTED`, `an iOS simulator opens a URL only in the app the system picks; run open-url without --app`.
+Runs `simctl openurl`. With `--app` it returns `NOT_SUPPORTED`: `an iOS simulator opens a URL only in the app the system picks; run open-url without --app`.
 
 ```json
 {"device":"2EC769C1-2EF2-47EB-A441-E6843968F039","url":"https://example.com"}
 ```
 
 - It returns before the app is in front: Safari took 1.3 to 2.2 s from a cold start.
-- For an app's own scheme, iOS first asks `Open in “<app>”?` with Cancel and Open, and the app gets the URL only after Open is tapped ([`tap --text Open`](tap.md)).
+- For an app's own scheme, iOS first asks `Open in “<app>”?` with Cancel and Open. The app gets the URL only after you tap Open ([`tap --text Open`](tap.md)).
 - `APP_NOT_FOUND`: `no app on <udid> opens 'nosuchscheme://x'`. Any other refusal is `SIMCTL_FAILED` with simctl's message.
 
 ## On an iPhone

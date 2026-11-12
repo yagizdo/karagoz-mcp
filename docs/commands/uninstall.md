@@ -44,7 +44,7 @@ Runs `simctl uninstall`.
 {"device":"2EC769C1-2EF2-47EB-A441-E6843968F039","package":"dev.karagoz.probe"}
 ```
 
-- A system app is refused before anything is sent, since a simulator can lose it until it is erased:
+- karagoz refuses a system app before sending anything, since a simulator can lose it until it is erased:
 
   ```json
   {"error":{"code":"UNINSTALL_FAILED","message":"'com.apple.Preferences' is a system app; a simulator does not remove system apps","reason":"SYSTEM_APP"}}
@@ -62,6 +62,6 @@ Runs `devicectl device uninstall app`.
 {"device":"XXXXXXXX-XXXXXXXXXXXXXXXX","package":"dev.karagoz.probe"}
 ```
 
-- A system app, one not installed under the phone's `/private/var/containers/Bundle/Application/` such as Settings, is refused before anything is sent: `UNINSTALL_FAILED`, `reason` `SYSTEM_APP`, `'com.apple.Preferences' is a system app; an iPhone does not remove system apps`.
+- karagoz refuses a system app, one not installed under the phone's `/private/var/containers/Bundle/Application/` such as Settings, before sending anything. It returns `UNINSTALL_FAILED`, `reason` `SYSTEM_APP`, `'com.apple.Preferences' is a system app; an iPhone does not remove system apps`.
 - `APP_NOT_FOUND` when it is not installed: devicectl reports success for a missing app, so karagoz checks first. A refusal is `UNINSTALL_FAILED` with the phone's `<domain>:<code>` as `reason`.
 - A running app, also one stopped in a debugger, is killed and removed. A locked iPhone removes too. Took about 0.55 s.
