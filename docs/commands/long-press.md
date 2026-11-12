@@ -6,7 +6,7 @@ karagoz long-press --text <label> [--timeout <ms>] [--duration <ms>] [--device <
 karagoz long-press --id <resource-id> [--timeout <ms>] [--duration <ms>] [--device <id>]
 ```
 
-Presses a point and holds it, or finds one node in the [tree](ui-tree.md) and holds its center. Give exactly one of `<x> <y>`, `--text` or `--id`; nodes are found as in [`tap`](tap.md).
+Presses a point and holds it, or finds one node in the [tree](ui-tree.md) and holds its center. Give exactly one of `<x> <y>`, `--text` or `--id`. It finds a node as [`tap`](tap.md) does.
 
 | Option | Default | Meaning |
 | --- | --- | --- |
@@ -40,7 +40,7 @@ With `--text` or `--id`, an `element` field follows `duration`.
 
 **Notes**
 
-- The press is sent as a swipe that does not move. View and Compose use the device's long-press setting (`settings get secure long_press_timeout`; 400 ms on stock Android, Samsung offers 300 to 1500 ms), Flutter 500 ms. The 1000 ms default covers all of them but Samsung's 1500 ms setting, which needs `--duration`.
+- karagoz sends the press as a swipe that does not move. View and Compose use the device's long-press setting (`settings get secure long_press_timeout`): 400 ms on stock Android, while Samsung offers 300 to 1500 ms. Flutter uses 500 ms. The 1000 ms default covers all of them but Samsung's 1500 ms setting, which needs `--duration`.
 - Exit `0` means Android accepted the event, not that the app reacted to it. Read the tree again to check.
 
 ## On an iOS simulator
