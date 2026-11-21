@@ -86,7 +86,11 @@ export function doctorText({ adb, xcode }: Report) {
 export function devicesText(listing: Listing) {
   const { devices } = listing;
   const rows = devices.map((device) => [
-    device.name ?? '(no name)',
+    'deviceName' in device && device.deviceName
+      ? device.name
+        ? `${device.name} (${device.deviceName})`
+        : device.deviceName
+      : (device.name ?? '(no name)'),
     device.id,
     device.kind,
     device.platform === 'android'

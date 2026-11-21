@@ -34,16 +34,17 @@ async function attempt<T>(platform: Platform, list: () => Promise<T[]>): Promise
 }
 
 // Every platform's listing, Android first: listAll() and find() fall back to Android's error.
-function listPlatforms<T>(android: () => Promise<T[]>) {
+function listPlatforms<T>(android: () => Promise<T[]>, named = false) {
   return Promise.all([
     attempt<T | Ios>('android', android),
-    ...(IS_MAC ? [attempt<T | Ios>('ios', listSimulators), attempt<T | Ios>('ios', listPhones)] : []),
+    ...(IS_MAC ? [attempt<T | Ios>('ios', listSimulators), attempt<T | Ios>('ios', () => listPhones(named))] : []),
   ]);
 }
 
-// When every platform tried fails, Android's error is the envelope, as before 3.1.
-export async function listAll() {
-  const listings = await listPlatforms(listDevices);
+// When every platform tried fails, Android's error is the envelope, as before 3.1. named adds phones' owner-set
+// names for the terminal text; the JSON and the MCP server never ask for them.
+export async function listAll(named = false) {
+  const listings = await listPlatforms(() => listDevices(named), named);
   const failed = listings.flatMap((listing) => ('error' in listing ? [listing] : []));
   const [first] = failed;
   if (first && failed.length === listings.length) throw first.error;

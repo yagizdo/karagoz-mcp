@@ -86,7 +86,7 @@ function wait(timeout: string | undefined): number {
 }
 
 export const commands: Record<string, Command> = {
-  devices: { options: {}, args: [], run: () => listAll(), text: async () => devicesText(await listAll()) },
+  devices: { options: {}, args: [], run: () => listAll(), text: async () => devicesText(await listAll(true)) },
   screenshot: {
     options: { device: { type: 'string' }, out: { type: 'string' } },
     args: [],
