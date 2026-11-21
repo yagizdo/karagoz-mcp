@@ -203,6 +203,17 @@ export async function readTree(id: string): Promise<{ rotation: number; root: Ui
   return { rotation: result.rotation, root: result.root };
 }
 
+// The tree right after an action. A dump that starts during a window transition finds no window: right after a tap that
+// opened a Settings page, 2 of 6 reads 1 s later still failed (K73). One more read, never more.
+export async function readAfterAction(id: string): Promise<{ rotation: number; root: UiNode }> {
+  try {
+    return await readTree(id);
+  } catch (err) {
+    if (!(err instanceof KaragozError) || !err.message.endsWith(NULL_ROOT)) throw err;
+    return readTree(id);
+  }
+}
+
 // What keeps a node in the compact tree besides text, contentDesc or hint (K54).
 const ACTIONS = ['clickable', 'longClickable', 'scrollable', 'checkable', 'password'];
 const EDITABLE = /(EditText|AutoCompleteTextView)$/;

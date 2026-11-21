@@ -3,6 +3,7 @@
 # bad arguments fail with the JSON envelope before any device call. Text beyond ASCII is pasted by karagoz's helper: it
 # reads back exactly, the clip copied before it is back afterwards, and the helper's file is gone from /data/local/tmp.
 # double-tap through the same helper selects a word: the selection toolbar is a window of its own.
+# tap --tree returns the screen the tap opened; a read that fails after the tap keeps exit 0 and the tap's result.
 # A fake adb covers what a live screen cannot produce.
 # Precondition: an emulator is running with state device, its screen on and unlocked, on the image the 1.1-1.3 smokes
 # use (stock launcher and Settings). Only HOME and BACK are sent; nothing changes a setting, installs or rotates
@@ -237,8 +238,11 @@ want="{\"device\":\"$id\",\"x1\":540,\"y1\":800,\"x2\":540,\"y2\":1800,\"duratio
 
 # 9. Element taps: by text, by id suffix, and a missing label with and without --timeout.
 settings_top
-out=$(node dist/cli.js tap --text 'Search Settings' --device "$id") || { echo "FAIL: tap --text exited non-zero: $out"; exit 1; }
+# --tree: the tree in the result is the search, which opens in another app.
+out=$(node dist/cli.js tap --text 'Search Settings' --tree --device "$id") || { echo "FAIL: tap --text exited non-zero: $out"; exit 1; }
 [ "$(printf '%s' "$out" | field element.text)" = 'Search Settings' ] || { echo "FAIL: tap --text tapped another node: $out"; exit 1; }
+[ "$(printf '%s' "$out" | field tree.root.package)" = com.google.android.settings.intelligence ] \
+  || { echo "FAIL: tap --text --tree: the tree is not the search: $(printf '%s' "$out" | cut -c1-300)"; exit 1; }
 printf '%s' "$out" | node -e '
   const { x, y, element: { bounds: [l, t, r, b] } } = JSON.parse(require("fs").readFileSync(0, "utf8"));
   process.exit(x === (l + r) / 2 && y === (t + b) / 2 ? 0 : 1);
@@ -474,9 +478,21 @@ if fake_run "$tmp/ime-hidden" tap --text Save --timeout 1000; then echo "FAIL: f
 error_is r ELEMENT_NOT_FOUND "no node with text or contentDesc 'Save' in com.example (" prefix
 case $(printf '%s' "$got" | message_of) in *' ('[0-9]*' reads in '[0-9]*.[0-9]' s)') ;; *) echo "FAIL: fixture r: $got"; exit 1 ;; esac
 
+# s. --tree adds the compact tree after the tap. A read that fails after it keeps exit 0 and the result, with
+# treeError: an error envelope would make an agent tap a second time.
+dump '<node class="android.widget.Button" text="Save" clickable="true" bounds="[0,211][1080,337]" />'
+fake_run "$tmp/ime-hidden" tap 10 10 --tree || { echo "FAIL: fixture s exited non-zero: $got"; exit 1; }
+[ "$got" = '{"device":"emulator-5554","x":10,"y":10,"tree":{"rotation":0,"root":{"class":"FrameLayout","package":"com.example","bounds":[0,0,1080,2400],"children":[{"class":"Button","text":"Save","clickable":true,"bounds":[0,211,1080,337]}]}}}' ] \
+  || { echo "FAIL: fixture s printed $got"; exit 1; }
+printf '%s' 'ERROR: could not get idle state.' > "$fake/dump"
+fake_run "$tmp/ime-hidden" tap 10 10 --tree || { echo "FAIL: fixture s with a failed read exited non-zero: $got"; exit 1; }
+[ "$(printf '%s' "$got" | field treeError.code)" = CAPTURE_FAILED ] && [ "$(printf '%s' "$got" | field x)" = 10 ] \
+  || { echo "FAIL: fixture s: expected the tap result with treeError CAPTURE_FAILED, got: $got"; exit 1; }
+input_is s "-s emulator-5554 shell input 'tap' '10' '10'"
+
 # m. A control character fails before any adb call past the device lookup.
 if fake_run "$tmp/ime-hidden" text "$(printf 'a\001b\177')"; then echo "FAIL: fixture m exited 0: $got"; exit 1; fi
 error_is m TEXT_UNSUPPORTED "cannot type 'U+0001', 'U+007F' on Android: control characters other than newline and tab; nothing was typed"
 input_is m ''
 
-echo "ok: $id, key 3, long press popup, tap into search, text 13 chars, pasted text and clip back, double tap selection, swipe moved, element taps, direction marks, input blocked, helper calls, double-tap helper"
+echo "ok: $id, key 3, long press popup, tap into search, text 13 chars, pasted text and clip back, double tap selection, swipe moved, element taps, tree after a tap, direction marks, input blocked, helper calls, double-tap helper"

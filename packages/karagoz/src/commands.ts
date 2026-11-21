@@ -98,9 +98,9 @@ export const commands: Record<string, Command> = {
     run: ({ device, detail }) => uiTree(device, detail),
   },
   key: {
-    options: { device: { type: 'string' } },
+    options: { device: { type: 'string' }, tree: { type: 'boolean' } },
     args: ['key'],
-    run: ({ device }, [value = '']) => key(device, value),
+    run: ({ device, tree }, [value = '']) => key(device, value, tree === 'true'),
   },
   tap: {
     options: {
@@ -108,10 +108,12 @@ export const commands: Record<string, Command> = {
       text: { type: 'string' },
       id: { type: 'string' },
       timeout: { type: 'string' },
+      tree: { type: 'boolean' },
     },
     args: ['x', 'y'],
     argsOptional: true,
-    run: (values, args) => tap(values.device, target('tap', values, args), undefined, wait(values.timeout)),
+    run: (values, args) =>
+      tap(values.device, target('tap', values, args), undefined, wait(values.timeout), values.tree === 'true'),
   },
   'long-press': {
     options: {
@@ -120,6 +122,7 @@ export const commands: Record<string, Command> = {
       text: { type: 'string' },
       id: { type: 'string' },
       timeout: { type: 'string' },
+      tree: { type: 'boolean' },
     },
     args: ['x', 'y'],
     argsOptional: true,
@@ -129,6 +132,7 @@ export const commands: Record<string, Command> = {
         target('long-press', values, args),
         values.duration === undefined ? LONG_PRESS_MS : integer('--duration', values.duration),
         wait(values.timeout),
+        values.tree === 'true',
       ),
   },
   'double-tap': {
@@ -137,15 +141,17 @@ export const commands: Record<string, Command> = {
       text: { type: 'string' },
       id: { type: 'string' },
       timeout: { type: 'string' },
+      tree: { type: 'boolean' },
     },
     args: ['x', 'y'],
     argsOptional: true,
-    run: (values, args) => doubleTap(values.device, target('double-tap', values, args), wait(values.timeout)),
+    run: (values, args) =>
+      doubleTap(values.device, target('double-tap', values, args), wait(values.timeout), values.tree === 'true'),
   },
   swipe: {
-    options: { device: { type: 'string' }, duration: { type: 'string' } },
+    options: { device: { type: 'string' }, duration: { type: 'string' }, tree: { type: 'boolean' } },
     args: ['x1', 'y1', 'x2', 'y2'],
-    run: ({ device, duration }, [x1, y1, x2, y2]) =>
+    run: ({ device, duration, tree }, [x1, y1, x2, y2]) =>
       swipe(
         device,
         decimal('<x1>', x1),
@@ -153,15 +159,16 @@ export const commands: Record<string, Command> = {
         decimal('<x2>', x2),
         decimal('<y2>', y2),
         duration === undefined ? undefined : integer('--duration', duration),
+        tree === 'true',
       ),
   },
   text: {
-    options: { device: { type: 'string' } },
+    options: { device: { type: 'string' }, tree: { type: 'boolean' } },
     args: ['text'],
     // A text that starts with - goes after --, where parseArgs stops reading options: karagoz text -- -5.
-    run: ({ device }, [value]) => {
+    run: ({ device, tree }, [value]) => {
       if (!value) throw new KaragozError('INVALID_ARGS', "'text' needs <text>");
-      return text(device, value);
+      return text(device, value, tree === 'true');
     },
   },
   install: {

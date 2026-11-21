@@ -7,9 +7,14 @@ import { cancellation } from './cancellation.js';
 import { KaragozError } from './errors.js';
 
 const INSTRUCTIONS =
-  'karagoz drives Android emulators and phones, and iOS simulators and iPhones on macOS. To see the screen, call ui_tree first: node bounds are the pixels tap and swipe take; take a screenshot only when you need the image. Pass device only when more than one device is connected. Each result is one JSON object; on failure, branch on error.code. If adb or Xcode is missing, old or broken, call doctor.';
+  'karagoz drives Android emulators and phones, and iOS simulators and iPhones on macOS. To see the screen, call ui_tree first: node bounds are the pixels tap and swipe take; take a screenshot only when you need the image. After that, an action with tree returns the next screen too. Pass device only when more than one device is connected. Each result is one JSON object; on failure, branch on error.code. If adb or Xcode is missing, old or broken, call doctor.';
 
 const device = { type: 'string', description: 'Id or name.' };
+const tree = {
+  type: 'boolean',
+  description:
+    'Also return the screen once it settles, as ui_tree does. treeError means only that read failed; the action ran.',
+};
 
 const TOOLS: Tool[] = [
   {
@@ -65,6 +70,7 @@ const TOOLS: Tool[] = [
           description:
             'With text or id: ms to keep reading the tree until the node appears; the call can run up to 6 s longer.',
         },
+        tree,
         device,
       },
     },
@@ -88,6 +94,7 @@ const TOOLS: Tool[] = [
           description:
             'With text or id: ms to keep reading the tree until the node appears; the call can run up to 6 s longer.',
         },
+        tree,
         device,
       },
     },
@@ -110,6 +117,7 @@ const TOOLS: Tool[] = [
           description:
             'With text or id: ms to keep reading the tree until the node appears; the call can run up to 6 s longer.',
         },
+        tree,
         device,
       },
     },
@@ -127,6 +135,7 @@ const TOOLS: Tool[] = [
         x2: { type: 'number' },
         y2: { type: 'number' },
         duration: { type: 'integer', description: 'ms from start to end. Default 300.' },
+        tree,
         device,
       },
       required: ['x1', 'y1', 'x2', 'y2'],
@@ -138,7 +147,7 @@ const TOOLS: Tool[] = [
     title: 'Type text',
     description:
       'Type into the focused field. Any text; on Android, text beyond ASCII is pasted through the clipboard and the old clip put back. An iPhone needs install_runner once.',
-    inputSchema: { type: 'object', properties: { text: { type: 'string' }, device }, required: ['text'] },
+    inputSchema: { type: 'object', properties: { text: { type: 'string' }, tree, device }, required: ['text'] },
     annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
   },
   {
@@ -153,6 +162,7 @@ const TOOLS: Tool[] = [
           description:
             'KeyEvent name (HOME, BACK, KEYCODE_7) or code 1-340; "7" is code 7 (KEYCODE_0), not the digit. iOS takes HOME, POWER, VOLUME_UP/DOWN and keyboard keys; an iPhone only keys that type a character, and needs install_runner once.',
         },
+        tree,
         device,
       },
       required: ['key'],

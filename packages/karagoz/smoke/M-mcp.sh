@@ -2,7 +2,7 @@
 # Step M: `karagoz mcp` serves the 18 commands as MCP tools over stdio. The CLI lists mcp and checks its arguments;
 # the bundle holds no HTTP transport or bearer-auth code and reaches the server chunk only through import(); both
 # supported protocol versions are echoed; tools/list carries the 18 tools, their annotations and flat schemas within
-# 9,600 characters, and each tool's properties are its command's arguments and options; every result and error is the CLI's JSON line; key HOME, ui_tree in both details and an inline
+# 10,500 characters, and each tool's properties are its command's arguments and options; every result and error is the CLI's JSON line; key HOME, ui_tree in both details and an inline
 # screenshot work on the emulator; a cancelled call, stdin close, SIGTERM and SIGINT kill the call's adb child at once and the server
 # keeps serving after a cancel; a cancelled logs call kills its streaming simctl; UiAutomation reads on one device take turns and a cancelled waiting read never runs;
 # a cached adb that vanishes is looked up again, stays in use when an earlier candidate reappears, and is the one
@@ -98,6 +98,7 @@ case "$*" in
     else echo 'ERROR: another dump is running'; fi ;;
   *'shell dumpsys accessibility') echo '    Ui Automation[id=0, flags=0]' ;;
   *'shell getprop ro.build.version.release; getprop ro.build.version.sdk') printf '15\n35\n' ;;
+  *"shell input 'tap' "*) ;;
   *) echo "fake adb: unexpected arguments: $*" >&2; exit 1 ;;
 esac
 FAKE
@@ -229,7 +230,8 @@ for (const [i, version] of versions.entries()) {
   if (JSON.stringify(init.serverInfo) !== JSON.stringify({ name: 'karagoz', version: pkg.version })) {
     fail(`handshake ${version}: serverInfo ${JSON.stringify(init.serverInfo)}`);
   }
-  if (typeof init.instructions !== 'string' || init.instructions.length > 400) {
+  // 460 since the tree sentence joined it (459 then, 398 before).
+  if (typeof init.instructions !== 'string' || init.instructions.length > 460) {
     fail(`handshake ${version}: instructions ${JSON.stringify(init.instructions)}`);
   }
 }
@@ -274,8 +276,8 @@ const unserved = Object.keys(commands).filter((key) => !list.tools.some(({ name 
 if (unserved.length) fail(`list: no tool for ${unserved.join(', ')}`);
 const detail = list.tools.find((tool) => tool.name === 'ui_tree')?.inputSchema.properties.detail;
 if (detail?.type !== 'string' || JSON.stringify(detail.enum) !== '["compact","full"]') fail(`list: ui_tree detail ${JSON.stringify(detail)}`);
-// 9,600 since open_url joined the tools (9,548 then).
-if (JSON.stringify(list).length > 9600) fail(`list: ${JSON.stringify(list).length} characters, over 9600`);
+// 10,500 since six input tools took tree (10,471 then; 9,600 since open_url joined, 9,548 then).
+if (JSON.stringify(list).length > 10500) fail(`list: ${JSON.stringify(list).length} characters, over 10500`);
 
 // Parity. Fails unless the call fails with exactly the envelope want, and the server logged its message.
 async function refuses(tool, args, want) {
@@ -312,6 +314,7 @@ await refuses('ui_tree', { device: 'karagoz-none' }, cli('ui-tree', '--device', 
 await refuses('ui_tree', { detail: 'bogus' }, cli('ui-tree', '--detail', 'bogus'));
 await refuses('devices', { foo: 1 }, `{"error":{"code":"INVALID_ARGS","message":"'devices' does not take the option '--foo'"}}`);
 await refuses('screenshot', { inline: 'yes' }, `{"error":{"code":"INVALID_ARGS","message":"inline must be true or false (got 'yes')"}}`);
+await refuses('tap', { x: 1, y: 2, tree: 'yes' }, `{"error":{"code":"INVALID_ARGS","message":"option '--tree' is true or false (got 'yes')"}}`);
 for (const name of ['nope', 'ui-tree']) {
   const res = await main.call(name, {});
   if (res.error?.code !== -32602 || 'result' in res) fail(`parity: tool ${name}: expected a -32602 error, got ${JSON.stringify(res)}`);
@@ -356,6 +359,17 @@ const listed = await faked.call('devices', {});
 if (text(listed) !== '{"devices":[{"id":"fake-1","platform":"android","kind":"physical","state":"device","name":null,"os":"15","api":35}]}') {
   fail(`cancel: devices after the cancel: ${JSON.stringify(listed)}`);
 }
+
+// tree: the MCP result is the CLI's line, tree false is no tree at all.
+const fakeCli = (...args) =>
+  spawnSync(process.execPath, ['dist/cli.js', ...args], { encoding: 'utf8', env: fake() }).stdout.replace(/\n$/, '');
+const treed = text(await faked.call('tap', { x: 1, y: 2, tree: true, device: 'fake-1' }));
+if (!treed.includes('"tree":{"rotation":0,"root":') || treed !== fakeCli('tap', '1', '2', '--tree', '--device', 'fake-1')) {
+  fail(`tree: MCP ${treed}, CLI ${fakeCli('tap', '1', '2', '--tree', '--device', 'fake-1')}`);
+}
+const untreed = text(await faked.call('tap', { x: 1, y: 2, tree: false, device: 'fake-1' }));
+if (untreed !== '{"device":"fake-1","x":1,"y":2}') fail(`tree: tree false printed ${untreed}`);
+rmSync(`${tmp}/fake/dumps`);
 
 // Cancel, fake simctl: the iOS listing's simctl dies with the call too, and nothing answers it.
 const simctlHang = `${tmp}/fake/simctl-hang`;
@@ -490,4 +504,4 @@ process.exit(0);
 JS
 node "$tmp/m.mjs" "$id" "$tmp" || exit 1
 
-echo "ok: $id, cli, bundle, handshake, list, parity, live, cancel, exit, queue, re-lookup"
+echo "ok: $id, cli, bundle, handshake, list, parity, live, tree, cancel, exit, queue, re-lookup"
