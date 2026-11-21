@@ -51,7 +51,7 @@ On iOS the PNG is exactly what simctl or devicectl wrote; karagoz does not rotat
 
 **File location**
 
-- Without `--out`: `<temp dir>/karagoz/<device id>-<UTC timestamp>.png`, where the device id is a UDID on iOS, for example `/var/folders/.../T/karagoz/emulator-5554-20260926T101530123Z.png`. The temp directory follows `TMPDIR`. The `karagoz` directory is created private to your user (mode 0700) and must be a real directory you own; the file is created with mode 0600 and never overwrites. Characters other than letters, digits, `.`, `_` and `-` in the device id become `_`.
+- Without `--out`: `<temp dir>/karagoz/<device id>-<UTC timestamp>.png`, where the device id is a UDID on iOS, for example `/var/folders/.../T/karagoz/emulator-5554-20260926T101530123Z.png`. The temp directory follows `TMPDIR`. The `karagoz` directory is created private to your user (mode 0700) and must be a real directory you own; the file is created with mode 0600 and never overwrites. When another capture of the same device already took that name in the same millisecond, the file gets `-1` before `.png`, then `-2`, and so on. Characters other than letters, digits, `.`, `_` and `-` in the device id become `_`.
 - With `--out`: the path must end in `.png`, in any case, or the command fails with `INVALID_ARGS` before any device call. Relative paths resolve against the current directory, missing parent directories are created, and an existing `.png` is overwritten.
 - karagoz never deletes screenshots. One 1080x2400 capture is about 1.4 MB; one 1206x2622 simulator capture about 2.9 MB; one 1290x2796 iPhone capture 1 to 5 MB, depending on what is on screen.
 
