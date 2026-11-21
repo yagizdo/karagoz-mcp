@@ -8,7 +8,7 @@ How to register `karagoz mcp` with each client, and what its tools take, return 
 
 Every example runs the published package with `npx`. From a clone, use `node /abs/path/karagoz-mcp/packages/karagoz/dist/cli.js mcp` instead.
 
-Claude Code, Codex and the Claude Desktop extension were run against this server. The Claude Desktop config file, Cursor and VS Code entries follow their documentation and were not run.
+Claude Code, Codex, Cursor and the Claude Desktop extension were run against this server. The Claude Desktop config file and VS Code entries follow their documentation and were not run.
 
 **Claude Code**
 

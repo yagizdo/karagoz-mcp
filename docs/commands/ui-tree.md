@@ -68,7 +68,7 @@ What the tree covers is what uiautomator covers: the focused window, and nodes v
 **Errors**
 
 - `CAPTURE_FAILED`, with the reason in the message:
-  - the screen kept changing for uiautomator's 10 s idle wait (an animation or live content);
+  - the screen kept changing for uiautomator's 10 s idle wait (an animation or live content); the message ends with uiautomator's own `ERROR: could not get idle state.`;
   - no focused window (the screen is off, an app is still starting, or the app is in a work profile or Secure Folder, which adb cannot read);
   - uiautomator was killed (the message names `adb -s <id> logcat -b crash`); a lone UTF-16 surrogate in on-screen text does this;
   - the output could not be parsed.
@@ -76,9 +76,17 @@ What the tree covers is what uiautomator covers: the focused window, and nodes v
 - `ADB_TIMEOUT` after 20 s.
 - Plus the [device selection](../device-selection.md) errors, `INVALID_ARGS` (also for `--detail` other than `compact` or `full`) and the adb errors.
 
+**A screen that keeps changing.** On a running stopwatch, `ui-tree` failed with:
+
+```json
+{"error":{"code":"CAPTURE_FAILED","message":"the screen did not go idle within uiautomator's 10 s wait (an animation or live content kept changing it); uiautomator: ERROR: could not get idle state."}}
+```
+
+`adb shell uiautomator dump` printed the same `ERROR: could not get idle state.` there, and exited 0. `--text` and `--id` read the tree first, so a tap by text or id fails the same way and taps nothing. [`screenshot`](screenshot.md) and a tap by coordinates do not read the tree, and both worked. karagoz does not retry this failure and has no option for the wait. Stop what is changing, then read again: after a tap on the Stop button by its coordinates, the next read returned the tree.
+
 **Notes**
 
-- On Android one read takes 2.4 to 3.3 s; a screen with a fresh WebView about 5.3 s. The idle failure arrives after about 12 s.
+- On Android one read takes 2.4 to 3.3 s; a screen with a fresh WebView about 5.3 s. The idle failure arrives after 12 to 17 s.
 - Output size on the screens measured: compact about 800 to 2,300 tokens, full about 2,900 to 5,400.
 - While a read runs, accessibility services such as TalkBack are unbound, and apps see accessibility as enabled. A service that requests the accessibility button is taken off the button and shortcut and stays off; add it back in the accessibility settings.
 
