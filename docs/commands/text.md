@@ -30,6 +30,12 @@ Types into whatever has focus.
 
 Text with any other character, such as `ğ` or an emoji, is pasted instead, all of it. karagoz copies a small helper of its own to `/data/local/tmp`, runs it, and deletes it when the call ends. The helper puts the text on the device clipboard, presses Ctrl+V, and puts the previous clip back. Newlines and tabs in it are still sent as Enter and Tab.
 
+```json
+{"device":"emulator-5554","text":"aği 😀 中"}
+```
+
+Android's own `adb shell input text` does not type these characters. On Android 17 it typed nothing, not even ASCII letters next to them, and exited 255 with `java.lang.NullPointerException: Attempt to get length of null array`.
+
 Control characters other than newline and tab fail before anything is typed:
 
 ```json
@@ -48,6 +54,7 @@ Quotes, spaces and `%s` are typed as they are; karagoz handles the escaping.
 
 **Notes**
 
+- With no focused field the call still exits `0` and prints the same output as a call that typed. karagoz does not check that a field took the text.
 - Characters typed right after a field appears can be lost. Waiting about 2 s after the field shows up fixed it in testing.
 - 100 characters take about 0.9 s. Pasted text takes about 3 s, whatever its length.
 - Android 12 and newer show "<app> pasted from your clipboard" after a paste.
