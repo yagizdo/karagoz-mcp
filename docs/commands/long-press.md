@@ -39,7 +39,7 @@ With `--text` or `--id`, an `element` field follows `duration`; with `--tree`, `
 **Errors**
 
 - `INVALID_ARGS`: no target or more than one (`'long-press' takes <x> <y>, --text or --id`), a single coordinate (`'long-press' needs <x> <y>`), `--timeout` with a point, or a malformed number.
-- The rest as [`tap`](tap.md): `ELEMENT_NOT_FOUND`, `ELEMENT_AMBIGUOUS`, `ELEMENT_COVERED`, the `ui-tree` errors for node presses, and those of the target.
+- The rest as [`tap`](tap.md): `ELEMENT_NOT_FOUND`, `ELEMENT_AMBIGUOUS`, `ELEMENT_COVERED`, `DEVICE_NOT_READY`, the `ui-tree` errors for node presses, and those of the target.
 
 **Notes**
 

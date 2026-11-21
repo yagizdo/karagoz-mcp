@@ -32,7 +32,7 @@ Moves one finger from `(x1, y1)` to `(x2, y2)`.
 
 **Duration matters.** A fast swipe flings a list and a slow one drags it. Measured on a 1200 px drag: 300 ms scrolled a further 1059 px after the finger lifted, 1000 ms scrolled 131 px further, 3000 ms 19 px.
 
-**Errors:** `INVALID_ARGS`, `INPUT_BLOCKED`, the [device selection](../device-selection.md) errors and the adb errors. On a simulator, `NOT_SUPPORTED`, `DEVICE_NOT_READY` and `HELPER_FAILED` as for [`tap`](tap.md#on-an-ios-simulator).
+**Errors:** `INVALID_ARGS`, `DEVICE_NOT_READY` when the screen is off (as for [`tap`](tap.md)), `INPUT_BLOCKED`, the [device selection](../device-selection.md) errors and the adb errors. On a simulator, `NOT_SUPPORTED`, `DEVICE_NOT_READY` and `HELPER_FAILED` as for [`tap`](tap.md#on-an-ios-simulator).
 
 On an iOS simulator the arguments and output are the same, with the same default duration:
 

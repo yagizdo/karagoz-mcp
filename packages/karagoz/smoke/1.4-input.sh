@@ -4,9 +4,10 @@
 # reads back exactly, the clip copied before it is back afterwards, and the helper's file is gone from /data/local/tmp.
 # double-tap through the same helper selects a word: the selection toolbar is a window of its own.
 # tap --tree returns the screen the tap opened; a read that fails after the tap keeps exit 0 and the tap's result.
+# With the screen off every input but the screen keys fails with DEVICE_NOT_READY, and nothing is sent.
 # A fake adb covers what a live screen cannot produce.
 # Precondition: an emulator is running with state device, its screen on and unlocked, on the image the 1.1-1.3 smokes
-# use (stock launcher and Settings). Only HOME and BACK are sent; nothing changes a setting, installs or rotates
+# use (stock launcher and Settings). Only HOME, BACK, SLEEP and WAKEUP are sent, and the screen is woken again; nothing changes a setting, installs or rotates
 # anything, and the adb server on the default port is never touched. The run leaves karagoz-clip on the clipboard.
 set -e
 cd "$(dirname "$0")/.."
@@ -15,7 +16,7 @@ npm run --silent build
 tmp=$(mktemp -d)
 id=
 # set +e: errexit stays on inside the trap, and a failing adb call would skip the rest.
-trap 'set +e; if [ -n "$id" ]; then adb -s "$id" shell input keyevent HOME; adb -s "$id" shell am force-stop com.android.settings; adb -s "$id" shell am force-stop com.google.android.settings.intelligence; fi >/dev/null 2>&1; rm -rf "$tmp"' EXIT
+trap 'set +e; if [ -n "$id" ]; then adb -s "$id" shell input keyevent WAKEUP; adb -s "$id" shell input keyevent HOME; adb -s "$id" shell am force-stop com.android.settings; adb -s "$id" shell am force-stop com.google.android.settings.intelligence; fi >/dev/null 2>&1; rm -rf "$tmp"' EXIT
 # Prints .error.code, or not-json. The envelope must be exactly one line (K5).
 code_of() { node -e '
   const out = require("fs").readFileSync(0, "utf8").trimEnd();
@@ -260,6 +261,31 @@ refuses ELEMENT_NOT_FOUND '' tap --text karagoz-no-such-label --timeout 3000 --d
 reads=$(printf '%s' "$got" | message_of | sed -n 's/.*(\([0-9]*\) reads in .*/\1/p')
 [ "${reads:-0}" -ge 2 ] || { echo "FAIL: --timeout 3000 read fewer than 2 times: $got"; exit 1; }
 
+# 9b. A sleeping screen: every input fails before it is sent, except the keys that sleep and wake it.
+# Polls dumpsys power until mWakefulness is $1, for up to 5 s.
+wakefulness() {
+  end=$(($(date +%s) + 5))
+  until [ "$(adb -s "$id" shell dumpsys power | sed -n 's/^  mWakefulness=\([A-Za-z]*\)\r*$/\1/p')" = "$1" ]; do
+    [ "$(date +%s)" -lt "$end" ] || { echo "FAIL: the screen did not reach $1 within 5 s"; exit 1; }
+    sleep 0.2
+  done
+}
+adb -s "$id" shell input keyevent SLEEP
+wakefulness Asleep
+off="the screen of $id is off (Asleep); wake it with karagoz key WAKEUP, then try again"
+refuses DEVICE_NOT_READY "$off" tap 540 1200 --device "$id"
+refuses DEVICE_NOT_READY "$off" long-press 540 1200 --device "$id"
+refuses DEVICE_NOT_READY "$off" double-tap 540 1200 --device "$id"
+refuses DEVICE_NOT_READY "$off" tap --text 'Search Settings' --device "$id"
+refuses DEVICE_NOT_READY "$off" swipe 540 1800 540 600 --device "$id"
+refuses DEVICE_NOT_READY "$off" text abc --device "$id"
+refuses DEVICE_NOT_READY "$off" text 'çğ' --device "$id"
+refuses DEVICE_NOT_READY "$off" key BACK --device "$id"
+out=$(node dist/cli.js key SLEEP --device "$id") || { echo "FAIL: key SLEEP on a sleeping screen exited non-zero: $out"; exit 1; }
+out=$(node dist/cli.js key WAKEUP --device "$id") || { echo "FAIL: key WAKEUP exited non-zero: $out"; exit 1; }
+[ "$out" = "{\"device\":\"$id\",\"key\":\"KEYCODE_WAKEUP\",\"code\":224}" ] || { echo "FAIL: key WAKEUP printed $out"; exit 1; }
+wakefulness Awake
+
 # 10. Against a fake adb. ANDROID_HOME makes $tmp/sdk/platform-tools/adb karagoz's first adb candidate.
 fake=$tmp/fake
 mkdir -p "$tmp/sdk/platform-tools" "$fake"
@@ -272,6 +298,7 @@ case "$*" in
   *'exec-out uiautomator dump /dev/tty') cat "$FAKE/dump" ;;
   *'shell dumpsys window -a InputMethod') cat "$FAKE/ime" ;;
   *'shell dumpsys accessibility') echo 'ACCESSIBILITY MANAGER (dumpsys accessibility)' ;;
+  *'shell dumpsys power') cat "$FAKE/power" ;;
   *"shell input 'text' 'FAIL"*) echo 'java.lang.NullPointerException: Attempt to get length of null array' >&2; exit 255 ;;
   *"shell input 'tap' '7' '7'")
     { echo; echo "Exception occurred while executing 'tap':"; echo 'java.lang.SecurityException: Injecting input events requires the caller (or the source of the instrumentation, if any) to have the INJECT_EVENTS permission.'; } >&2
@@ -289,6 +316,9 @@ case "$*" in
 esac
 FAKE
 chmod +x "$tmp/sdk/platform-tools/adb"
+# dumpsys power as API 37 prints it, with the per-group block's unindented raw value further down.
+printf 'POWER MANAGER (dumpsys power)\n\nPower Manager State:\n  mWakefulness=Awake\n  mWakefulnessChanging=false\n\nPower Group User Activity:\nmWakefulness=1\n' > "$fake/awake"
+cp "$fake/awake" "$fake/power"
 # A hidden keyboard as the device prints it with Settings in front: a stale region, and a visible window after it.
 cat > "$tmp/ime-hidden" <<'FAKE'
 WINDOW MANAGER WINDOWS (dumpsys window windows)
@@ -495,4 +525,17 @@ if fake_run "$tmp/ime-hidden" text "$(printf 'a\001b\177')"; then echo "FAIL: fi
 error_is m TEXT_UNSUPPORTED "cannot type 'U+0001', 'U+007F' on Android: control characters other than newline and tab; nothing was typed"
 input_is m ''
 
-echo "ok: $id, key 3, long press popup, tap into search, text 13 chars, pasted text and clip back, double tap selection, swipe moved, element taps, tree after a tap, direction marks, input blocked, helper calls, double-tap helper"
+# z. Dozing (always-on display) counts as off: refused, nothing sent. WAKEUP skips the read. A dump without the
+# line lets the tap through.
+sed 's/=Awake/=Dozing/' "$fake/awake" > "$fake/power"
+if fake_run "$tmp/ime-hidden" tap 10 10; then echo "FAIL: fixture z exited 0: $got"; exit 1; fi
+error_is z DEVICE_NOT_READY 'the screen of emulator-5554 is off (Dozing); wake it with karagoz key WAKEUP, then try again'
+input_is z ''
+fake_run "$tmp/ime-hidden" key WAKEUP || { echo "FAIL: fixture z key WAKEUP exited non-zero: $got"; exit 1; }
+input_is z "-s emulator-5554 shell input 'keyevent' '224'"
+printf 'POWER MANAGER (dumpsys power)\n' > "$fake/power"
+fake_run "$tmp/ime-hidden" tap 10 10 || { echo "FAIL: fixture z without the line exited non-zero: $got"; exit 1; }
+input_is z "-s emulator-5554 shell input 'tap' '10' '10'"
+cp "$fake/awake" "$fake/power"
+
+echo "ok: $id, key 3, long press popup, tap into search, text 13 chars, pasted text and clip back, double tap selection, swipe moved, element taps, tree after a tap, direction marks, input blocked, helper calls, double-tap helper, sleeping screen"

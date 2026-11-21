@@ -23,6 +23,7 @@ case "$*" in
   '-s FAKE0001 shell getprop'*) printf 'Pixel Fake\n\n\n\n\n\n' ;;
   '-s FAKE0001 shell settings get global device_name') printf 'Owner Phone\n' ;;
   "-s FAKE0001 shell input 'keyevent' '3'") ;;
+  '-s FAKE0001 shell dumpsys power') printf '  mWakefulness=Awake\n' ;;
   *) exit 1 ;;
 esac
 FAKE

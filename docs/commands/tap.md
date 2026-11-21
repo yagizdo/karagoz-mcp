@@ -72,6 +72,7 @@ With `--tree` (children cut short here):
 - `ELEMENT_AMBIGUOUS`: lists up to five matches with class and bounds.
 - `ELEMENT_COVERED`: the node is under the keyboard.
 - Node taps also get every [`ui-tree`](ui-tree.md) error. A point tap does not read the tree, so it works while another UiAutomation client is connected.
+- `DEVICE_NOT_READY`: the screen is off, or shows the always-on display or a screensaver. Nothing is sent. The message names the state and the way out: `the screen of emulator-5554 is off (Asleep); wake it with karagoz key WAKEUP, then try again`.
 - Plus `INPUT_BLOCKED`, the [device selection](../device-selection.md) errors and the adb errors.
 
 **Notes**

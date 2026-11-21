@@ -33,7 +33,7 @@ Each touch is held 50 ms, and the second starts 100 ms after the first lifts, on
 
 - `INVALID_ARGS`: no target or more than one (`'double-tap' takes <x> <y>, --text or --id`), a single coordinate (`'double-tap' needs <x> <y>`), `--timeout` with a point, or a malformed number.
 - `HELPER_FAILED`: the input helper failed on the device, with its error in the message.
-- The rest as [`tap`](tap.md): `ELEMENT_NOT_FOUND`, `ELEMENT_AMBIGUOUS`, `ELEMENT_COVERED`, `INPUT_BLOCKED`, the `ui-tree` errors for node taps, and those of the target.
+- The rest as [`tap`](tap.md): `ELEMENT_NOT_FOUND`, `ELEMENT_AMBIGUOUS`, `ELEMENT_COVERED`, `DEVICE_NOT_READY`, `INPUT_BLOCKED`, the `ui-tree` errors for node taps, and those of the target.
 
 **Notes**
 

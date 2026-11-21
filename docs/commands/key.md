@@ -30,6 +30,7 @@ With `--tree`, the [screen after the key](ui-tree.md#after-an-action) comes back
 **Errors**
 
 - `INVALID_ARGS`: `unknown key 'FOO'; use a KeyEvent name such as HOME, BACK or ENTER, or a code from 1 to 340`. Checked before any device call.
+- `DEVICE_NOT_READY`: the screen is off, as for [`tap`](tap.md). `WAKEUP`, `POWER` and `SLEEP` are sent anyway, so `key WAKEUP` turns the screen on.
 - Plus `INPUT_BLOCKED`, the [device selection](../device-selection.md) errors and the adb errors.
 
 **Notes**

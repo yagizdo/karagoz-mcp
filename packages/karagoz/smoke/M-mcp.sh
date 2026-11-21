@@ -99,6 +99,7 @@ case "$*" in
   *'shell dumpsys accessibility') echo '    Ui Automation[id=0, flags=0]' ;;
   *'shell getprop ro.build.version.release; getprop ro.build.version.sdk') printf '15\n35\n' ;;
   *"shell input 'tap' "*) ;;
+  *'shell dumpsys power') echo '  mWakefulness=Awake' ;;
   *) echo "fake adb: unexpected arguments: $*" >&2; exit 1 ;;
 esac
 FAKE

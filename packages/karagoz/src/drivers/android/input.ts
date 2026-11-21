@@ -41,6 +41,24 @@ const blocked = (err: unknown): err is KaragozError =>
   err.message.includes('SecurityException') &&
   err.message.includes('INJECT_EVENTS permission');
 
+// dumpsys power's own line on API 26-37; API 37 also prints unindented mWakefulness=<number> lines further down.
+const WAKEFULNESS = /^ {2}mWakefulness=([A-Za-z]+)\r?$/m;
+
+// The keys that wake the screen or put it to sleep, so an agent can always reach the screen: WAKEUP, SLEEP, POWER.
+const SCREEN_KEYS = new Set([224, 223, 26]);
+
+// Off the Awake state, taps are dropped with exit 0, and keys and typed text block until adb's timeout (measured on
+// API 37); while Dreaming the first tap only ends the screensaver (AOSP DreamService). A dump without the line is
+// let through: an OEM build that reworded it would otherwise lose all input.
+async function awake(id: string): Promise<void> {
+  const state = WAKEFULNESS.exec(await adb(['-s', id, 'shell', 'dumpsys', 'power']))?.[1];
+  if (state === undefined || state === 'Awake') return;
+  throw new KaragozError(
+    'DEVICE_NOT_READY',
+    `the screen of ${id} is off (${state}); wake it with karagoz key WAKEUP, then try again`,
+  );
+}
+
 // shell, not exec-out: exec-out drops the exit status, and input's 255 is the only failure it reports (K25).
 async function send(id: string, args: string[], timeout?: number): Promise<void> {
   try {
@@ -52,6 +70,7 @@ async function send(id: string, args: string[], timeout?: number): Promise<void>
 }
 
 export async function key(id: string, { name, code }: { name: string; code: number }) {
+  if (!SCREEN_KEYS.has(code)) await awake(id);
   // The code, not the name: the device matches names case-sensitively.
   await send(id, ['keyevent', String(code)]);
   return { device: id, key: `KEYCODE_${name}`, code };
@@ -141,6 +160,7 @@ async function locate(id: string, selector: Selector, timeout: number) {
 }
 
 export async function tap(id: string, target: Target, duration: number | undefined, timeout: number) {
+  await awake(id);
   if (target.kind === 'point') return press(id, target.x, target.y, duration);
   const { node, x, y } = await locate(id, target, timeout);
   const element = { ...node };
@@ -166,6 +186,7 @@ async function twice(id: string, x: number, y: number) {
 }
 
 export async function doubleTap(id: string, target: Target, timeout: number) {
+  await awake(id);
   if (target.kind === 'point') return twice(id, target.x, target.y);
   const { node, x, y } = await locate(id, target, timeout);
   const element = { ...node };
@@ -174,6 +195,7 @@ export async function doubleTap(id: string, target: Target, timeout: number) {
 }
 
 export async function swipe(id: string, x1: number, y1: number, x2: number, y2: number, duration = SWIPE_MS) {
+  await awake(id);
   await send(id, ['swipe', ...[x1, y1, x2, y2, duration].map(String)], TIMEOUT_MS + duration);
   return { device: id, x1, y1, x2, y2, duration };
 }
@@ -217,6 +239,7 @@ async function paste(id: string, value: string) {
 }
 
 export async function text(id: string, value: string) {
+  await awake(id);
   if (!TYPABLE.test(value)) return paste(id, value);
   let typed = 0;
   // input turns every %s into a space within one call, so a part ends at each % followed by s.

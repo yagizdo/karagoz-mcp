@@ -44,6 +44,7 @@ Quotes, spaces and `%s` are typed as they are; karagoz handles the escaping.
 - `TEXT_UNSUPPORTED`: see above.
 - `HELPER_FAILED`: the helper could not run on the device; the message has its error.
 - Long text is sent in pieces of up to 100 characters. If a piece fails, the error keeps its code and the message ends with `; <n> of <total> characters were typed before this`.
+- `DEVICE_NOT_READY`: the screen is off, as for [`tap`](tap.md). Nothing is typed.
 - Plus `INPUT_BLOCKED`, the [device selection](../device-selection.md) errors and the adb errors.
 
 **Notes**
