@@ -67,7 +67,7 @@ Early development. Every command runs on all four targets, except `install-runne
 - Node 22 or newer.
 - **Android:** `adb` from Android platform-tools, and a running emulator or a phone with USB debugging on.
 - **iOS simulator** (macOS): Xcode, opened once, and a booted simulator. `tap`, `long-press`, `double-tap`, `swipe`, `text` and `key` need Xcode 27 or newer, or a Mac that never had Xcode 27, where they go through karagoz's runner.
-- **iPhone** (macOS): Xcode 15 or newer (27 for `screenshot`), the iPhone paired with the Mac, and Developer Mode on. `ui-tree` and the input commands also need a USB cable, UI Automation on, and karagoz's runner, which [`install-runner`](https://github.com/yagizdo/karagoz-mcp/blob/main/docs/commands/install-runner.md) installs.
+- **iPhone** (macOS): Xcode 15 or newer (27 for `screenshot`) and the iPhone paired with the Mac. `screenshot`, `install`, `launch`, `open-url`, `terminate` and `uninstall` need Developer Mode on, and `logs` needs a USB cable. `ui-tree` and the input commands need both, plus UI Automation on and karagoz's runner, which [`install-runner`](https://github.com/yagizdo/karagoz-mcp/blob/main/docs/commands/install-runner.md) installs.
 
 [What each command needs, and how karagoz finds `adb` and Xcode](https://github.com/yagizdo/karagoz-mcp/blob/main/docs/requirements.md).
 
@@ -258,7 +258,7 @@ Nothing by itself, with one exception: on a Mac that never had Xcode 27, the fir
 <details>
 <summary>What does an iPhone need?</summary>
 
-A Mac with Xcode and the iPhone paired, with Developer Mode on. Reading the screen and input also need a USB cable, UI Automation on, and karagoz's runner, installed once with [`install-runner`](https://github.com/yagizdo/karagoz-mcp/blob/main/docs/commands/install-runner.md). A free Apple ID signs the runner for 7 days ([Known limitations](https://github.com/yagizdo/karagoz-mcp/blob/main/docs/known-limitations.md)).
+A Mac with Xcode and the iPhone paired. Screenshots and app commands such as `install` need Developer Mode on, and `logs` needs a USB cable. `ui-tree` and input need both, plus UI Automation on and karagoz's runner, installed once with [`install-runner`](https://github.com/yagizdo/karagoz-mcp/blob/main/docs/commands/install-runner.md). A free Apple ID signs the runner for 7 days ([Known limitations](https://github.com/yagizdo/karagoz-mcp/blob/main/docs/known-limitations.md)).
 
 </details>
 
