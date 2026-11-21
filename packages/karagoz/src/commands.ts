@@ -9,10 +9,10 @@ import { uiTree } from './ui-tree.js';
 import { listAll } from './devices.js';
 import { KaragozError, type ErrorCode } from './errors.js';
 
-// Every command option takes a value, so a command receives its options as strings. args names the positional
+// A command receives its options as strings, a boolean option as 'true' or 'false'. args names the positional
 // arguments a command takes, in order; run gets exactly that many, or none when argsOptional is set.
 export type Command = {
-  options: Record<string, { type: 'string' }>;
+  options: Record<string, { type: 'string' } | { type: 'boolean' }>;
   args: readonly string[];
   // tap, long-press and double-tap can name their target with --text or --id instead of <x> <y>.
   argsOptional?: true;
@@ -233,8 +233,15 @@ export function check(
   }
   const given: Record<string, string | undefined> = {};
   for (const [key, value] of Object.entries(values)) {
-    if (!Object.hasOwn(command.options, key)) {
-      throw new KaragozError('INVALID_ARGS', `'${name}' does not take the option '--${key}'`);
+    const option = Object.hasOwn(command.options, key) ? command.options[key] : undefined;
+    if (!option) throw new KaragozError('INVALID_ARGS', `'${name}' does not take the option '--${key}'`);
+    // The CLI's parseArgs gives a flag as true; the MCP server sends a JSON boolean as 'true' or 'false'.
+    if (option.type === 'boolean') {
+      if (value !== true && value !== 'true' && value !== 'false') {
+        throw new KaragozError('INVALID_ARGS', `option '--${key}' is true or false (got '${String(value)}')`);
+      }
+      given[key] = String(value);
+      continue;
     }
     // parseArgs rejects a missing value but accepts an empty one (--out=).
     if (typeof value !== 'string' || !value) {
