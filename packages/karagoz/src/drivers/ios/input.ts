@@ -436,8 +436,6 @@ async function typeText(udid: string, value: string) {
 }
 
 // The runner types into whatever has focus; with none, nothing is typed and the call still succeeds (K35, K42).
-// ponytail: no length check here; the runner refuses a request over 1 MiB, and the error does not say that was why.
-// Check the length here when a caller sends that much.
 export async function textPhone(udid: string, value: string) {
   return runnerText('iphone', udid, value);
 }

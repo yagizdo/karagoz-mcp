@@ -488,6 +488,11 @@ printf '<plist><dict><key>CFBundleShortVersionString</key><string>26.2</string><
 rcall "$tmp/rhome" text "çğş 😀" --device A1
 succeeds "runner text on Xcode 26.2" '{"device":"A1","text":"çğş 😀"}'
 [ "$(sent)" = '/text {"text":"çğş 😀","speed":120}' ] || fail "runner text sent: $(sent)"
+before=$(/usr/bin/wc -l < "$fake/inputs")
+rcall "$tmp/rhome" text "$(printf '%524180s' '' | /usr/bin/tr ' ' '"')" --device A1
+refuses INVALID_ARGS "runner text over 1 MiB"
+says "runner text over 1 MiB" "the text makes a request of 1048578 bytes, and karagoz's runner takes at most 1048576 bytes"
+[ "$(/usr/bin/wc -l < "$fake/inputs")" = "$before" ] || fail "a text over 1 MiB was sent: $(sent | /usr/bin/cut -c1-80)"
 rm "$tmp/version.plist"
 rcall "$tmp/rhome" key HOME --device A1
 succeeds "runner key HOME" '{"device":"A1","key":"KEYCODE_HOME","code":3}'

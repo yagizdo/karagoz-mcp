@@ -168,7 +168,12 @@ typed=$(printf 'çğ \360\237\230\200\n\tx')
 out=$(k text "$typed" --device P1) || fail "text exited non-zero: $out"
 is "text" "$out" '{"device":"P1","text":"çğ 😀\n\tx"}'
 is "text sent" "$(sent)" '/text {"text":"çğ 😀\n\tx","speed":120}'
+# The runner takes 1 MiB per request, head included: 524179 quotes, each 2 bytes in the JSON, fill it exactly.
+quotes() { printf "%$1s" '' | /usr/bin/tr ' ' '"'; }
+k text "$(quotes 524179)" --device P1 > /dev/null || fail "a text of exactly 1 MiB of request exited non-zero"
+is "1 MiB text sent" "$(sent | /usr/bin/wc -c | /usr/bin/tr -d ' ')" 1048388
 before=$(inputs)
+refuses "text over 1 MiB" INVALID_ARGS "the text makes a request of 1048578 bytes, and karagoz's runner takes at most 1048576 bytes (1 MiB) in one request; send the text in smaller parts" text "$(quotes 524180)" --device P1
 refuses "control character" TEXT_UNSUPPORTED "cannot type 'U+0001' on an iPhone" text "$(printf 'a\001')" --device P1
 for name in DPAD_UP F1 PAGE_DOWN SHIFT_LEFT; do refuses "key $name" INVALID_ARGS "'$name' has no iPhone key" key $name --device P1; done
 refuses "key BACK" INVALID_ARGS "swipe from the left edge" key BACK --device P1
