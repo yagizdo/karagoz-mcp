@@ -22,6 +22,7 @@ Device automation for mobile apps. One tool for four targets: Android emulator, 
 - [Why karagoz](#why-karagoz)
 - [Scope](#scope)
 - [Status](#status)
+- [Guides](#guides)
 - [Getting started](#getting-started)
 - [MCP server](#mcp-server)
 - [Things to ask your agent](#things-to-ask-your-agent)
@@ -57,6 +58,17 @@ karagoz is the primitive layer. Each command does one thing and exits.
 ## Status
 
 Early development. Every command runs on all four targets, except `install-runner`, which runs only on iPhones, and `uninstall-runner`, which runs on iPhones and on simulators of a Mac that never had Xcode 27. For Windows and Linux, see the [FAQ](#faq).
+
+---
+
+## Guides
+
+The website has a guide for each of these tasks:
+
+- [Let Claude Code control an Android emulator](https://karagozmcp.com/docs/guides/claude-code-android-emulator/?utm_source=github&utm_medium=readme)
+- [Read an Android screen as JSON and tap by text](https://karagozmcp.com/docs/guides/android-screen-json/?utm_source=github&utm_medium=readme)
+- [Drive an iOS simulator from the command line](https://karagozmcp.com/docs/guides/ios-simulator-command-line/?utm_source=github&utm_medium=readme)
+- [Let an AI agent drive a real iPhone](https://karagozmcp.com/docs/guides/ai-agent-iphone/?utm_source=github&utm_medium=readme)
 
 ---
 
