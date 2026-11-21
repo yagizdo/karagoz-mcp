@@ -178,7 +178,7 @@ argv_is() { # <label> <helper arguments after the UDID>
 rot rot0; logs 'exit 0'
 call tap 603 1171 --device A1
 succeeds tap '{"device":"A1","x":603,"y":1171}'
-argv_is tap "tap 0.5 0.446606 0"
+argv_is tap "tap 0.5 0.446606 150"
 [ "$(compiles)" = 1 ] || fail "the first call compiled $(compiles) times"
 call long-press 603 1171 --duration 700 --device A1
 succeeds "long-press" '{"device":"A1","x":603,"y":1171,"duration":700}'
@@ -188,10 +188,10 @@ succeeds "double-tap" '{"device":"A1","x":603,"y":1171}'
 argv_is "double-tap" "doubletap 0.5 0.446606 50 100"
 
 # 2. Each interface rotation maps to the unrotated panel; an unreadable rotation counts as portrait.
-rot rot270; call tap 1311 901 --device A1; argv_is "rotation 90" "tap 0.252902 0.5 0"
-rot rot90; call tap 100 200 --device A1; argv_is "rotation 270" "tap 0.165837 0.961861 0"
-rot rot180; call tap 100 200 --device A1; argv_is "rotation 180" "tap 0.917081 0.923722 0"
-echo 'exit 1' > "$fake/devicectl"; call tap 100 200 --device A1; argv_is "no rotation" "tap 0.082919 0.076278 0"
+rot rot270; call tap 1311 901 --device A1; argv_is "rotation 90" "tap 0.252902 0.5 150"
+rot rot90; call tap 100 200 --device A1; argv_is "rotation 270" "tap 0.165837 0.961861 150"
+rot rot180; call tap 100 200 --device A1; argv_is "rotation 180" "tap 0.917081 0.923722 150"
+echo 'exit 1' > "$fake/devicectl"; call tap 100 200 --device A1; argv_is "no rotation" "tap 0.082919 0.076278 150"
 rot rot0
 
 # 3. swipe states its default duration, as on Android.
@@ -244,7 +244,7 @@ start=$(date +%s)
 call tap 1 1 --device A1
 took=$(($(date +%s) - start))
 refuses HELPER_FAILED "hung helper"
-says "hung helper" "did not answer within 30 s"
+says "hung helper" "did not answer within 30.15 s"
 [ "$took" -ge 29 ] && [ "$took" -le 36 ] || fail "hung helper took ${took}s"
 sleep 1
 ! pgrep -f 'sleep 97\.48' >/dev/null || fail "the hung helper outlived karagoz"
@@ -369,15 +369,15 @@ TREE
 logs 'exit 0'
 call tap --text Press --device A1
 succeeds "tap --text" '{"device":"A1","x":603,"y":966,"element":{"role":"Button","label":"Press","identifier":"press-button","bounds":[48,900,1158,1032]}}'
-argv_is "tap --text" "tap 0.5 0.368421 0"
-call tap --text Name --device A1; argv_is "tap --text on a value" "tap 0.5 0.139588 0"
+argv_is "tap --text" "tap 0.5 0.368421 150"
+call tap --text Name --device A1; argv_is "tap --text on a value" "tap 0.5 0.139588 150"
 call long-press --id press-button --duration 700 --device A1
 succeeds "long-press --id" '{"device":"A1","x":603,"y":966,"duration":700,"element":{"role":"Button","label":"Press","identifier":"press-button","bounds":[48,900,1158,1032]}}'
 argv_is "long-press --id" "tap 0.5 0.368421 700"
 call double-tap --id press-button --device A1
 succeeds "double-tap --id" '{"device":"A1","x":603,"y":966,"element":{"role":"Button","label":"Press","identifier":"press-button","bounds":[48,900,1158,1032]}}'
 argv_is "double-tap --id" "doubletap 0.5 0.368421 50 100"
-call tap --text Buds --device A1; argv_is "direction marks" "tap 0.164179 0.469108 0"
+call tap --text Buds --device A1; argv_is "direction marks" "tap 0.164179 0.469108 150"
 call tap --text Row --device A1
 refuses ELEMENT_AMBIGUOUS "two Rows"
 [ "$(printf '%s' "$out" | message_of)" = "2 nodes match label or value 'Row': StaticText [48,1500,1158,1632], StaticText [48,1650,1158,1782]; tap one by its coordinates" ] \
@@ -467,7 +467,7 @@ count() { /usr/bin/grep -c -- "$1" "$fake/$2" 2>/dev/null || true; }
 port_of() { cat "$tmp/rhome/Library/Caches/karagoz/runner/$1.port"; }
 rcall "$tmp/rhome" tap 603 1311 --device A1
 succeeds "runner tap" '{"device":"A1","x":603,"y":1311}'
-[ "$(sent)" = '/tap {"x":201,"y":437,"orientation":1}' ] || fail "runner tap sent: $(sent)"
+[ "$(sent)" = '/tap {"x":201,"y":437,"duration":150,"orientation":1}' ] || fail "runner tap sent: $(sent)"
 [ "$(count build-for-testing xcodebuild)" = 1 ] && [ "$(count test-without-building xcodebuild)" = 1 ] \
   || fail "runner tap: expected one build and one start: $(cat "$fake/xcodebuild")"
 build_line=$(/usr/bin/grep build-for-testing "$fake/xcodebuild")

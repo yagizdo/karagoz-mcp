@@ -152,10 +152,12 @@ func hid(_ device: SimDeviceP, _ input: [String]) -> Never {
     }
   }
 
-  // Node's timeout and an MCP cancel end the helper with SIGTERM: a touch still down is lifted, or the next gesture
-  // lands on a held finger. Node waits for the process and closes its pipes, so the handler ends fast and prints nothing.
+  // Node's timeout and an MCP cancel end the helper with SIGTERM: a touch or key still down is lifted, or the next
+  // gesture lands on a held finger and a held key repeats. Node waits for the process and closes its pipes, so the
+  // handler ends fast and prints nothing.
   let lock = NSLock()
   var down: (x: Double, y: Double)?
+  var held: xpc_object_t?
   var ending = false
   signal(SIGPIPE, SIG_IGN)
   signal(SIGTERM, SIG_IGN)
@@ -164,6 +166,7 @@ func hid(_ device: SimDeviceP, _ input: [String]) -> Never {
     let locked = lock.lock(before: Date(timeIntervalSinceNow: 1))
     ending = true
     if let point = down { send(digitizer(point.x, point.y, 2), until: .now() + 1) }
+    if let up = held { send(up, until: .now() + 1) }
     if locked { lock.unlock() }
     _exit(143)
   }
@@ -175,13 +178,26 @@ func hid(_ device: SimDeviceP, _ input: [String]) -> Never {
     send(digitizer(x, y, phase))
     down = phase == 2 ? nil : (x, y)
   }
+  // Held 100 ms: a key let go at once was dropped (DEL 0 in 10 on Xcode 27.2, iOS 27.0; 50 ms and up 10 in 10).
   func press(_ type: String, _ fill: @escaping (xpc_object_t) -> Void) {
-    for state: UInt64 in [1, 2] {
-      send(message(type) {
+    func event(_ state: UInt64) -> xpc_object_t {
+      message(type) {
         fill($0)
         xpc_dictionary_set_uint64($0, "state", state)
-      })
+      }
     }
+    lock.lock()
+    if !ending {
+      send(event(1))
+      held = event(2)
+    }
+    lock.unlock()
+    pause(100)
+    lock.lock()
+    defer { lock.unlock() }
+    if ending { return }
+    send(event(2))
+    held = nil
   }
 
   if let reason = barrier(4) { quit(notAnswering, "dtuhidd did not answer: \(reason)") }

@@ -97,7 +97,7 @@ display ',"currentOrientation":"rot0"' 1290,2796
 # 0 portrait 1, 90 landscape right 4, 180 upside down 2, 270 landscape left 3; no rotation counts as portrait.
 out=$(k tap 645 1398 --device P1) || fail "tap exited non-zero: $out"
 is "tap" "$out" '{"device":"P1","x":645,"y":1398}'
-is "tap sent" "$(sent)" '/tap {"x":215,"y":466,"orientation":1}'
+is "tap sent" "$(sent)" '/tap {"x":215,"y":466,"duration":150,"orientation":1}'
 out=$(k long-press 645 1398 --duration 800 --device P1) || fail "long press exited non-zero: $out"
 is "long press" "$out" '{"device":"P1","x":645,"y":1398,"duration":800}'
 is "long press sent" "$(sent)" '/tap {"x":215,"y":466,"duration":800,"orientation":1}'
@@ -110,15 +110,15 @@ turned() {
   k tap "$2" "$3" --device P1 > /dev/null || fail "tap at $1 failed"
   is "tap at $1" "$(sent)" "$4"
 }
-turned rot270 1800 300 '/tap {"x":330,"y":600,"orientation":4}'
-turned rot90 1800 300 '/tap {"x":100,"y":332,"orientation":3}'
-turned rot180 300 600 '/tap {"x":330,"y":732,"orientation":2}'
+turned rot270 1800 300 '/tap {"x":330,"y":600,"duration":150,"orientation":4}'
+turned rot90 1800 300 '/tap {"x":100,"y":332,"duration":150,"orientation":3}'
+turned rot180 300 600 '/tap {"x":330,"y":732,"duration":150,"orientation":2}'
 display '' 1290,2796
 k tap 1800 300 --device P1 > /dev/null || fail "tap without a rotation failed"
-is "no rotation" "$(sent)" '/tap {"x":600,"y":100,"orientation":1}'
+is "no rotation" "$(sent)" '/tap {"x":600,"y":100,"duration":150,"orientation":1}'
 display ',"currentOrientation":"rot0"' 1080,2340 2.88
 k tap 540 1170 --device P1 > /dev/null || fail "tap on a mini failed"
-is "mini" "$(sent)" '/tap {"x":187.5,"y":406.25,"orientation":1}'
+is "mini" "$(sent)" '/tap {"x":187.5,"y":406.25,"duration":150,"orientation":1}'
 display ',"currentOrientation":"rot270"'
 before=$(inputs)
 refuses "rotated, no panel size" CAPTURE_FAILED "panel size" tap 100 100 --device P1
@@ -143,7 +143,7 @@ cat > "$fake/tree.json" <<'JSON'
 JSON
 out=$(k tap --id tap-button --device P1) || fail "tap --id exited non-zero: $out"
 is "tap --id" "$out" '{"device":"P1","x":348,"y":366,"element":{"role":"Button","label":"Tap me 1","identifier":"tap-button","bounds":[48,300,648,432]}}'
-is "tap --id sent" "$(sent)" '/tap {"x":116,"y":122,"orientation":1}'
+is "tap --id sent" "$(sent)" '/tap {"x":116,"y":122,"duration":150,"orientation":1}'
 out=$(k tap --id tap-button --tree --device P1) || fail "tap --id --tree exited non-zero: $out"
 case $out in '{"device":"P1","x":348,"y":366,"element":'*',"tree":{"rotation":0,"root":{"role":"Application","label":"Probe",'*'"label":"Tap me 1"'*) ;; *) fail "tap --id --tree: $out" ;; esac
 out=$(k long-press --text abc --duration 600 --device P1) || fail "long-press --text on a value exited non-zero: $out"
@@ -152,14 +152,14 @@ k double-tap --id tap-button --device P1 > /dev/null || fail "double-tap --id fa
 is "double-tap --id sent" "$(sent)" '/double-tap {"x":116,"y":122,"hold":50,"gap":100,"orientation":1}'
 marked=$(printf '\342\200\216Tap me 1')
 k tap --text "$marked" --device P1 > /dev/null || fail "tap --text with a direction mark failed"
-is "direction mark" "$(sent)" '/tap {"x":116,"y":122,"orientation":1}'
+is "direction mark" "$(sent)" '/tap {"x":116,"y":122,"duration":150,"orientation":1}'
 before=$(inputs)
 refuses "ambiguous" ELEMENT_AMBIGUOUS "2 nodes match label or value 'Row'" tap --text Row --device P1
 refuses "not found" ELEMENT_NOT_FOUND "no node with identifier 'nope'" tap --id nope --timeout 1000 --device P1
 refuses "under the keyboard" ELEMENT_COVERED "the software keyboard covers the center of the node with label or value 'Row 30' at (348, 2160); hide the keyboard first, then tap again" tap --text 'Row 30' --device P1
 is "refused element taps: nothing sent" "$(inputs)" "$before"
 k tap --text q --device P1 > /dev/null || fail "tapping a key of the keyboard failed"
-is "keyboard key" "$(sent)" '/tap {"x":30,"y":635,"orientation":1}'
+is "keyboard key" "$(sent)" '/tap {"x":30,"y":635,"duration":150,"orientation":1}'
 ok="$ok, element taps, tree after a tap, direction marks, ambiguous, not found, keyboard cover, keyboard key"
 
 # 3. text and key. Any Unicode with newline and tab; other control characters, and keys an iPhone has no counterpart
@@ -197,7 +197,7 @@ echo older > "$fake/runner-mode"
 refuses "older runner" RUNNER_NOT_INSTALLED "is an older version" double-tap 645 1398 --device P1
 echo hang > "$fake/runner-mode"
 t0=$(date +%s)
-refuses "runner hangs" HELPER_FAILED "did not answer within 30 s" tap 645 1398 --device P1
+refuses "runner hangs" HELPER_FAILED "did not answer within 30.15 s" tap 645 1398 --device P1
 [ $(($(date +%s) - t0)) -le 40 ] || fail "hang took $(($(date +%s) - t0)) s"
 rm "$fake/runner-mode"
 k tap 645 1398 --device P1 > "$tmp/both.tap" & first=$!

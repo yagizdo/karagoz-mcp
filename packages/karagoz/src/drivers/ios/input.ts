@@ -22,6 +22,10 @@ import { CACHE_HINT, runnerOnSimulators, shortVersion, xcode } from './xcode.js'
 // Android's swipe default, so both platforms state the same duration (K25, K35).
 const SWIPE_MS = 300;
 
+// A plain tap's hold. UISwitch ignores a shorter touch, in UIKit and in a Flutter platform view: on a simulator 0 ms
+// toggled it 0 times in 12, 100 ms 6 in 10, 150 ms 30 in 30.
+const TAP_HOLD_MS = 150;
+
 // Characters per second for typeText: 300 characters came out exact 3 of 3 times at 60 (6.0 s a call) and at 120
 // (3.5 s) (K35).
 const TYPE_SPEED = 120;
@@ -195,13 +199,8 @@ async function simulatorDisplay(udid: string, rotated?: number | null): Promise<
 
 async function runnerTap(on: On, udid: string, x: number, y: number, duration: number | undefined, display: Display) {
   const { at, orientation } = points(display);
-  await input(
-    udid,
-    on,
-    '/tap',
-    { ...at(x, y), ...(duration !== undefined && { duration }), orientation },
-    duration ?? 0,
-  );
+  const hold = duration ?? TAP_HOLD_MS;
+  await input(udid, on, '/tap', { ...at(x, y), duration: hold, orientation }, hold);
   return duration === undefined ? { device: udid, x, y } : { device: udid, x, y, duration };
 }
 
@@ -287,7 +286,8 @@ export async function tap(udid: string, x: number, y: number, duration: number |
     return runnerTap('simulator', udid, x, y, duration, await simulatorDisplay(udid, rotated));
   }
   const ratio = await panel(udid, rotated);
-  await send('tap', udid, ['tap', ...ratio(x, y), String(duration ?? 0)], duration);
+  const hold = duration ?? TAP_HOLD_MS;
+  await send('tap', udid, ['tap', ...ratio(x, y), String(hold)], hold);
   return duration === undefined ? { device: udid, x, y } : { device: udid, x, y, duration };
 }
 
