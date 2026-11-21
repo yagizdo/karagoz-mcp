@@ -1,9 +1,9 @@
 # double-tap
 
 ```
-karagoz double-tap <x> <y> [--device <id>]
-karagoz double-tap --text <label> [--timeout <ms>] [--device <id>]
-karagoz double-tap --id <resource-id> [--timeout <ms>] [--device <id>]
+karagoz double-tap <x> <y> [--tree] [--device <id>]
+karagoz double-tap --text <label> [--timeout <ms>] [--tree] [--device <id>]
+karagoz double-tap --id <resource-id> [--timeout <ms>] [--tree] [--device <id>]
 ```
 
 Taps a point twice, or finds one node in the [tree](ui-tree.md) and taps its center twice. Give exactly one of `<x> <y>`, `--text` or `--id`; nodes are found as in [`tap`](tap.md). It selects a word in a text field, or fires a double-tap gesture.
@@ -14,6 +14,7 @@ Taps a point twice, or finds one node in the [tree](ui-tree.md) and taps its cen
 | `--text <label>` | | A node whose `text` or `contentDesc` equals the label, as in [`tap`](tap.md). |
 | `--id <resource-id>` | | A node whose `resourceId` equals the value, or ends with `:id/<value>`, as in [`tap`](tap.md). |
 | `--timeout <ms>` | `0` | Keep reading the tree until a node matches or this much time has passed. Only with `--text` or `--id`. |
+| `--tree` | off | Also return the [screen after the action](ui-tree.md#after-an-action) under `tree`. |
 | `--device <id>` | see [Device selection](../device-selection.md) | |
 
 **Output**
@@ -22,7 +23,7 @@ Taps a point twice, or finds one node in the [tree](ui-tree.md) and taps its cen
 {"device":"emulator-5554","x":540,"y":160}
 ```
 
-The same fields as [`tap`](tap.md): `device`, `x`, `y`, and `element` with `--text` or `--id`.
+The same fields as [`tap`](tap.md): `device`, `x`, `y`, `element` with `--text` or `--id`, and `tree` or `treeError` with `--tree`.
 
 **Timing**
 

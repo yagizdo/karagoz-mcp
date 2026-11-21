@@ -604,7 +604,9 @@ else
   real swipe "$x" "$high" "$x" "$low" --device "$booted" >/dev/null || fail "real swipe back"
   real swipe "$x" "$high" "$x" "$low" --device "$booted" >/dev/null || fail "real swipe back"
   wait_for "real swipe back" yes has name-field
-  out=$(real tap --id tap-button --device "$booted") || fail "real tap --id: $out"
+  # --tree: the tree in the result already shows the label after the tap.
+  out=$(real tap --id tap-button --tree --device "$booted") || fail "real tap --id --tree: $out"
+  case $out in *'"label":"Tap me 2"'*) ;; *) fail "real tap --id --tree: the tree does not show Tap me 2: $out" ;; esac
   wait_for "real tap --id" "Tap me 2" label tap-button
   out=$(real tap --text Press --device "$booted") || fail "real tap --text: $out"
   wait_for "real tap --text" "pressed 1" label press-count
@@ -629,7 +631,7 @@ else
   out=$(real key HOME --device "$booted") && st=0 || st=$?
   succeeds "real key HOME" "{\"device\":\"$booted\",\"key\":\"KEYCODE_HOME\",\"code\":3}"
   wait_for "real key HOME" " " root
-  real_ok="real $booted: tap, long press, double tap, swipe, tap --id, tap --text, text, DEL, word selection, HOME"
+  real_ok="real $booted: tap, long press, double tap, swipe, tap --id --tree, tap --text, text, DEL, word selection, HOME"
   [ "$runner_mac" = no ] || real_ok="$real_ok, through the runner, removed after"
 fi
 

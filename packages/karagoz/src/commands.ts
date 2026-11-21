@@ -9,10 +9,10 @@ import { uiTree } from './ui-tree.js';
 import { listAll } from './devices.js';
 import { KaragozError, type ErrorCode } from './errors.js';
 
-// Every command option takes a value, so a command receives its options as strings. args names the positional
+// A command receives its options as strings, a boolean option as 'true' or 'false'. args names the positional
 // arguments a command takes, in order; run gets exactly that many, or none when argsOptional is set.
 export type Command = {
-  options: Record<string, { type: 'string' }>;
+  options: Record<string, { type: 'string' } | { type: 'boolean' }>;
   args: readonly string[];
   // tap, long-press and double-tap can name their target with --text or --id instead of <x> <y>.
   argsOptional?: true;
@@ -98,9 +98,9 @@ export const commands: Record<string, Command> = {
     run: ({ device, detail }) => uiTree(device, detail),
   },
   key: {
-    options: { device: { type: 'string' } },
+    options: { device: { type: 'string' }, tree: { type: 'boolean' } },
     args: ['key'],
-    run: ({ device }, [value = '']) => key(device, value),
+    run: ({ device, tree }, [value = '']) => key(device, value, tree === 'true'),
   },
   tap: {
     options: {
@@ -108,10 +108,12 @@ export const commands: Record<string, Command> = {
       text: { type: 'string' },
       id: { type: 'string' },
       timeout: { type: 'string' },
+      tree: { type: 'boolean' },
     },
     args: ['x', 'y'],
     argsOptional: true,
-    run: (values, args) => tap(values.device, target('tap', values, args), undefined, wait(values.timeout)),
+    run: (values, args) =>
+      tap(values.device, target('tap', values, args), undefined, wait(values.timeout), values.tree === 'true'),
   },
   'long-press': {
     options: {
@@ -120,6 +122,7 @@ export const commands: Record<string, Command> = {
       text: { type: 'string' },
       id: { type: 'string' },
       timeout: { type: 'string' },
+      tree: { type: 'boolean' },
     },
     args: ['x', 'y'],
     argsOptional: true,
@@ -129,6 +132,7 @@ export const commands: Record<string, Command> = {
         target('long-press', values, args),
         values.duration === undefined ? LONG_PRESS_MS : integer('--duration', values.duration),
         wait(values.timeout),
+        values.tree === 'true',
       ),
   },
   'double-tap': {
@@ -137,15 +141,17 @@ export const commands: Record<string, Command> = {
       text: { type: 'string' },
       id: { type: 'string' },
       timeout: { type: 'string' },
+      tree: { type: 'boolean' },
     },
     args: ['x', 'y'],
     argsOptional: true,
-    run: (values, args) => doubleTap(values.device, target('double-tap', values, args), wait(values.timeout)),
+    run: (values, args) =>
+      doubleTap(values.device, target('double-tap', values, args), wait(values.timeout), values.tree === 'true'),
   },
   swipe: {
-    options: { device: { type: 'string' }, duration: { type: 'string' } },
+    options: { device: { type: 'string' }, duration: { type: 'string' }, tree: { type: 'boolean' } },
     args: ['x1', 'y1', 'x2', 'y2'],
-    run: ({ device, duration }, [x1, y1, x2, y2]) =>
+    run: ({ device, duration, tree }, [x1, y1, x2, y2]) =>
       swipe(
         device,
         decimal('<x1>', x1),
@@ -153,15 +159,16 @@ export const commands: Record<string, Command> = {
         decimal('<x2>', x2),
         decimal('<y2>', y2),
         duration === undefined ? undefined : integer('--duration', duration),
+        tree === 'true',
       ),
   },
   text: {
-    options: { device: { type: 'string' } },
+    options: { device: { type: 'string' }, tree: { type: 'boolean' } },
     args: ['text'],
     // A text that starts with - goes after --, where parseArgs stops reading options: karagoz text -- -5.
-    run: ({ device }, [value]) => {
+    run: ({ device, tree }, [value]) => {
       if (!value) throw new KaragozError('INVALID_ARGS', "'text' needs <text>");
-      return text(device, value);
+      return text(device, value, tree === 'true');
     },
   },
   install: {
@@ -233,8 +240,15 @@ export function check(
   }
   const given: Record<string, string | undefined> = {};
   for (const [key, value] of Object.entries(values)) {
-    if (!Object.hasOwn(command.options, key)) {
-      throw new KaragozError('INVALID_ARGS', `'${name}' does not take the option '--${key}'`);
+    const option = Object.hasOwn(command.options, key) ? command.options[key] : undefined;
+    if (!option) throw new KaragozError('INVALID_ARGS', `'${name}' does not take the option '--${key}'`);
+    // The CLI's parseArgs gives a flag as true; the MCP server sends a JSON boolean as 'true' or 'false'.
+    if (option.type === 'boolean') {
+      if (value !== true && value !== 'true' && value !== 'false') {
+        throw new KaragozError('INVALID_ARGS', `option '--${key}' is true or false (got '${String(value)}')`);
+      }
+      given[key] = String(value);
+      continue;
     }
     // parseArgs rejects a missing value but accepts an empty one (--out=).
     if (typeof value !== 'string' || !value) {

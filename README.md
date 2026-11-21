@@ -174,15 +174,15 @@ For anything on an Android emulator or phone, an iOS simulator or an iPhone (rea
 
 ### Token cost
 
-What the server adds to a Claude Code session, measured on 2026-10-30 with Claude Code 2.1.306 and `claude-opus-5-5`: input tokens of the first API call with karagoz registered, minus the same call with no MCP server.
+What the server adds to a Claude Code session, measured on 2026-11-21 with Claude Code 2.1.325 and `claude-opus-5-5`: input tokens of the first API call with karagoz registered, minus the same call with no MCP server.
 
 | Case | Tokens |
 | --- | --- |
-| Every session, tool search on (the default): the 18 tool names and `instructions` | 410 |
-| All 18 definitions, loaded by one `ToolSearch` call | 3,634 |
-| Every session, tool search off (`ENABLE_TOOL_SEARCH=false`): every definition and `instructions` | 3,476 |
+| Every session, tool search on (the default): the 18 tool names and `instructions` | 386 |
+| All 18 definitions, loaded by one `ToolSearch` call | 3,958 |
+| Every session, tool search off (`ENABLE_TOOL_SEARCH=false`): every definition and `instructions` | 3,816 |
 
-The `tools/list` result is 9,547 characters, `instructions` 398. One `ui_tree` of the launcher home screen is 5,127 characters (11,767 with `detail: full`).
+The `tools/list` result is 10,471 characters, `instructions` 459. One `ui_tree` of the launcher home screen is 5,127 characters (11,767 with `detail: full`).
 
 ---
 

@@ -1,7 +1,7 @@
 # swipe
 
 ```
-karagoz swipe <x1> <y1> <x2> <y2> [--duration <ms>] [--device <id>]
+karagoz swipe <x1> <y1> <x2> <y2> [--duration <ms>] [--tree] [--device <id>]
 ```
 
 Moves one finger from `(x1, y1)` to `(x2, y2)`.
@@ -10,6 +10,7 @@ Moves one finger from `(x1, y1)` to `(x2, y2)`.
 | --- | --- | --- |
 | `<x1> <y1> <x2> <y2>` | | [Screen pixels](../output.md#coordinates), same rules as `tap`. |
 | `--duration <ms>` | `300` | Time from start to end. Whole milliseconds, 0 to 999999999. |
+| `--tree` | off | Also return the [screen after the action](ui-tree.md#after-an-action) under `tree`. |
 | `--device <id>` | see [Device selection](../device-selection.md) | |
 
 **Output**
@@ -26,6 +27,8 @@ Moves one finger from `(x1, y1)` to `(x2, y2)`.
 | `x2` | number | The x of the end point used, in screen pixels. |
 | `y2` | number | The y of the end point used, in screen pixels. |
 | `duration` | number | Time from start to end, in milliseconds. Always present, including the default `300`. |
+| `tree` | object | Only with `--tree`: the compact tree after the action, `rotation` and `root` as [`ui-tree`](ui-tree.md#after-an-action) returns them. |
+| `treeError` | object | Only with `--tree`, when that read failed: `code` and `message`. The action still ran. |
 
 **Duration matters.** A fast swipe flings a list and a slow one drags it. Measured on a 1200 px drag: 300 ms scrolled a further 1059 px after the finger lifted, 1000 ms scrolled 131 px further, 3000 ms 19 px.
 

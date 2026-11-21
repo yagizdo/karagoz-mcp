@@ -1,8 +1,8 @@
 # text
 
 ```
-karagoz text <text> [--device <id>]
-karagoz text [--device <id>] -- <text starting with ->
+karagoz text <text> [--tree] [--device <id>]
+karagoz text [--tree] [--device <id>] -- <text starting with ->
 ```
 
 Types into whatever has focus.
@@ -10,6 +10,7 @@ Types into whatever has focus.
 | Option | Default | Meaning |
 | --- | --- | --- |
 | `<text>` | | The text to type, not empty. Text that starts with `-` goes after `--`. |
+| `--tree` | off | Also return the [screen after the action](ui-tree.md#after-an-action) under `tree`. |
 | `--device <id>` | see [Device selection](../device-selection.md) | |
 
 **Output**
@@ -22,6 +23,8 @@ Types into whatever has focus.
 | --- | --- | --- |
 | `device` | string | The adb serial, or the simulator's or iPhone's UDID. |
 | `text` | string | The text that was sent, as given. |
+| `tree` | object | Only with `--tree`: the compact tree after the action, `rotation` and `root` as [`ui-tree`](ui-tree.md#after-an-action) returns them. |
+| `treeError` | object | Only with `--tree`, when that read failed: `code` and `message`. The action still ran. |
 
 **Characters.** Any text. Printable ASCII, newline (sent as Enter), tab (sent as Tab), `ç`, `Ç` and `ß` are typed with Android's `input text`.
 

@@ -144,6 +144,8 @@ JSON
 out=$(k tap --id tap-button --device P1) || fail "tap --id exited non-zero: $out"
 is "tap --id" "$out" '{"device":"P1","x":348,"y":366,"element":{"role":"Button","label":"Tap me 1","identifier":"tap-button","bounds":[48,300,648,432]}}'
 is "tap --id sent" "$(sent)" '/tap {"x":116,"y":122,"orientation":1}'
+out=$(k tap --id tap-button --tree --device P1) || fail "tap --id --tree exited non-zero: $out"
+case $out in '{"device":"P1","x":348,"y":366,"element":'*',"tree":{"rotation":0,"root":{"role":"Application","label":"Probe",'*'"label":"Tap me 1"'*) ;; *) fail "tap --id --tree: $out" ;; esac
 out=$(k long-press --text abc --duration 600 --device P1) || fail "long-press --text on a value exited non-zero: $out"
 is "long-press --text value" "$(sent)" '/tap {"x":215,"y":278,"duration":600,"orientation":1}'
 k double-tap --id tap-button --device P1 > /dev/null || fail "double-tap --id failed"
@@ -158,7 +160,7 @@ refuses "under the keyboard" ELEMENT_COVERED "the software keyboard covers the c
 is "refused element taps: nothing sent" "$(inputs)" "$before"
 k tap --text q --device P1 > /dev/null || fail "tapping a key of the keyboard failed"
 is "keyboard key" "$(sent)" '/tap {"x":30,"y":635,"orientation":1}'
-ok="$ok, element taps, direction marks, ambiguous, not found, keyboard cover, keyboard key"
+ok="$ok, element taps, tree after a tap, direction marks, ambiguous, not found, keyboard cover, keyboard key"
 
 # 3. text and key. Any Unicode with newline and tab; other control characters, and keys an iPhone has no counterpart
 # for, are refused before anything reaches the runner.

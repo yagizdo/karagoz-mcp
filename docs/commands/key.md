@@ -1,7 +1,7 @@
 # key
 
 ```
-karagoz key <key> [--device <id>]
+karagoz key <key> [--tree] [--device <id>]
 ```
 
 Presses one key.
@@ -10,6 +10,8 @@ Presses one key.
 
 - A name, case-insensitive, with or without `KEYCODE_`: `HOME`, `back`, `KEYCODE_ENTER`, `VOLUME_UP`.
 - A number from 1 to 340 is a key code: `key 3` is `HOME`. To press the digit 7, use `KEYCODE_7`, because `key 7` is code 7, which is `KEYCODE_0`.
+
+With `--tree`, the [screen after the key](ui-tree.md#after-an-action) comes back under `tree`.
 
 **Output**
 
@@ -22,6 +24,8 @@ Presses one key.
 | `device` | string | The adb serial, or the simulator's or iPhone's UDID. |
 | `key` | string | The resolved KeyEvent name, with `KEYCODE_`. |
 | `code` | number | The resolved KeyEvent code. |
+| `tree` | object | Only with `--tree`: the compact tree after the action, `rotation` and `root` as [`ui-tree`](ui-tree.md#after-an-action) returns them. |
+| `treeError` | object | Only with `--tree`, when that read failed: `code` and `message`. The action still ran. |
 
 **Errors**
 
