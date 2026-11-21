@@ -119,7 +119,7 @@ A real exchange, one line per message, `-->` sent and `<--` received. The `data`
 
 ## Behavior
 
-- Calls run in parallel, except UiAutomation reads (`ui_tree`, and `tap`, `long_press` or `double_tap` with `text` or `id`), which take turns per device inside one server. Another process that holds UiAutomation still causes `AUTOMATION_BUSY`.
+- Calls run in parallel, except UiAutomation reads (`ui_tree`, `tap`, `long_press` or `double_tap` with `text` or `id`, and any input tool with `tree`), which take turns per device inside one server. Another process that holds UiAutomation still causes `AUTOMATION_BUSY`.
 - A cancelled call kills its adb child at once and gets no response. The device does not stop with it: it keeps its UiAutomation slot for about 1-2 s, so a `ui_tree` right after can get `AUTOMATION_BUSY`; a gesture already sent finishes on the device; and a cancelled `install` may leave the app installed. Esc in Claude Code cancels the running call: the adb dump was gone within 0.3 s and the server kept running.
 - stdin closing, SIGINT and SIGTERM cancel every call the same way; the process exits with `0`, `130` and `143`.
 - The server keeps the `adb` it found for the whole session. If that file disappears (`ENOENT`), the next call looks it up again.

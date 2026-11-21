@@ -166,3 +166,12 @@ Starting the runner and reading the first tree took 3 to 4.4 s; later reads abou
 - The runner plays one input or `ui-tree` read at a time. A call that waits more than 8 s behind another fails with `HELPER_FAILED` (`CAPTURE_FAILED` for `ui-tree`) and plays nothing.
 - The runner build is in `~/Library/Caches/karagoz/runner/`, one folder per karagoz version, Xcode and team; after deleting it, run `install-runner` again. `xcodebuild`'s output for the last start is in `~/Library/Caches/karagoz/runner/<UDID>.log`.
 - With a passcode set, iOS asks for it on the phone ("Enter iPhone Passcode for XCTest") before UI automation can start: at the first start after a restart, about once a day (Apple's description), and, measured, at the first start after the phone was locked. xcodebuild says nothing about it, so the start waits up to 60 s.
+
+## After an action
+
+`tap`, `long-press`, `double-tap`, `swipe`, `text` and `key` take `--tree` (`tree: true` in MCP). After the action, karagoz waits for the screen to settle, reads the compact tree and adds it to the result as `tree`. It holds the `rotation` and `root` this command returns, without `device`. Acting and then looking takes one call instead of two.
+
+- Android: karagoz waits 1 s and reads. A read that starts while a window is still changing can find no window (`no focused window to read`); karagoz then reads a second time, never a third. After a tap that opened a Settings page, the whole call took 6.6-9.7 s on an emulator, because uiautomator waits for the new page to go idle. On a screen that does not change, it takes 1 s plus one read.
+- iOS simulator and iPhone: karagoz waits 300 ms, then reads every 200 ms until two reads in a row match, and returns the last read. Its last read starts at most 3.2 s after the action. On a simulator, a tap that opened a Settings page added about 1.5 s.
+- If the read fails, the action has still happened. The exit code stays `0`, and `treeError` (`code` and `message`) takes the place of `tree`. Do not repeat the action; call `ui-tree` to see the screen.
+- `--tree` always returns the compact tree. To get every node, call `ui-tree --detail full`.

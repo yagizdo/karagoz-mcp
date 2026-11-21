@@ -1,9 +1,9 @@
 # long-press
 
 ```
-karagoz long-press <x> <y> [--duration <ms>] [--device <id>]
-karagoz long-press --text <label> [--timeout <ms>] [--duration <ms>] [--device <id>]
-karagoz long-press --id <resource-id> [--timeout <ms>] [--duration <ms>] [--device <id>]
+karagoz long-press <x> <y> [--duration <ms>] [--tree] [--device <id>]
+karagoz long-press --text <label> [--timeout <ms>] [--duration <ms>] [--tree] [--device <id>]
+karagoz long-press --id <resource-id> [--timeout <ms>] [--duration <ms>] [--tree] [--device <id>]
 ```
 
 Presses a point and holds it, or finds one node in the [tree](ui-tree.md) and holds its center. Give exactly one of `<x> <y>`, `--text` or `--id`. It finds a node as [`tap`](tap.md) does.
@@ -15,6 +15,7 @@ Presses a point and holds it, or finds one node in the [tree](ui-tree.md) and ho
 | `--id <resource-id>` | | A node whose `resourceId` equals the value, or ends with `:id/<value>`, as in [`tap`](tap.md). |
 | `--duration <ms>` | `1000` | How long to hold. Whole milliseconds, 0 to 999999999. |
 | `--timeout <ms>` | `0` | Keep reading the tree until a node matches or this much time has passed. Only with `--text` or `--id`. |
+| `--tree` | off | Also return the [screen after the action](ui-tree.md#after-an-action) under `tree`. |
 | `--device <id>` | see [Device selection](../device-selection.md) | |
 
 **Output**
@@ -23,7 +24,7 @@ Presses a point and holds it, or finds one node in the [tree](ui-tree.md) and ho
 {"device":"emulator-5554","x":540,"y":1100,"duration":1000}
 ```
 
-With `--text` or `--id`, an `element` field follows `duration`.
+With `--text` or `--id`, an `element` field follows `duration`; with `--tree`, `tree` or `treeError` comes last, as in [`tap`](tap.md).
 
 | Field | Type | Meaning |
 | --- | --- | --- |
@@ -32,6 +33,8 @@ With `--text` or `--id`, an `element` field follows `duration`.
 | `y` | number | Where the press went, in screen pixels: the point given, or the matched node's center. |
 | `duration` | number | How long the touch was held, in milliseconds. |
 | `element` | object | Only with `--text` or `--id`: the matched node, with the fields [`tap`](tap.md) lists. |
+| `tree` | object | Only with `--tree`: the compact tree after the action, `rotation` and `root` as [`ui-tree`](ui-tree.md#after-an-action) returns them. |
+| `treeError` | object | Only with `--tree`, when that read failed: `code` and `message`. The action still ran. |
 
 **Errors**
 

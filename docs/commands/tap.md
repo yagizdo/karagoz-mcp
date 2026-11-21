@@ -1,9 +1,9 @@
 # tap
 
 ```
-karagoz tap <x> <y> [--device <id>]
-karagoz tap --text <label> [--timeout <ms>] [--device <id>]
-karagoz tap --id <resource-id> [--timeout <ms>] [--device <id>]
+karagoz tap <x> <y> [--tree] [--device <id>]
+karagoz tap --text <label> [--timeout <ms>] [--tree] [--device <id>]
+karagoz tap --id <resource-id> [--timeout <ms>] [--tree] [--device <id>]
 ```
 
 Taps a point, or finds one node in the [tree](ui-tree.md) and taps its center. Give exactly one of `<x> <y>`, `--text` or `--id`. To hold the touch, use [`long-press`](long-press.md).
@@ -14,6 +14,7 @@ Taps a point, or finds one node in the [tree](ui-tree.md) and taps its center. G
 | `--text <label>` | | A node whose `text` or `contentDesc` equals the label: whole string, case-sensitive, no trimming. Invisible direction marks (U+200E and the like) are ignored on both sides. |
 | `--id <resource-id>` | | A node whose `resourceId` equals the value, or ends with `:id/<value>`. `--id save` matches `com.example:id/save`. |
 | `--timeout <ms>` | `0` | Keep reading the tree until a node matches or this much time has passed. Only with `--text` or `--id`. |
+| `--tree` | off | Also return the [screen after the action](ui-tree.md#after-an-action) under `tree`. |
 | `--device <id>` | see [Device selection](../device-selection.md) | |
 
 **Output**
@@ -46,6 +47,14 @@ Node:
 | `element.label` | string | What VoiceOver reads. |
 | `element.identifier` | string | The app's `accessibilityIdentifier`. |
 | `element.bounds` | array | `[left, top, right, bottom]` in screen pixels, as `ui-tree` gives them on that platform. |
+| `tree` | object | Only with `--tree`: the compact tree after the action, `rotation` and `root` as [`ui-tree`](ui-tree.md#after-an-action) returns them. |
+| `treeError` | object | Only with `--tree`, when that read failed: `code` and `message`. The action still ran. |
+
+With `--tree` (children cut short here):
+
+```json
+{"device":"emulator-5554","x":365.5,"y":1833.5,"element":{"class":"android.widget.TextView","text":"Display & touch","resourceId":"android:id/title","bounds":[221,1805,510,1862]},"tree":{"rotation":0,"root":{"class":"FrameLayout","package":"com.android.settings","bounds":[0,0,1080,2400],"children":[{"class":"ScrollView","resourceId":"content_parent","scrollable":true,"bounds":[0,63,1080,2337],"children":[{"class":"FrameLayout","contentDesc":"Display & touch","resourceId":"collapsing_toolbar","bounds":[0,63,1080,210],"children":[{"class":"ImageButton","contentDesc":"Navigate up","clickable":true,"focusable":true,"bounds":[42,63,189,210]}]},{"class":"RecyclerView","resourceId":"recycler_view","scrollable":true,"bounds":[0,210,1080,2337],"children":[{"class":"TextView","text":"Brightness","resourceId":"title","bounds":[63,273,1038,324]}]}]}]}}}
+```
 
 **How a node is found**
 
@@ -69,7 +78,7 @@ Node:
 
 - A point tap takes about 0.2 s. A node tap adds one tree read, 2.5 to 3.3 s.
 - Points are not checked against the screen size.
-- Exit `0` means Android accepted the event, not that the app reacted to it. Read the tree again to check.
+- Exit `0` means Android accepted the event, not that the app reacted to it. Read the tree again to check, or pass `--tree`.
 
 ## On an iOS simulator
 
