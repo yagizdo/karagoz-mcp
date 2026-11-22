@@ -5,9 +5,16 @@ import pkg from '../package.json' with { type: 'json' };
 import { check, commands, envelope } from './commands.js';
 import { cancellation } from './cancellation.js';
 import { KaragozError } from './errors.js';
+import { refresh, updateCheck, type Update } from './update.js';
 
 const INSTRUCTIONS =
   'karagoz drives Android emulators and phones, and iOS simulators and iPhones on macOS. To see the screen, call ui_tree first: node bounds are the pixels tap and swipe take; take a screenshot only when you need the image. After that, an action with tree returns the next screen too. Pass device only when more than one device is connected. Each result is one JSON object; on failure, branch on error.code. If adb or Xcode is missing, old or broken, call doctor.';
+
+// The fix the model passes on to the user, by how this copy was installed (K78).
+const UPDATE_HINT: Record<Update['install'], string> = {
+  npm: `run npm install -g ${pkg.name} and restart this MCP server`,
+  mcpb: 'download karagoz.mcpb from https://github.com/yagizdo/karagoz-mcp/releases/latest and open it',
+};
 
 const device = { type: 'string', description: 'Id or name.' };
 const tree = {
@@ -282,10 +289,13 @@ function plain(value: unknown): string {
 export async function serve(): Promise<void> {
   // The low-level server, not McpServer, which pulls zod's full API (+450 KB minified) (K14). Its @deprecated tag is
   // expected.
-  const server = new Server(
-    { name: 'karagoz', version: pkg.version },
-    { capabilities: { tools: {} }, instructions: INSTRUCTIONS },
-  );
+  // Instructions go out once, in the initialize response, so they carry what an earlier session cached; this session's
+  // refresh shows in the next one (K78).
+  const update = await updateCheck();
+  const instructions = update?.newer
+    ? `${INSTRUCTIONS} karagoz ${update.newer} is available and this server runs ${pkg.version}. Tell the user once: to update, ${UPDATE_HINT[update.install]}.`
+    : INSTRUCTIONS;
+  const server = new Server({ name: 'karagoz', version: pkg.version }, { capabilities: { tools: {} }, instructions });
   server.setRequestHandler('tools/list', () => ({ tools: TOOLS }));
   server.setRequestHandler('tools/call', async (request, ctx) => {
     const { name } = request.params;
@@ -336,6 +346,7 @@ export async function serve(): Promise<void> {
     }
   });
   await server.connect(new StdioServerTransport());
+  if (update?.due) void refresh();
   // close() aborts every call's signal synchronously, which kills its adb child; without a handler the signal kills
   // the process and leaves adb running (K31). stdin close needs nothing: the SDK aborts and the process exits.
   for (const [signal, code] of [
