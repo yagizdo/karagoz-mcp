@@ -2,6 +2,26 @@
 
 All notable changes to karagoz-mcp are documented in this file. The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0] - 2026-11-22
+
+### Added
+
+- `tap`, `long-press`, `double-tap`, `swipe`, `text` and `key` take `--tree` (MCP: `tree`). After the action, karagoz waits for the screen to settle and returns the compact tree under `tree`. When that read fails, the command still exits 0 and reports `treeError`, so a caller does not repeat the action ([`07c56ee`](https://github.com/yagizdo/karagoz-mcp/commit/07c56ee), [`ba57de7`](https://github.com/yagizdo/karagoz-mcp/commit/ba57de7))
+- At a terminal, `devices` shows the name set on the phone in parentheses after the model. The JSON and the MCP server leave it out, because that name often holds the owner's name ([`8da149d`](https://github.com/yagizdo/karagoz-mcp/commit/8da149d))
+
+### Changed
+
+- The README states the iPhone requirements per command: Developer Mode for `screenshot` and the app commands, a USB cable for `logs`, and both for `ui-tree` and the input commands ([`6346ce7`](https://github.com/yagizdo/karagoz-mcp/commit/6346ce7))
+- The `ui-tree` page quotes Android's error for a screen that never goes idle and says what still works on such a screen. The `text` page says what plain `adb shell input text` does with non-ASCII text, and that a call with no focused field still exits 0 ([`fed36b5`](https://github.com/yagizdo/karagoz-mcp/commit/fed36b5))
+- The README links the guides on the website, and its MCP token table is measured again: the `tree` option adds 16 tokens to every session ([`803b472`](https://github.com/yagizdo/karagoz-mcp/commit/803b472), [`34f9fb5`](https://github.com/yagizdo/karagoz-mcp/commit/34f9fb5))
+
+### Fixed
+
+- On an iOS simulator and an iPhone, `tap` holds the touch for 150 ms instead of 0, and on a simulator `key` holds the key for 100 ms. A switch (`UISwitch`, also inside a Flutter view) ignored the zero-length tap, and a key released at once was dropped. The iPhone runner does not need to be reinstalled ([`1de311e`](https://github.com/yagizdo/karagoz-mcp/commit/1de311e))
+- On Android, `tap`, `long-press`, `double-tap`, `swipe`, `text` and `key` stop with `DEVICE_NOT_READY` when the screen is off, dozing or showing a screensaver. Before, a tap or swipe exited 0 while nothing reached the app, and a key or text waited until it timed out. `key WAKEUP`, `SLEEP` and `POWER` still run, so an agent can wake the screen ([`ee6744f`](https://github.com/yagizdo/karagoz-mcp/commit/ee6744f))
+- Two `screenshot` calls on one device in the same millisecond without `--out` no longer fail with `WRITE_FAILED`. The second file gets a `-<n>` suffix ([`2db95e8`](https://github.com/yagizdo/karagoz-mcp/commit/2db95e8))
+- `text` on an iPhone, or on a simulator that goes through the runner, refuses a text above the runner's 1 MiB request limit with `INVALID_ARGS` and names both sizes. Before, the runner turned the request down and karagoz reported that another program answered on the runner's port ([`49708ec`](https://github.com/yagizdo/karagoz-mcp/commit/49708ec))
+
 ## [0.4.0] - 2026-11-04
 
 ### Added
@@ -89,6 +109,7 @@ Needs Node 22 or newer, adb for Android, and Xcode on macOS for iOS. On a simula
 
 As a 0.x release, the JSON output and the error codes may still change in a minor version.
 
+[0.5.0]: https://github.com/yagizdo/karagoz-mcp/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/yagizdo/karagoz-mcp/compare/v0.3.2...v0.4.0
 [0.3.2]: https://github.com/yagizdo/karagoz-mcp/compare/v0.3.1...v0.3.2
 [0.3.1]: https://github.com/yagizdo/karagoz-mcp/compare/v0.3.0...v0.3.1
