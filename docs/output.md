@@ -27,6 +27,18 @@ stderr also carries adb's own notices on success, such as `* daemon started succ
 
 `karagoz --version` prints the package version as plain text and exits `0`. It wins over any command: `karagoz devices --version` prints the version.
 
+## Update notice
+
+A copy installed with `npm install -g` checks once a day whether a newer release is out. At a terminal, after a command succeeds, it can print one more line to stderr:
+
+```
+karagoz: 0.6.0 is available, you have 0.5.0. To update: npm install -g karagoz-mcp
+```
+
+The line comes from the last check, which karagoz keeps in `update.json` under `~/Library/Caches/karagoz` on macOS, `$XDG_CACHE_HOME/karagoz` or `~/.cache/karagoz` on Linux, and `%LOCALAPPDATA%\karagoz` on Windows. When that check is a day old or missing, karagoz starts a background process that asks the npm registry for the package's `latest` tag and writes the answer there; the command does not wait for it. The request is a plain GET of `-/package/karagoz-mcp/dist-tags` on `npm_config_registry` when it is set, else on `https://registry.npmjs.org/`, and sends nothing about you or your devices. A failed request is not retried until the next day.
+
+The check stays off when stdout or stderr is not a terminal (a pipe, an agent's shell), when karagoz runs from a clone or from a project's `node_modules`, and in the copy `npx` runs, which npx brings up to date on every start. Set `KARAGOZ_NO_UPDATE_CHECK=1` or `NO_UPDATE_NOTIFIER=1` to turn it off; any value of `CI` turns it off too. With `min-release-age` in your npm config, the line can name a release that npm does not install yet. The MCP server shows the same check in its instructions ([MCP server](mcp.md#behavior)).
+
 ## Arguments
 
 - Options can appear anywhere, before or after the command name. A repeated option keeps its last value.

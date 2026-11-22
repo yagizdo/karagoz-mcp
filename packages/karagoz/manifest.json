@@ -22,7 +22,8 @@
       "command": "node",
       "args": ["${__dirname}/dist/cli.js", "mcp"],
       "env": {
-        "ANDROID_HOME": "${user_config.android_home}"
+        "ANDROID_HOME": "${user_config.android_home}",
+        "KARAGOZ_INSTALL": "mcpb"
       }
     }
   },

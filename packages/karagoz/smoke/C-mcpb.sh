@@ -2,7 +2,7 @@
 # Step C: `npm run mcpb` packs the Claude Desktop extension karagoz.mcpb. It holds only dist/, package.json,
 # manifest.json and the license files; manifest.json carries package.json's version; the server it starts the way a
 # host does (the mcpb library's own config builder, no user settings, cwd /, a short PATH) gets an empty ANDROID_HOME,
-# which doctor reports as unset, and lists the 18 tools.
+# which doctor reports as unset, and KARAGOZ_INSTALL=mcpb, and lists the 18 tools.
 # Precondition: none, no device. The pack rebuilds dist/ and copies the gitignored README.md and LICENSE into the
 # package folder, like npm pack; the extension is unpacked into a temporary folder.
 set -e
@@ -33,8 +33,11 @@ if (manifest.version !== version) fail(`manifest.json version ${manifest.version
 
 const config = await getMcpConfigForManifest({ manifest, extensionPath: ext, systemDirs: {}, userConfig: {}, pathSeparator: "/" });
 if (config?.env?.ANDROID_HOME !== "") fail(`ANDROID_HOME with no user settings: ${JSON.stringify(config?.env)}`);
+// The update notice tells the extension apart by this value (K78); the check itself stays off here, as it would touch
+// the real cache and the registry.
+if (config.env.KARAGOZ_INSTALL !== "mcpb") fail(`KARAGOZ_INSTALL: ${JSON.stringify(config.env)}`);
 const command = config.command === "node" ? process.execPath : config.command;
-const server = spawn(command, config.args, { cwd: "/", env: { PATH: "/usr/bin:/bin", HOME: process.env.HOME, ...config.env } });
+const server = spawn(command, config.args, { cwd: "/", env: { PATH: "/usr/bin:/bin", HOME: process.env.HOME, ...config.env, KARAGOZ_NO_UPDATE_CHECK: "1" } });
 const replies = new Map();
 let buffer = "";
 server.stdout.on("data", (chunk) => {
