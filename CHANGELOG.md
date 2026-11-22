@@ -2,6 +2,12 @@
 
 All notable changes to karagoz-mcp are documented in this file. The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.1] - 2026-11-22
+
+### Added
+
+- A copy installed with `npm install -g` now tells you when a newer release is on npm. At a terminal, after a command succeeds, it prints one line to stderr, such as `karagoz: 0.5.2 is available, you have 0.5.1. To update: npm install -g karagoz-mcp`. The MCP server adds a sentence to its instructions that asks the model to tell you once how to update. Claude Desktop does not pass instructions to the model, going by user reports, so the extension's sentence does not reach you there. karagoz asks the npm registry at most once a day, in the background, and sends nothing about you or your devices. Pipes, agent shells, CI and the copy `npx` downloads never check. `KARAGOZ_NO_UPDATE_CHECK=1` or `NO_UPDATE_NOTIFIER=1` turns it off ([`6c5bc66`](https://github.com/yagizdo/karagoz-mcp/commit/6c5bc66), [`9b4fa57`](https://github.com/yagizdo/karagoz-mcp/commit/9b4fa57))
+
 ## [0.5.0] - 2026-11-22
 
 ### Added
@@ -109,6 +115,7 @@ Needs Node 22 or newer, adb for Android, and Xcode on macOS for iOS. On a simula
 
 As a 0.x release, the JSON output and the error codes may still change in a minor version.
 
+[0.5.1]: https://github.com/yagizdo/karagoz-mcp/compare/v0.5.0...v0.5.1
 [0.5.0]: https://github.com/yagizdo/karagoz-mcp/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/yagizdo/karagoz-mcp/compare/v0.3.2...v0.4.0
 [0.3.2]: https://github.com/yagizdo/karagoz-mcp/compare/v0.3.1...v0.3.2
