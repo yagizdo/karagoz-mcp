@@ -65,6 +65,8 @@ Missing a device? Run karagoz doctor.
 
 A state the commands can use (`device`, `Booted`, `paired`) is green, any other yellow, with what to do under it when karagoz knows (`Accept the USB debugging prompt on the device.`). A paired iPhone without karagoz's runner gets the `install-runner` command under it, and a failed listing a red `✗` line with its code. With no device, the list is the `NO_DEVICE` text on how to start one. `NO_COLOR` turns the colors off.
 
+A phone's own name, the one set on the phone, follows the model in parentheses. When the model is unknown, the name is shown by itself. Only this list shows it; the JSON and the MCP server leave it out because that name is often the owner's full name.
+
 **Errors:** `INVALID_ARGS`, `ADB_NOT_FOUND`, `ADB_TIMEOUT`, `ADB_FAILED`; `SIMCTL_NOT_FOUND`, `SIMCTL_TIMEOUT`, `SIMCTL_FAILED`, `DEVICECTL_NOT_FOUND`, `DEVICECTL_TIMEOUT`, `DEVICECTL_FAILED` inside `errors` only.
 
 **Notes**

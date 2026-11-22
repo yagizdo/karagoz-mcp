@@ -84,11 +84,26 @@ async function version(id: string, state: string): Promise<{ os: string | null; 
   return { os: release || null, api: Number.isInteger(api) && api > 0 ? api : null };
 }
 
-export async function listDevices() {
+// The owner-set name (API 25+; older releases print "null"). A failure leaves it unknown, as in version().
+async function ownerName(id: string): Promise<string | undefined> {
+  let out: string;
+  try {
+    out = (await adb(['-s', id, 'shell', 'settings get global device_name'])).trim();
+  } catch (err) {
+    if (cancellation.getStore()?.aborted) throw err;
+    return undefined;
+  }
+  return out && out !== 'null' ? out : undefined;
+}
+
+// named adds a phone's owner-set name as deviceName, for the terminal text only: it often holds a person's full name
+// (K18 2.1 note), so the JSON never carries it.
+export async function listDevices(named = false) {
   return Promise.all(
     (await entries()).map(async ({ id, state }) => {
       const [{ kind, name }, { os, api }] = await Promise.all([describe({ id, state }), version(id, state)]);
-      return { id, platform: 'android' as const, kind, state, name, os, api };
+      const deviceName = named && kind === 'physical' && state === 'device' ? await ownerName(id) : undefined;
+      return { id, platform: 'android' as const, kind, state, name, os, api, ...(deviceName && { deviceName }) };
     }),
   );
 }

@@ -69,6 +69,22 @@ function stranger(udid: string, on: On): KaragozError {
 const mac = (key: Buffer, prefix: string, body: Buffer) =>
   createHmac('sha256', key).update(prefix).update(body).digest('hex');
 
+// Runner.swift's maxRequestBytes, which counts the head with its blank line plus the body. Over it the runner answers
+// unsigned, which reads here as a stranger on the port.
+const MAX_REQUEST_BYTES = 1 << 20;
+
+// The request head with its blank line; exchange() sends it, input() measures it against MAX_REQUEST_BYTES.
+function head(method: 'GET' | 'POST', path: string, length: number, nonce: string, signature: string | undefined) {
+  const lines = [
+    `${method} ${path} HTTP/1.0`,
+    'Host: karagoz',
+    `Content-Length: ${length}`,
+    `${NONCE_HEADER}: ${nonce}`,
+  ];
+  if (signature) lines.push(`${MAC_HEADER}: ${signature}`);
+  return `${lines.join('\r\n')}\r\n\r\n`;
+}
+
 // The secret's bytes, undefined when this Mac has none for the phone: nothing can be signed then (K42).
 async function secretOf(udid: string): Promise<Buffer | undefined> {
   const text = await readFile(secretPath(udid), 'utf8').catch(() => '');
@@ -130,13 +146,7 @@ function exchange(
   const signal = cancellation.getStore();
   const nonce = randomBytes(16).toString('hex');
   const payload = Buffer.from(body);
-  const head = [
-    `${method} ${path} HTTP/1.0`,
-    'Host: karagoz',
-    `Content-Length: ${payload.length}`,
-    `${NONCE_HEADER}: ${nonce}`,
-  ];
-  if (key) head.push(`${MAC_HEADER}: ${mac(key, `karagoz-req\n${nonce}\n${method} ${path}\n`, payload)}`);
+  const signature = key ? mac(key, `karagoz-req\n${nonce}\n${method} ${path}\n`, payload) : undefined;
   return new Promise((resolve, reject) => {
     const chunks: Buffer[] = [];
     const finish = (settle: () => void) => {
@@ -178,7 +188,7 @@ function exchange(
         );
       finish(() => resolve({ status: Number(status), body: rest.toString('utf8'), signed }));
     });
-    socket.write(Buffer.concat([Buffer.from(`${head.join('\r\n')}\r\n\r\n`), payload]));
+    socket.write(Buffer.concat([Buffer.from(head(method, path, payload.length, nonce, signature)), payload]));
     socket.resume();
   });
 }
@@ -499,16 +509,19 @@ export async function input(
   body: Record<string, unknown>,
   playMs: number,
 ): Promise<void> {
+  const json = JSON.stringify(body);
+  // Checked before the runner starts: only a long text gets there, and it stays too long. Nonce and MAC are fixed-width
+  // hex, so placeholders of their width give the exact size.
+  const length = Buffer.byteLength(json);
+  const size = Buffer.byteLength(head('POST', route, length, '0'.repeat(32), '0'.repeat(64))) + length;
+  if (size > MAX_REQUEST_BYTES) {
+    throw new KaragozError(
+      'INVALID_ARGS',
+      `the text makes a request of ${size} bytes, and karagoz's runner takes at most ${MAX_REQUEST_BYTES} bytes (1 MiB) in one request; send the text in smaller parts`,
+    );
+  }
   await ensure(udid, on);
-  const answer = await request(
-    udid,
-    on,
-    'POST',
-    route,
-    JSON.stringify(body),
-    READ_TIMEOUT_MS + playMs,
-    'HELPER_FAILED',
-  );
+  const answer = await request(udid, on, 'POST', route, json, READ_TIMEOUT_MS + playMs, 'HELPER_FAILED');
   if (!answer.signed) throw stranger(udid, on);
   if (answer.status === 200) return;
   let parsed: unknown;

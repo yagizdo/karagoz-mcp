@@ -6,6 +6,9 @@ import { capture as captureAndroid } from './drivers/android/screenshot.js';
 import { capture as captureIos, capturePhone } from './drivers/ios/screenshot.js';
 import { KaragozError } from './errors.js';
 
+// Far above any number of calls in one millisecond; a full run of names means something else fills the directory.
+const MAX_SUFFIX = 100;
+
 export async function screenshot(device: string | undefined, out: string | undefined) {
   const target = out === undefined ? undefined : resolve(out);
   // A model picks this path over MCP; only a .png gets overwritten (K22).
@@ -21,20 +24,29 @@ export async function screenshot(device: string | undefined, out: string | undef
   // ':' is invalid in Windows file names, and `adb connect` serials contain it (127.0.0.1:5555).
   const safeId = id.replace(/[^A-Za-z0-9._-]/g, '_');
   const stamp = new Date().toISOString().replace(/[-:.]/g, '');
-  const path = target ?? join(tmpdir(), 'karagoz', `${safeId}-${stamp}.png`);
+  let path = target ?? join(tmpdir(), 'karagoz', `${safeId}-${stamp}.png`);
   try {
     const dir = dirname(path);
     if (target === undefined) {
       // On Linux tmpdir() is the shared /tmp: another user could create karagoz/ first, or plant a symlink at the
       // predictable file name. The directory must be the caller's own, and the write refuses anything already at
       // the path. --out is left alone, the caller picked it.
-      // ponytail: two captures of one device in the same millisecond collide, and the second gets WRITE_FAILED.
       await mkdir(dir, { recursive: true, mode: 0o700 });
       const info = await lstat(dir);
       if (!info.isDirectory() || (process.getuid && info.uid !== process.getuid())) {
         throw new Error(`${dir} is not a directory owned by the current user; pass --out`);
       }
-      await writeFile(path, png, { flag: 'wx', mode: 0o600 });
+      // A capture of the same device in the same millisecond took the name: the next free -<n> suffix. wx keeps each
+      // claim atomic between processes.
+      for (let n = 1; ; n++) {
+        try {
+          await writeFile(path, png, { flag: 'wx', mode: 0o600 });
+          break;
+        } catch (err) {
+          if (!(err instanceof Error && 'code' in err && err.code === 'EEXIST') || n > MAX_SUFFIX) throw err;
+          path = join(dir, `${safeId}-${stamp}-${n}.png`);
+        }
+      }
     } else {
       await mkdir(dir, { recursive: true });
       await writeFile(path, png);

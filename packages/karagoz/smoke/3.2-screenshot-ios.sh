@@ -46,6 +46,7 @@ case "\$*" in
   devices) /bin/cat "$fake/adb-devices" ;;
   *"emu avd name") /bin/cat "$fake/avd" ;;
   *"shell input "*keyevent*3*) ;;
+  *"shell dumpsys power") echo '  mWakefulness=Awake' ;;
   *) exit 1 ;;
 esac
 FAKE

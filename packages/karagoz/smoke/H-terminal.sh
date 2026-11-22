@@ -21,7 +21,9 @@ case "$*" in
     [ -n "$EMPTY" ] || printf 'FAKE0001\tdevice\nFAKE0002\tunauthorized\n\n' ;;
   '-s FAKE0001 shell getprop ro.build.version.release; getprop ro.build.version.sdk') printf '14\n34\n' ;;
   '-s FAKE0001 shell getprop'*) printf 'Pixel Fake\n\n\n\n\n\n' ;;
+  '-s FAKE0001 shell settings get global device_name') printf 'Owner Phone\n' ;;
   "-s FAKE0001 shell input 'keyevent' '3'") ;;
+  '-s FAKE0001 shell dumpsys power') printf '  mWakefulness=Awake\n' ;;
   *) exit 1 ;;
 esac
 FAKE
@@ -74,6 +76,9 @@ got=$(run devices | node -e '
   try { const { devices } = JSON.parse(out); console.log(out.includes("\n") ? "not-one-line" : devices.length) } catch { console.log("not-json") }
 ')
 is 'piped devices' 2
+# The owner-set name is for the person at the terminal only; the JSON an agent reads never carries it.
+got=$(run devices | grep -c 'Owner Phone' || true)
+is 'piped devices without the owner name' 0
 
 # 2. doctor at a terminal, without colors: only what is wrong under a section, and the summary last. The fake
 # DEVELOPER_DIR has no swiftc, so on macOS Xcode is broken.
@@ -101,8 +106,8 @@ sdk=$tmp/sdk
 out=$(tty devices)
 got=$(printf '%s\n' "$out" | head -4)
 is devices "Found 2 devices:
-  Pixel Fake • FAKE0001 • physical • Android 14 (API 34) • device
-  (no name)  • FAKE0002 • physical • Android             • unauthorized
+  Pixel Fake (Owner Phone) • FAKE0001 • physical • Android 14 (API 34) • device
+  (no name)                • FAKE0002 • physical • Android             • unauthorized
       ! Accept the USB debugging prompt on the device."
 got=$(printf '%s\n' "$out" | tail -2)
 is 'devices footer' 'Pick one with --device <id or name>, or set KARAGOZ_DEVICE.

@@ -1,7 +1,8 @@
 #!/bin/sh
 # Step 1.2: `screenshot` captures a running emulator by serial or AVD name as a whole, full-resolution PNG, and
 # every capture carries the K6 metadata read with it (logical size, scale, safe area, rotation);
-# the default file is private (0600) and a symlink planted at the default directory is refused;
+# the default file is private (0600) and a symlink planted at the default directory is refused; two captures in the
+# same millisecond get two files;
 # an unknown target and an option the command does not declare fail with the JSON envelope;
 # an --out that does not end in .png is refused before any device call.
 # Precondition: an emulator is running (emulator -avd <name>). Nothing here boots, stops, rotates or restarts
@@ -105,6 +106,16 @@ if planted=$(TMPDIR="$tmp/t" node dist/cli.js screenshot --device "$id" 2>/dev/n
 fi
 [ "$(printf '%s' "$planted" | code_of)" = WRITE_FAILED ] || { echo "FAIL: expected WRITE_FAILED, got: $planted"; exit 1; }
 [ -z "$(ls -A "$tmp/elsewhere")" ] || { echo "FAIL: a file was written through the symlink: $(ls -A "$tmp/elsewhere")"; exit 1; }
+
+# 4c. Two concurrent captures of one device under a clock frozen at one millisecond: both exit 0 with two paths.
+mkdir "$tmp/c"
+printf '%s\n' 'Date.prototype.toISOString = () => "2026-01-01T00:00:00.000Z";' > "$tmp/clock.mjs"
+TMPDIR="$tmp/c" node --import "$tmp/clock.mjs" dist/cli.js screenshot --device "$id" > "$tmp/c1" 2>/dev/null & first=$!
+TMPDIR="$tmp/c" node --import "$tmp/clock.mjs" dist/cli.js screenshot --device "$id" > "$tmp/c2" 2>/dev/null & second=$!
+wait "$first" || { echo "FAIL: the first of two same-millisecond captures exited non-zero: $(cat "$tmp/c1")"; exit 1; }
+wait "$second" || { echo "FAIL: the second of two same-millisecond captures exited non-zero: $(cat "$tmp/c2")"; exit 1; }
+p1=$(field path < "$tmp/c1") && p2=$(field path < "$tmp/c2") || { echo "FAIL: a same-millisecond capture printed no path"; exit 1; }
+[ "$p1" != "$p2" ] && [ -s "$p1" ] && [ -s "$p2" ] || { echo "FAIL: same-millisecond captures: '$p1' and '$p2'"; exit 1; }
 
 # 5. An unknown target.
 if miss=$(node dist/cli.js screenshot --device nope 2>/dev/null); then echo "FAIL: unknown device exited 0"; exit 1; fi

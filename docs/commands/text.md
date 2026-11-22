@@ -50,6 +50,7 @@ Quotes, spaces and `%s` are typed as they are; karagoz handles the escaping.
 - `TEXT_UNSUPPORTED`: see above.
 - `HELPER_FAILED`: the helper could not run on the device; the message has its error.
 - Long text is sent in pieces of up to 100 characters. If a piece fails, the error keeps its code and the message ends with `; <n> of <total> characters were typed before this`.
+- `DEVICE_NOT_READY`: the screen is off, as for [`tap`](tap.md). Nothing is typed.
 - Plus `INPUT_BLOCKED`, the [device selection](../device-selection.md) errors and the adb errors.
 
 **Notes**
@@ -76,7 +77,7 @@ Any Unicode text is typed exactly, at the cursor; iOS's auto-capitalization and 
 - A cancelled or timed-out call can still type the whole text: the simulator gets it in one piece.
 - An app opened while the call ends can read as an empty tree until it is opened again ([Requirements](../requirements.md)).
 - It needs Xcode 27 or newer and a simulator on iOS 27 or newer: Xcode 26 grants no automation session, and Xcode 27 none to an older runtime. Either fails at once with `NOT_SUPPORTED`: `'text' on iOS simulators needs Xcode 27 or later`, or `'text' on an iOS 26.2 simulator needs an iOS 27 or later simulator with Xcode 27 or later; tap, swipe, key and ui-tree work on it`.
-- On a Mac that never had Xcode 27, the text goes through karagoz's runner instead, as [`tap`](tap.md#on-an-ios-simulator) does: any Unicode, exactly, at the same speed, on any runtime.
+- On a Mac that never had Xcode 27, the text goes through karagoz's runner instead, as [`tap`](tap.md#on-an-ios-simulator) does: any Unicode, exactly, at the same speed, on any runtime. A text over the runner's 1 MiB fails there as [on an iPhone](#on-an-iphone).
 - Errors: `AUTOMATION_BUSY` when a UI test holds the simulator, `HELPER_FAILED` when the session is not granted or the typing fails.
 
 ## On an iPhone
@@ -92,4 +93,5 @@ Any Unicode text is typed exactly through karagoz's runner, as on the simulator 
 - A newline acts as Return: in a single-line field it ends editing, and what follows it is not typed. A tab is typed as a tab.
 - With no focused field nothing is typed, and the call still exits `0`.
 - 120 characters a second: 20 characters took 0.6 s, 300 took 2.9 s.
+- The runner takes at most 1 MiB in one request, so a longer text fails before anything is sent: `the text makes a request of 1048578 bytes, and karagoz's runner takes at most 1048576 bytes (1 MiB) in one request; send the text in smaller parts` (`INVALID_ARGS`). The count is in bytes: an ASCII letter takes 1, a Turkish letter, a newline, a tab, a quote or a backslash 2, an emoji 4.
 - Errors: those of [`tap` on an iPhone](tap.md#on-an-iphone).

@@ -133,7 +133,8 @@ const group = (current: unknown, deprecated: unknown) =>
 // Attached iPhones only, not the simulators, remembered phones and other devices devicectl also lists. state is the
 // pairing state, the one field that says "tap Trust"; name is the model, never the owner-set name (K18 4.1 note).
 // ponytail: iOS 16 and older phones show as unavailable without a UDID, so they are not listed (K39).
-export async function listPhones() {
+// named adds the owner-set name as deviceName, for the terminal text only: it often holds a person's full name.
+export async function listPhones(named = false) {
   const out = await devicectl(['list', 'devices', '--json-output', '-', '-q'], TIMEOUT_MS);
   const { devices } = json(out);
   if (!Array.isArray(devices)) {
@@ -162,7 +163,20 @@ export async function listPhones() {
         ? device.deviceProperties.osVersionNumber
         : undefined;
     const os = typeof version === 'string' ? version : null;
-    return [{ id: udid, platform: 'ios' as const, kind: 'physical' as const, state: pairingState, name, os }];
+    // Present on an unpaired phone too, where marketingName is missing (measured in 4.1).
+    const owner = group(properties.state, device.deviceProperties).name;
+    const deviceName = named && typeof owner === 'string' && owner ? owner : undefined;
+    return [
+      {
+        id: udid,
+        platform: 'ios' as const,
+        kind: 'physical' as const,
+        state: pairingState,
+        name,
+        os,
+        ...(deviceName && { deviceName }),
+      },
+    ];
   });
 }
 
